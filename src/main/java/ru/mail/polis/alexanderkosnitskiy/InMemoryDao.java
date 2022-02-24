@@ -6,12 +6,11 @@ import ru.mail.polis.Dao;
 import java.nio.ByteBuffer;
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.NoSuchElementException;
-import java.util.Set;
+import java.util.NavigableSet;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private final Set<BaseEntry<ByteBuffer>> storage =
+    private final NavigableSet<BaseEntry<ByteBuffer>> storage =
             new ConcurrentSkipListSet<>(Comparator.comparing(BaseEntry::key));
 
     @Override
@@ -19,32 +18,11 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (from == null) {
             return storage.iterator();
         }
-        Iterator<BaseEntry<ByteBuffer>> iter = storage.iterator();
-        BaseEntry<ByteBuffer> target = iter.next();
-        while (!target.key().equals(from)) {
-            target = iter.next();
+        if (to == null) {
+            return storage.tailSet(new BaseEntry<>(from, null), true).iterator();
         }
-        BaseEntry<ByteBuffer> finalTarget = target;
-        return new Iterator<>() {
-            private final Iterator<BaseEntry<ByteBuffer>> iterator = iter;
-            private final ByteBuffer last = to;
-            private BaseEntry<ByteBuffer> curr = finalTarget;
-
-            @Override
-            public boolean hasNext() {
-                return (last == null || curr.key().equals(last)) && iterator.hasNext();
-            }
-
-            @Override
-            public BaseEntry<ByteBuffer> next() {
-                if (!hasNext()) {
-                    throw new NoSuchElementException();
-                }
-                BaseEntry<ByteBuffer> temp = curr;
-                curr = iterator.next();
-                return temp;
-            }
-        };
+        return storage.subSet(new BaseEntry<>(from, null), true, new BaseEntry<>(to, null), false)
+                .iterator();
     }
 
     @Override
