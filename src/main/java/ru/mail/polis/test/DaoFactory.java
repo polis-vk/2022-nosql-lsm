@@ -14,14 +14,17 @@ import java.util.Iterator;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface DaoFactory {
 
-    interface Factory<Data, E extends Entry<Data>> {
-        Dao<Data, E> createDao();
-        String toString(Data data);
-        Data fromString(String data);
-        E fromBaseEntry(Entry<Data> baseEntry);
+    interface Factory<D, E extends Entry<D>> {
+        Dao<D, E> createDao();
+
+        String toString(D data);
+
+        D fromString(String data);
+
+        E fromBaseEntry(Entry<D> baseEntry);
 
         default Dao<String, Entry<String>> createStringDao() {
-            Dao<Data, E> delegate = createDao();
+            Dao<D, E> delegate = createDao();
             return new Dao<>() {
                 @Override
                 public Iterator<Entry<String>> get(String from, String to) {
@@ -44,7 +47,7 @@ public @interface DaoFactory {
 
                 @Override
                 public void upsert(Entry<String> entry) {
-                    BaseEntry<Data> e = new BaseEntry<>(
+                    BaseEntry<D> e = new BaseEntry<>(
                             fromString(entry.key()),
                             fromString(entry.value())
                     );

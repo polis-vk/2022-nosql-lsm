@@ -1,6 +1,7 @@
 package ru.mail.polis;
 
-public interface Entry<Data> {
-    Data key();
-    Data value();
+public interface Entry<D> {
+    D key();
+
+    D value();
 }
