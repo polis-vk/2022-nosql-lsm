@@ -1,9 +1,9 @@
 package ru.mail.polis.test;
 
 import ru.mail.polis.Entry;
-import ru.mail.polis.alexanderkosnitskiy.InMemoryDao;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
+import ru.mail.polis.alexanderkosnitskiy.InMemoryDao;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
