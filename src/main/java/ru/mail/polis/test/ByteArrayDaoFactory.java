@@ -2,11 +2,10 @@ package ru.mail.polis.test;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.alexanderkosnitskiy.InMemoryDao;
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Dao;
 
 @DaoFactory
 public class ByteArrayDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
