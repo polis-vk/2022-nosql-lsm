@@ -24,9 +24,8 @@ $ ./gradlew test
 Откройте в IDE -- [IntelliJ IDEA Community Edition](https://www.jetbrains.com/idea/) нам будет достаточно.
 
 **ВНИМАНИЕ!** При запуске тестов или сервера в IDE необходимо передавать Java опцию `-Xmx64m`.
-В своём Java package `ru.mail.polis.lsm.<username>` реализуйте интерфейс [`DAO`](src/main/java/ru/mail/polis/lsm/DAO.java), используя одну из реализаций `java.util.SortedMap`.
 
-Возвращайте свою реализацию интерфейса в [`DAOFactory`](src/main/java/ru/mail/polis/lsm/DAOFactory.java#L57).
+TBD: Описание
 
 Продолжайте запускать тесты и исправлять ошибки, не забывая [подтягивать новые тесты и фиксы из `upstream`](https://help.github.com/articles/syncing-a-fork/). Если заметите ошибку в `upstream`, заводите баг и присылайте pull request ;)
 
