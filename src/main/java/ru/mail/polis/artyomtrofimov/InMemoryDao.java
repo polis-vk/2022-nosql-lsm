@@ -1,10 +1,9 @@
 package ru.mail.polis.artyomtrofimov;
 
-import java.util.Iterator;
-import java.util.concurrent.ConcurrentSkipListMap;
-
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
+import java.util.Iterator;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
