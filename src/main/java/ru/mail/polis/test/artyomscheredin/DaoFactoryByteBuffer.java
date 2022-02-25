@@ -1,19 +1,19 @@
 package ru.mail.polis.test.artyomscheredin;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.artyomscheredin.inMemoryDAO;
+import ru.mail.polis.artyomscheredin.inMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+
 @DaoFactory
-public class DaoFactoryString implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
+public class DaoFactoryByteBuffer implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao() {
-        return new inMemoryDAO();
+        return new inMemoryDao();
     }
 
     @Override

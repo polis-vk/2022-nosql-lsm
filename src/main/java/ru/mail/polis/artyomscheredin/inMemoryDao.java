@@ -1,15 +1,15 @@
 package ru.mail.polis.artyomscheredin;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Dao;
+
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Dao;
-
-public class inMemoryDAO implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
+public class inMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
 
     @Override
