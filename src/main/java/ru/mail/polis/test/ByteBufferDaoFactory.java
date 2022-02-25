@@ -18,8 +18,7 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
 
     @Override
     public String toString(ByteBuffer data) {
-        return data == null ? null : new String(data.array(),
-                data.arrayOffset() + data.position(),
+        return data == null ? null : new String(data.array(), data.arrayOffset() + data.position(),
                 data.remaining(), StandardCharsets.UTF_8);
     }
 
