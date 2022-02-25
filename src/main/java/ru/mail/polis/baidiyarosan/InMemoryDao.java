@@ -4,7 +4,8 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.Iterator;
+import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
@@ -23,13 +24,12 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 to == null ? collection.lastKey() : to, to == null
         ).values().iterator();
 
-  }
+    }
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         collection.put(entry.key(), entry);
     }
-
 
 
 }
