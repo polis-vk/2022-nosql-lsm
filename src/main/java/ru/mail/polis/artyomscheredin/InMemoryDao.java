@@ -9,7 +9,7 @@ import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class inMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
+public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
 
     @Override
