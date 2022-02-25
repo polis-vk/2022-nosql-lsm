@@ -14,7 +14,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, ByteBuffer> collection = new ConcurrentSkipListMap<>();
 
-    private final Function<Map.Entry<ByteBuffer, ByteBuffer>, BaseEntry<ByteBuffer>> mapper = (e) -> new BaseEntry(e.getKey(), e.getValue());
+    private final Function<Map.Entry<ByteBuffer, ByteBuffer>, BaseEntry<ByteBuffer>> mapper =
+            (e) -> new BaseEntry(e.getKey(), e.getValue());
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
