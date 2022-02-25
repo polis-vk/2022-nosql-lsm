@@ -94,6 +94,21 @@ public class BasicTest extends BaseTest {
     }
 
     @DaoTest
+    void testAllTo(Dao<String, Entry<String>> dao) throws Exception {
+        dao.upsert(entry("e", "f"));
+        dao.upsert(entry("c", "d"));
+        dao.upsert(entry("a", "b"));
+
+
+        assertSame(
+                dao.allTo("e"),
+
+                entry("a", "b"),
+                entry("c", "d")
+        );
+    }
+
+    @DaoTest
     void testHugeData(Dao<String, Entry<String>> dao) throws Exception {
         int count = 100_000;
         List<Entry<String>> entries = entries("k", "v", count);
