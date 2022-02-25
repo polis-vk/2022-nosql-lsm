@@ -1,19 +1,19 @@
 package ru.mail.polis.artyomscheredin;
 
+import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
-import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class inMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
+public class inMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
+    private final SortedMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>>(new Comparator());
 
     @Override
-    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
+    public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         if (data.isEmpty()) {
             return Collections.emptyIterator();
         }
@@ -29,10 +29,14 @@ public class inMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void upsert(BaseEntry<ByteBuffer> entry) {
+    public void upsert(BaseEntry<MemorySegment> entry) {
         if (entry == null) {
             throw new IllegalArgumentException();
         }
         data.put(entry.key(), entry);
+    }
+
+    private static int compareMemSeg() {
+
     }
 }
