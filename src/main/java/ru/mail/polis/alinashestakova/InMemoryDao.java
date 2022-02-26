@@ -1,5 +1,8 @@
 package ru.mail.polis.alinashestakova;
 
+import jdk.incubator.foreign.MemoryAccess;
+import jdk.incubator.foreign.MemoryHandles;
+import jdk.incubator.foreign.MemoryLayouts;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
@@ -44,7 +47,13 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
         @Override
         public int compare(MemorySegment o1, MemorySegment o2) {
-            return o1.asByteBuffer().compareTo(o2.asByteBuffer());
+            long offset = o1.mismatch(o2);
+            if (offset == -1) {
+                return 0;
+            }
+
+            Byte b = MemoryAccess.getByteAtOffset(o1, offset);
+            return b.compareTo(MemoryAccess.getByteAtOffset(o2, offset));
         }
     }
 }
