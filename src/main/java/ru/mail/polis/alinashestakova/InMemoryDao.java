@@ -1,8 +1,6 @@
 package ru.mail.polis.alinashestakova;
 
 import jdk.incubator.foreign.MemoryAccess;
-import jdk.incubator.foreign.MemoryHandles;
-import jdk.incubator.foreign.MemoryLayouts;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
