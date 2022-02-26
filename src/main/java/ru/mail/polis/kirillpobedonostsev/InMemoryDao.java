@@ -5,13 +5,14 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final NavigableMap<MemorySegment, BaseEntry<MemorySegment>> map =
-            new ConcurrentSkipListMap<>((e1, e2) -> Arrays.compare(e1.toByteArray(), e2.toByteArray()));
+            new ConcurrentSkipListMap<>(Comparator.comparing(MemorySegment::asByteBuffer));
 
     @Override
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
