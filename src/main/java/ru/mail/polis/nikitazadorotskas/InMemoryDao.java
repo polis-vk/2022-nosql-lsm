@@ -7,7 +7,7 @@ import ru.mail.polis.Dao;
 
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -44,7 +44,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
                 .iterator();
     }
 
-    private BaseEntry<MemorySegment> toBaseEntry(Map.Entry<AbstractMemorySegmentImpl, AbstractMemorySegmentImpl> entry) {
+    private BaseEntry<MemorySegment> toBaseEntry(Entry<AbstractMemorySegmentImpl, AbstractMemorySegmentImpl> entry) {
         return new BaseEntry<>(entry.getKey(), entry.getValue());
     }
 
@@ -54,6 +54,6 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
-        memory.put(cast(entry.key()), (cast(entry.value())));
+        memory.put(cast(entry.key()), cast(entry.value()));
     }
 }
