@@ -17,16 +17,12 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         if (from == null && to == null) {
             return map.values().iterator();
-        }
-        NavigableMap<MemorySegment, BaseEntry<MemorySegment>> temp;
-        if (from == null) {
-            temp = map.headMap(to, false);
+        } else if (from == null) {
+            return map.headMap(to, false).values().iterator();
         } else if (to == null) {
-            temp = map.tailMap(from, true);
-        } else {
-            temp = map.subMap(from, true, to, false);
+            return map.tailMap(from, true).values().iterator();
         }
-        return temp.values().iterator();
+        return map.subMap(from, true, to, false).values().iterator();
     }
 
     @Override
