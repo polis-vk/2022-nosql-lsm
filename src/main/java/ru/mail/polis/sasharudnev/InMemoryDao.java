@@ -19,9 +19,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         Map<String, BaseEntry<String>> dataSet;
 
         switch (isFromAndToEqualsNull) {
-            case 0 -> dataSet = data.headMap(to);
+            case 0 -> dataSet = data.tailMap(from);
             case 1 -> dataSet = data;
-            case 2 -> dataSet = data.tailMap(to);
+            case 2 -> dataSet = data.headMap(to);
             default -> dataSet = data.subMap(from, to);
         }
         return dataSet.values().iterator();
