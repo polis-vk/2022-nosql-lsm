@@ -13,7 +13,6 @@ java {
 repositories {
     mavenCentral()
 }
-
 dependencies {
     // Checks
     errorprone 'com.google.errorprone:error_prone_core:2.11.0'
@@ -28,6 +27,14 @@ dependencies {
 test {
     maxHeapSize = "64m"
     useJUnitPlatform()
+    jvmArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+compileJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+
+compileTestJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
 }
 
 checkstyle {
