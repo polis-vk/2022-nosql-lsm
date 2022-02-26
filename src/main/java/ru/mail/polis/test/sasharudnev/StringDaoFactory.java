@@ -1,4 +1,5 @@
 package ru.mail.polis.test.sasharudnev;
+
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;

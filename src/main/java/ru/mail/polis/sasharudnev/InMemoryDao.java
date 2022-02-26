@@ -1,4 +1,5 @@
 package ru.mail.polis.sasharudnev;
+
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
@@ -14,13 +15,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) {
 
-        int isFromAndToEqualsNull = from == null ? to == null ? 1 : 2 : to == null ? 0 : -1;
+        int isFromAndToEqualsNull = from == null ? (to == null ? 1 : 2) : (to == null ? 0 : -1);
         Map<String, BaseEntry<String>> dataSet;
 
         switch (isFromAndToEqualsNull) {
-            case 0 -> dataSet = data.tailMap(to);
+            case 0 -> dataSet = data.headMap(to);
             case 1 -> dataSet = data;
-            case 2 -> dataSet = data.headMap(to);
+            case 2 -> dataSet = data.tailMap(to);
             default -> dataSet = data.subMap(from, to);
         }
         return dataSet.values().iterator();
