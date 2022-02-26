@@ -9,11 +9,11 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
-    ConcurrentNavigableMap<String, String> dataMap = new ConcurrentSkipListMap<>();
+    ConcurrentNavigableMap<String, BaseEntry<String>> dataMap = new ConcurrentSkipListMap<>();
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) {
-        Map<String, String> subMap;
+        Map<String, BaseEntry<String>> subMap;
         if (from == null && to == null) {
             subMap = dataMap;
         } else if (from == null) {
@@ -23,26 +23,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         } else {
             subMap = dataMap.subMap(from, to);
         }
-        Iterator<Map.Entry<String, String>> iterator = subMap.entrySet().iterator();
-
-        return new Iterator<>() {
-            Map.Entry<String, String> next;
-
-            @Override
-            public boolean hasNext() {
-                return iterator.hasNext();
-            }
-
-            @Override
-            public BaseEntry<String> next() {
-                next = iterator.next();
-                return new BaseEntry<>(next.getKey(), next.getValue());
-            }
-        };
+        return subMap.values().iterator();
     }
 
     @Override
     public void upsert(BaseEntry<String> entry) {
-        dataMap.put(entry.key(), entry.value());
+        dataMap.put(entry.key(), entry);
     }
 }
