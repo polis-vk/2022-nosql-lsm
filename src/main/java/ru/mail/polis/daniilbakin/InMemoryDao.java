@@ -1,17 +1,18 @@
 package ru.mail.polis.daniilbakin;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Dao;
+
 import java.nio.ByteBuffer;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.SortedSet;
 import java.util.concurrent.ConcurrentSkipListSet;
 
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Dao;
-
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    private final SortedSet<BaseEntry<ByteBuffer>> data = new ConcurrentSkipListSet<>(Comparator.comparing(BaseEntry::key));
+    private final SortedSet<BaseEntry<ByteBuffer>> data =
+            new ConcurrentSkipListSet<>(Comparator.comparing(BaseEntry::key));
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
