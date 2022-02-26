@@ -1,12 +1,11 @@
 package ru.mail.polis.test.artyomscheredin;
 
+import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.artyomscheredin.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
-
-import jdk.incubator.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
 
 @DaoFactory

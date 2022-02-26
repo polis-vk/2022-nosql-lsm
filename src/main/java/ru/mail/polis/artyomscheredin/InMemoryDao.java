@@ -1,16 +1,15 @@
 package ru.mail.polis.artyomscheredin;
 
+import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
-
-import jdk.incubator.foreign.MemorySegment;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
-    private final SortedMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>>(new Comparator());
+    private final SortedMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<>(new MemSegComparator());
 
     @Override
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
