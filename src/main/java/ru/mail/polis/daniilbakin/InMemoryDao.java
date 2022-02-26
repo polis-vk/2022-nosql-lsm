@@ -16,39 +16,19 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
         if (from == null && to == null) {
-            return new DaoIterator(data.entrySet().iterator());
+            return data.values().iterator();
         }
         if (from == null) {
-            return new DaoIterator(data.headMap(to).entrySet().iterator());
+            return data.headMap(to).values().iterator();
         }
         if (to == null) {
-            return new DaoIterator(data.tailMap(from).entrySet().iterator());
+            return data.tailMap(from).values().iterator();
         }
-        return new DaoIterator(data.subMap(from, to).entrySet().iterator());
+        return data.subMap(from, to).values().iterator();
     }
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         data.put(entry.key(), entry);
     }
-
-    static class DaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
-
-        private final Iterator<Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>>> iterator;
-
-        public DaoIterator(Iterator<Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>>> iterator) {
-            this.iterator = iterator;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return iterator.hasNext();
-        }
-
-        @Override
-        public BaseEntry<ByteBuffer> next() {
-            return iterator.next().getValue();
-        }
-    }
-
 }
