@@ -4,13 +4,14 @@ import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final NavigableMap<MemorySegment, BaseEntry<MemorySegment>> map =
-            new ConcurrentSkipListMap<>(new MemorySegmentComparator());
+            new ConcurrentSkipListMap<>((m1, m2) -> Arrays.compare(m1.toByteArray(), m2.toByteArray()));
 
     @Override
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
