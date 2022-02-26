@@ -7,17 +7,18 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import jdk.incubator.foreign.MemorySegment;
 
-public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
-    private final NavigableMap<byte[], BaseEntry<byte[]>> map =
-            new ConcurrentSkipListMap<>(Arrays::compare);
+public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
+    private final NavigableMap<MemorySegment, BaseEntry<MemorySegment>> map =
+            new ConcurrentSkipListMap<>((e1, e2) -> Arrays.compare(e1.toByteArray(), e2.toByteArray()));
 
     @Override
-    public Iterator<BaseEntry<byte[]>> get(byte[] from, byte[] to) {
+    public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         if (from == null && to == null) {
             return map.values().iterator();
         }
-        NavigableMap<byte[], BaseEntry<byte[]>> temp;
+        NavigableMap<MemorySegment, BaseEntry<MemorySegment>> temp;
         if (from == null) {
             temp = map.headMap(to, false);
         } else if (to == null) {
@@ -29,12 +30,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public BaseEntry<byte[]> get(byte[] key) {
+    public BaseEntry<MemorySegment> get(MemorySegment key) {
         return key == null ? null : map.get(key);
     }
 
     @Override
-    public void upsert(BaseEntry<byte[]> entry) {
+    public void upsert(BaseEntry<MemorySegment> entry) {
         map.put(entry.key(), entry);
     }
 }

@@ -7,26 +7,27 @@ import ru.mail.polis.kirillpobedonostsev.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
 import java.nio.charset.StandardCharsets;
+import jdk.incubator.foreign.MemorySegment;
 
 @DaoFactory
-public class ByteArrayDaoFactory implements DaoFactory.Factory<byte[], BaseEntry<byte[]>> {
+public class ByteArrayDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
     @Override
-    public Dao<byte[], BaseEntry<byte[]>> createDao() {
+    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao() {
         return new InMemoryDao();
     }
 
     @Override
-    public String toString(byte[] data) {
-        return data == null ? null : new String(data, StandardCharsets.UTF_8);
+    public String toString(MemorySegment data) {
+        return data == null ? null : new String(data.toByteArray(), StandardCharsets.UTF_8);
     }
 
     @Override
-    public byte[] fromString(String data) {
-        return data == null ? null : data.getBytes(StandardCharsets.UTF_8);
+    public MemorySegment fromString(String data) {
+        return data == null ? null : MemorySegment.ofArray(data.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
-    public BaseEntry<byte[]> fromBaseEntry(Entry<byte[]> baseEntry) {
+    public BaseEntry<MemorySegment> fromBaseEntry(Entry<MemorySegment> baseEntry) {
         return new BaseEntry<>(baseEntry.key(), baseEntry.value());
     }
 }
