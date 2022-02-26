@@ -26,6 +26,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         Iterator<Map.Entry<String, String>> iterator = subMap.entrySet().iterator();
 
         return new Iterator<>() {
+            Map.Entry<String, String> next;
+
             @Override
             public boolean hasNext() {
                 return iterator.hasNext();
@@ -33,7 +35,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
             @Override
             public BaseEntry<String> next() {
-                Map.Entry<String, String> next = iterator.next();
+                next = iterator.next();
                 return new BaseEntry<>(next.getKey(), next.getValue());
             }
         };
