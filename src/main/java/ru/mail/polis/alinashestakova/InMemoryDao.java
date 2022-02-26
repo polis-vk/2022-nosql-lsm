@@ -1,17 +1,18 @@
 package ru.mail.polis.alinashestakova;
 
+import jdk.incubator.foreign.MemorySegment;
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Dao;
+
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-import jdk.incubator.foreign.MemorySegment;
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Dao;
-
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
-    private final SortedMap<MemorySegment, BaseEntry<MemorySegment>> storage = new ConcurrentSkipListMap<>(new MemorySegmentComparator());
+    private final SortedMap<MemorySegment, BaseEntry<MemorySegment>> storage =
+            new ConcurrentSkipListMap<>(new MemorySegmentComparator());
 
     @Override
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
