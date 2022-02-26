@@ -7,6 +7,7 @@ import ru.mail.polis.alexanderkosnitskiy.InMemoryDao;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
+@DaoFactory
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override

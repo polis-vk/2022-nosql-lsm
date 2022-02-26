@@ -4,35 +4,51 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
 import java.nio.ByteBuffer;
-import java.util.Comparator;
 import java.util.Iterator;
-import java.util.SortedSet;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    private final SortedSet<BaseEntry<ByteBuffer>> data =
-            new ConcurrentSkipListSet<>(Comparator.comparing(BaseEntry::key));
+    private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
         if (from == null && to == null) {
-            return data.iterator();
+            return new DaoIterator(data.entrySet().iterator());
         }
         if (from == null) {
-            return data.headSet(new BaseEntry<>(to, null)).iterator();
+            return new DaoIterator(data.headMap(to).entrySet().iterator());
         }
         if (to == null) {
-            return data.tailSet(new BaseEntry<>(from, null)).iterator();
+            return new DaoIterator(data.tailMap(from).entrySet().iterator());
         }
-        return data.subSet(new BaseEntry<>(from, null), new BaseEntry<>(to, null)).iterator();
+        return new DaoIterator(data.subMap(from, to).entrySet().iterator());
     }
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
-        data.add(entry);
+        data.put(entry.key(), entry);
+    }
+
+    static class DaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
+
+        private final Iterator<Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>>> iterator;
+
+        public DaoIterator(Iterator<Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>>> iterator) {
+            this.iterator = iterator;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return iterator.hasNext();
+        }
+
+        @Override
+        public BaseEntry<ByteBuffer> next() {
+            return iterator.next().getValue();
+        }
     }
 
 }
-
-
