@@ -6,7 +6,6 @@ import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.alinashestakova.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
-
 import java.nio.charset.StandardCharsets;
 
 @DaoFactory
