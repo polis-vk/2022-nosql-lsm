@@ -15,15 +15,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) {
 
-        int isFromAndToEqualsNull = from == null ? (to == null ? 1 : 2) : (to == null ? 0 : -1);
         Map<String, BaseEntry<String>> dataSet;
 
-        switch (isFromAndToEqualsNull) {
-            case 0 -> dataSet = data.tailMap(from);
-            case 1 -> dataSet = data;
-            case 2 -> dataSet = data.headMap(to);
-            default -> dataSet = data.subMap(from, to);
-        }
+        dataSet = from == null ?
+                (to == null ? data : data.headMap(to)) :
+                (to == null ? data.tailMap(from) : data.subMap(from, to));
         return dataSet.values().iterator();
     }
 
