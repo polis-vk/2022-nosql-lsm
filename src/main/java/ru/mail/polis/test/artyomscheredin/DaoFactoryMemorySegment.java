@@ -6,34 +6,34 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.artyomscheredin.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
-import java.nio.ByteBuffer;
+import jdk.incubator.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
 
 @DaoFactory
-public class DaoFactoryByteBuffer implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
+public class DaoFactoryMemorySegment implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
     @Override
-    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao() {
+    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao() {
         return new InMemoryDao();
     }
 
     @Override
-    public String toString(ByteBuffer data) {
+    public String toString(MemorySegment data) {
         if (data == null) {
             return null;
         }
-        return new String(data.array(), StandardCharsets.UTF_8);
+        return new String(data.toByteArray(), StandardCharsets.UTF_8);
     }
 
     @Override
-    public ByteBuffer fromString(String data) {
+    public MemorySegment fromString(String data) {
         if (data == null) {
             return null;
         }
-        return ByteBuffer.wrap(data.getBytes(StandardCharsets.UTF_8));
+        return MemorySegment.ofArray(data.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
-    public BaseEntry<ByteBuffer> fromBaseEntry(Entry<ByteBuffer> baseEntry) {
+    public BaseEntry<MemorySegment> fromBaseEntry(Entry<MemorySegment> baseEntry) {
         return new BaseEntry<>(baseEntry.key(), baseEntry.value());
     }
 }
