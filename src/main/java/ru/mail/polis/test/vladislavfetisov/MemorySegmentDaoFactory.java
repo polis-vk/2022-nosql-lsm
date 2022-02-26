@@ -1,8 +1,9 @@
-package ru.mail.polis.test;
+package ru.mail.polis.test.vladislavfetisov;
 
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
+import ru.mail.polis.test.DaoFactory;
 import ru.mail.polis.vladislavfetisov.InMemoryDao;
 
 import java.nio.charset.StandardCharsets;
