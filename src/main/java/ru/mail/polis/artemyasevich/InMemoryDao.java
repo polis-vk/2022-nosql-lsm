@@ -2,6 +2,7 @@ package ru.mail.polis.artemyasevich;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
+
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -22,9 +23,20 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         } else {
             subMap = dataMap.subMap(from, to);
         }
-        return subMap.entrySet().stream()
-                .map(entry -> new BaseEntry<>(entry.getKey(), entry.getValue()))
-                .iterator();
+        Iterator<Map.Entry<String, String>> iterator = subMap.entrySet().iterator();
+
+        return new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                return iterator.hasNext();
+            }
+
+            @Override
+            public BaseEntry<String> next() {
+                Map.Entry<String, String> next = iterator.next();
+                return new BaseEntry<>(next.getKey(), next.getValue());
+            }
+        };
     }
 
     @Override
