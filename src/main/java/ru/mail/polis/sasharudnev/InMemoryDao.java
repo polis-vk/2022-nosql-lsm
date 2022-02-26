@@ -14,13 +14,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) {
-
-        Map<String, BaseEntry<String>> dataSet;
-
-        dataSet = from == null ?
-                (to == null ? data : data.headMap(to)) :
-                (to == null ? data.tailMap(from) : data.subMap(from, to));
-        return dataSet.values().iterator();
+        return (from == null ? (to == null ? data : data.headMap(to)) : (to == null ? data.tailMap(from) : data.subMap(from, to))).values().iterator();
     }
 
     @Override
