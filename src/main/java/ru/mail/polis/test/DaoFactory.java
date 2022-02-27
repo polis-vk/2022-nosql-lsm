@@ -14,6 +14,9 @@ import java.util.Iterator;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface DaoFactory {
 
+    int stage() default 1;
+    int week() default 1;
+
     interface Factory<D, E extends Entry<D>> {
         Dao<D, E> createDao();
 
