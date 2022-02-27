@@ -10,7 +10,7 @@ import ru.mail.polis.test.DaoFactory;
 import java.nio.charset.StandardCharsets;
 
 @DaoFactory
-public class ByteArrayDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
+public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
     @Override
     public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao() {
         return new InMemoryDao();
