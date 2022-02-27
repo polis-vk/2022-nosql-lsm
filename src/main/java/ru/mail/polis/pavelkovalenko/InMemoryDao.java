@@ -11,11 +11,10 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    ConcurrentNavigableMap<ByteBuffer, ByteBuffer> data = new ConcurrentSkipListMap<>();
+    ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-
         if (from != null && to != null) {
             return new DataIterator(data.subMap(from, to).entrySet().iterator());
         }
@@ -50,13 +49,13 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
-        data.put(entry.key(), entry.value());
+        data.put(entry.key(), entry);
     }
 
     private static class DataIterator implements Iterator<BaseEntry<ByteBuffer>> {
-        private final Iterator<Map.Entry<ByteBuffer, ByteBuffer>> dataIter;
+        private final Iterator<Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>>> dataIter;
 
-        public DataIterator(Iterator<Map.Entry<ByteBuffer, ByteBuffer>> iterator) {
+        public DataIterator(Iterator<Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>>> iterator) {
             this.dataIter = iterator;
         }
 
@@ -67,8 +66,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
         @Override
         public BaseEntry<ByteBuffer> next() {
-            Map.Entry<ByteBuffer, ByteBuffer> entry = dataIter.next();
-            return new BaseEntry<>(entry.getKey(), entry.getValue());
+            return dataIter.next().getValue();
         }
     }
 }
