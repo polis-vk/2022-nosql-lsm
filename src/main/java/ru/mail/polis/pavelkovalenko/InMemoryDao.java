@@ -16,12 +16,15 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
 
-        if (from != null && to != null)
+        if (from != null && to != null) {
             return new DataIterator(data.subMap(from, to).entrySet().iterator());
-        if (from != null)
+        }
+        if (from != null) {
             return new DataIterator(data.tailMap(from).entrySet().iterator());
-        if (to != null)
+        }
+        if (to != null) {
             return new DataIterator(data.headMap(to).entrySet().iterator());
+        }
         return new DataIterator(data.entrySet().iterator());
     }
 
