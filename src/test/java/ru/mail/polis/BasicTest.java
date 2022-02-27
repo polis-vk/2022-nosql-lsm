@@ -34,6 +34,7 @@ public class BasicTest extends BaseTest {
 
         assertSame(
                 dao.all(),
+
                 entry("a", "b"),
                 entry("c", "d"),
                 entry("e", "f")
@@ -55,6 +56,66 @@ public class BasicTest extends BaseTest {
             Assertions.assertEquals(10_000, iterators.size());
         } catch (OutOfMemoryError error) {
             throw new AssertionFailedError("Too much data in memory: use some lazy ways", error);
+        }
+    }
+
+    @DaoTest
+    void testFindValueInTheMiddle(Dao<String, Entry<String>> dao) throws Exception {
+        dao.upsert(entry("e", "f"));
+        dao.upsert(entry("c", "d"));
+        dao.upsert(entry("a", "b"));
+
+        assertSame(dao.get("c"), entry("c", "d"));
+    }
+
+    @DaoTest
+    void testFindRangeInTheMiddle(Dao<String, Entry<String>> dao) throws Exception {
+        dao.upsert(entry("e", "f"));
+        dao.upsert(entry("c", "d"));
+        dao.upsert(entry("a", "b"));
+
+        assertSame(dao.get("c", "e"), entry("c", "d"));
+    }
+
+    @DaoTest
+    void testFindFullRange(Dao<String, Entry<String>> dao) throws Exception {
+        dao.upsert(entry("e", "f"));
+        dao.upsert(entry("c", "d"));
+        dao.upsert(entry("a", "b"));
+
+
+        assertSame(
+                dao.get("a", "z"),
+
+                entry("a", "b"),
+                entry("c", "d"),
+                entry("e", "f")
+        );
+    }
+
+    @DaoTest
+    void testAllTo(Dao<String, Entry<String>> dao) throws Exception {
+        dao.upsert(entry("e", "f"));
+        dao.upsert(entry("c", "d"));
+        dao.upsert(entry("a", "b"));
+
+
+        assertSame(
+                dao.allTo("e"),
+
+                entry("a", "b"),
+                entry("c", "d")
+        );
+    }
+
+    @DaoTest
+    void testHugeData(Dao<String, Entry<String>> dao) throws Exception {
+        int count = 100_000;
+        List<Entry<String>> entries = entries("k", "v", count);
+        entries.forEach(dao::upsert);
+
+        for (int i = 0; i < count; i++) {
+            assertSame(dao.get(keyAt("k", i)), entries.get(i));
         }
     }
 
