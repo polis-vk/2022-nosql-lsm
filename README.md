@@ -1,5 +1,5 @@
 # 2022-nosql-lsm
-Задание для пересдачи [курса](https://polis.vk.company/curriculum/program/discipline/1356/) "Проектирование высоконагруженных систем" в [Образовательном центре VK в Политехе](https://polis.vk.company/).
+Проект [курса](https://polis.vk.company/curriculum/program/discipline/1356/) "NoSQL" в [Образовательном центре VK в Политехе](https://polis.vk.company/).
 
 ## Этап 1. In-memory (deadline 2022-03-02 23:59:59 MSK)
 ### Fork
@@ -25,7 +25,8 @@ $ ./gradlew clean build
 
 **ВНИМАНИЕ!** При запуске тестов или сервера в IDE необходимо передавать Java опцию `-Xmx64m`.
 
-TBD: Описание
+Сделать имплементацию интерфейса DAO, заставив пройти все тесты.
+Для этого достаточно реализовать две операции: get и upsert, при этом достаточно реализации "в памяти".
 
 Продолжайте запускать тесты и исправлять ошибки, не забывая [подтягивать новые тесты и фиксы из `upstream`](https://help.github.com/articles/syncing-a-fork/). Если заметите ошибку в `upstream`, заводите баг и присылайте pull request ;)
 
