@@ -1,14 +1,15 @@
-package ru.mail.polis.test;
+package ru.mail.polis.test.alexanderkosnitskiy;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.alexanderkosnitskiy.InMemoryDao;
+import ru.mail.polis.test.DaoFactory;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory
+@DaoFactory(stage = 0)
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
