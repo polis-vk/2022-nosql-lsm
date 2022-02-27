@@ -5,7 +5,7 @@
 ### Fork
 [Форкните проект](https://help.github.com/articles/fork-a-repo/), склонируйте и добавьте `upstream`:
 ```
-$ git clone git@github.com:mariohuq/2022-nosql-lsm.git
+$ git clone git@github.com:<username>/2022-nosql-lsm.git
 Cloning into '2022-nosql-lsm'...
 ...
 $ git remote add upstream git@github.com:polis-vk/2022-nosql-lsm.git
