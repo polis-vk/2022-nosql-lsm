@@ -12,6 +12,10 @@ import ru.mail.polis.test.DaoFactory;
 
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Author: Dmitry Kondraev
+ */
+
 @DaoFactory
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
 

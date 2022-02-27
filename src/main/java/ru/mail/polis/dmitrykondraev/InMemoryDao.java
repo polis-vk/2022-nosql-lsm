@@ -9,6 +9,10 @@ import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
+/**
+ * Author: Dmitry Kondraev
+ */
+
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
 
     private final ConcurrentNavigableMap<MemorySegment, MemorySegment> map = new ConcurrentSkipListMap<>((lhs, rhs) -> {
