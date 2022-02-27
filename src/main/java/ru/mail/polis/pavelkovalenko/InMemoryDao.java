@@ -53,7 +53,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         data.put(entry.key(), entry.value());
     }
 
-    private class DataIterator implements Iterator<BaseEntry<ByteBuffer>> {
+    private static class DataIterator implements Iterator<BaseEntry<ByteBuffer>> {
         private final Iterator<Map.Entry<ByteBuffer, ByteBuffer>> dataIter;
 
         public DataIterator(Iterator<Map.Entry<ByteBuffer, ByteBuffer>> iterator) {
