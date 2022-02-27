@@ -16,24 +16,34 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             = new ConcurrentSkipListMap<>(this::compareMemorySegment);
 
     private int compareMemorySegment(AbstractMemorySegmentImpl first, AbstractMemorySegmentImpl second) {
-        return Arrays.compare((byte[]) first.unsafeGetBase(), (byte[]) second.unsafeGetBase());
+        return Arrays.compare(toByteArray(first), toByteArray(second));
+    }
+
+    private byte[] toByteArray(AbstractMemorySegmentImpl segment) {
+        return (byte[]) segment.unsafeGetBase();
     }
 
     @Override
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
+        return getIteratorFromMap(getMap(from, to));
+    }
+
+    private ConcurrentNavigableMap<AbstractMemorySegmentImpl, AbstractMemorySegmentImpl> getMap(
+            MemorySegment from, MemorySegment to
+    ) {
         if (from == null && to == null) {
-            return getIteratorFromMap(memory);
+            return memory;
         }
 
         if (from == null) {
-            return getIteratorFromMap(memory.headMap(cast(to)));
+            return memory.headMap(cast(to));
         }
 
         if (to == null) {
-            return getIteratorFromMap(memory.tailMap(cast(from)));
+            return memory.tailMap(cast(from));
         }
 
-        return getIteratorFromMap(memory.subMap(cast(from), cast(to)));
+        return memory.subMap(cast(from), cast(to));
     }
 
     private Iterator<BaseEntry<MemorySegment>> getIteratorFromMap(
