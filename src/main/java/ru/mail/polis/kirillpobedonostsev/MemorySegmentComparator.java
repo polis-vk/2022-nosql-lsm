@@ -3,7 +3,6 @@ package ru.mail.polis.kirillpobedonostsev;
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 
-import java.util.Arrays;
 import java.util.Comparator;
 
 public class MemorySegmentComparator implements Comparator<MemorySegment> {
