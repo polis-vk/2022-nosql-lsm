@@ -6,6 +6,7 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.InMemoryDao;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 
 @DaoFactory
 public class KovalenkoByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
@@ -16,12 +17,12 @@ public class KovalenkoByteBufferDaoFactory implements DaoFactory.Factory<ByteBuf
 
     @Override
     public String toString(ByteBuffer data) {
-        return new String(data.array());
+        return new String(data.array(), Charset.defaultCharset());
     }
 
     @Override
     public ByteBuffer fromString(String data) {
-        return data == null ? null : ByteBuffer.wrap(data.getBytes());
+        return data == null ? null : ByteBuffer.wrap(data.getBytes(Charset.defaultCharset()));
     }
 
     @Override
