@@ -6,11 +6,12 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
 import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 /**
- * Author: Dmitry Kondraev
+ * Author: Dmitry Kondraev.
  */
 
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
@@ -33,7 +34,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         return Byte.compare(MemoryAccess.getByteAtOffset(lhs, offset), MemoryAccess.getByteAtOffset(rhs, offset));
     });
 
-    private static Iterator<BaseEntry<MemorySegment>> iterator(ConcurrentNavigableMap<MemorySegment, MemorySegment> map) {
+    private static Iterator<BaseEntry<MemorySegment>> iterator(Map<MemorySegment, MemorySegment> map) {
         return map
                 .entrySet()
                 .stream()

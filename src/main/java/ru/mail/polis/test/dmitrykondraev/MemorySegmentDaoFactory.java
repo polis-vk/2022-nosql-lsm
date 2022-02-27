@@ -13,7 +13,7 @@ import ru.mail.polis.test.DaoFactory;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Author: Dmitry Kondraev
+ * Author: Dmitry Kondraev.
  */
 
 @DaoFactory
