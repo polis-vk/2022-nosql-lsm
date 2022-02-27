@@ -34,3 +34,7 @@ checkstyle {
     configFile = new File("checkstyle.xml")
     checkstyleTest.enabled = false
 }
+
+var incubatorArguments = ["--enable-preview","--add-modules", "jdk.incubator.foreign"]
+tasks.withType(AbstractCompile) { options.compilerArgs += incubatorArguments }
+tasks.withType(Test) { jvmArgs += incubatorArguments }
