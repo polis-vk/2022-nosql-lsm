@@ -1,5 +1,6 @@
 package ru.mail.polis.kirillpobedonostsev;
 
+import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 
 import java.util.Arrays;
@@ -16,8 +17,8 @@ public class MemorySegmentComparator implements Comparator<MemorySegment> {
         } else if (offset == m1.byteSize()) {
             return -1;
         }
-        byte[] memory1 = m1.asSlice(offset, 1).toByteArray();
-        byte[] memory2 = m2.asSlice(offset, 1).toByteArray();
-        return Arrays.compare(memory1, memory2);
+        byte memory1 = MemoryAccess.getByteAtOffset(m1, offset);
+        byte memory2 = MemoryAccess.getByteAtOffset(m2, offset);
+        return Byte.compare(memory1, memory2);
     }
 }
