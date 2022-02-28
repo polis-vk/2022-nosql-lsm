@@ -8,7 +8,6 @@ import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
-
     private final NavigableMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
 
     @Override
