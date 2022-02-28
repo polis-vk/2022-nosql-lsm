@@ -25,12 +25,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public synchronized void upsert(BaseEntry<String> entry) {
+    public void upsert(BaseEntry<String> entry) {
         data.put(entry.key(), entry.value());
     }
 
     static class DaoIterator implements Iterator<BaseEntry<String>> {
-
         private final Iterator<Map.Entry<String, String>> iterator;
         private Map.Entry<String, String> tempEntry;
 
