@@ -5,7 +5,6 @@ import ru.mail.polis.Dao;
 
 import java.nio.ByteBuffer;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -16,15 +15,15 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
         if (from != null && to != null) {
-            return new DataIterator(data.subMap(from, to).entrySet().iterator());
+            return data.subMap(from, to).values().iterator();
         }
         if (from != null) {
-            return new DataIterator(data.tailMap(from).entrySet().iterator());
+            return data.tailMap(from).values().iterator();
         }
         if (to != null) {
-            return new DataIterator(data.headMap(to).entrySet().iterator());
+            return data.headMap(to).values().iterator();
         }
-        return new DataIterator(data.entrySet().iterator());
+        return data.values().iterator();
     }
 
     @Override
@@ -50,23 +49,5 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         data.put(entry.key(), entry);
-    }
-
-    private static class DataIterator implements Iterator<BaseEntry<ByteBuffer>> {
-        private final Iterator<Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>>> dataIter;
-
-        public DataIterator(Iterator<Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>>> iterator) {
-            this.dataIter = iterator;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return dataIter.hasNext();
-        }
-
-        @Override
-        public BaseEntry<ByteBuffer> next() {
-            return dataIter.next().getValue();
-        }
     }
 }
