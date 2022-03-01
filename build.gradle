@@ -23,6 +23,8 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
     testImplementation 'org.junit.jupiter:junit-jupiter-params:5.8.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
+
+    implementation ('org.jetbrains:annotations:22.0.0')
 }
 
 test {
@@ -34,3 +36,16 @@ checkstyle {
     configFile = new File("checkstyle.xml")
     checkstyleTest.enabled = false
 }
+
+compileJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+
+compileTestJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+
+test {
+    jvmArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+
