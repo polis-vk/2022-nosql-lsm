@@ -3,14 +3,14 @@ package ru.mail.polis.test.glebkomissarov;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.nio.charset.Charset;
-
-import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.glebkomissarov.MyMemoryDao;
 import ru.mail.polis.test.DaoFactory;
+
+import java.nio.charset.Charset;
+import jdk.incubator.foreign.MemorySegment;
 
 @DaoFactory
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
