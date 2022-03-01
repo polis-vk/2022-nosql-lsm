@@ -1,7 +1,5 @@
 package ru.mail.polis.glebkomissarov;
 
-import org.jetbrains.annotations.Nullable;
-
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 import jdk.incubator.foreign.MemorySegment;
@@ -18,7 +16,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     );
 
     @Override
-    public Iterator<BaseEntry<MemorySegment>> get(@Nullable MemorySegment from, @Nullable MemorySegment to) {
+    public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         if (data.isEmpty()) {
             return Collections.emptyIterator();
         }
