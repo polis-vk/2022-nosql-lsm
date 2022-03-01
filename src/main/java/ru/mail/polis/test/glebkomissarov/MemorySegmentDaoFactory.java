@@ -1,10 +1,9 @@
 package ru.mail.polis.test.glebkomissarov;
 
-import java.nio.charset.Charset;
-
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.charset.Charset;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
