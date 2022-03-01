@@ -1,6 +1,10 @@
 package ru.mail.polis.test.glebkomissarov;
 
 import java.nio.charset.Charset;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import jdk.incubator.foreign.MemorySegment;
 
 import ru.mail.polis.BaseEntry;
@@ -17,17 +21,17 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
     }
 
     @Override
-    public String toString(MemorySegment data) {
+    public String toString(@Nullable MemorySegment data) {
         return data == null ? null : new String(data.toByteArray(), Charset.defaultCharset());
     }
 
     @Override
-    public MemorySegment fromString(String data) {
+    public MemorySegment fromString(@Nullable String data) {
         return data == null ? null : MemorySegment.ofArray(data.getBytes(Charset.defaultCharset()));
     }
 
     @Override
-    public BaseEntry<MemorySegment> fromBaseEntry(Entry<MemorySegment> baseEntry) {
+    public BaseEntry<MemorySegment> fromBaseEntry(@NotNull Entry<MemorySegment> baseEntry) {
         return new BaseEntry<>(baseEntry.key(), baseEntry.value());
     }
 }
