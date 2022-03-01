@@ -1,39 +1,40 @@
 package ru.mail.polis.glebkomissarov;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Dao;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
-
+import jdk.incubator.foreign.MemorySegment;
 import org.jetbrains.annotations.Nullable;
 
-import jdk.incubator.foreign.MemorySegment;
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Dao;
+
 
 public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
 
-    private final ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> dataStore = new ConcurrentSkipListMap<>(
+    private final ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<>(
             (i, j) -> Arrays.compare(i.toByteArray(), j.toByteArray())
     );
 
     @Override
     public Iterator<BaseEntry<MemorySegment>> get(@Nullable MemorySegment from, @Nullable MemorySegment to) {
-        if (dataStore.isEmpty()) {
+        if (data.isEmpty()) {
             return Collections.emptyIterator();
         }
 
         if (from == null) {
-            return to == null ? shell(dataStore) : shell(dataStore.headMap(to));
+            return to == null ? shell(data) : shell(data.headMap(to));
         } else {
-            return to == null ? shell(dataStore.tailMap(from)) : shell(dataStore.subMap(from, to));
+            return to == null ? shell(data.tailMap(from)) : shell(data.subMap(from, to));
         }
     }
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
-        dataStore.put(entry.key(), entry);
+        data.put(entry.key(), entry);
     }
 
     private Iterator<BaseEntry<MemorySegment>> shell(Map<MemorySegment, BaseEntry<MemorySegment>> sub) {
