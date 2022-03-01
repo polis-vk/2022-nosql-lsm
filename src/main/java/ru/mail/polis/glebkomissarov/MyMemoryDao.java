@@ -1,8 +1,9 @@
 package ru.mail.polis.glebkomissarov;
 
+import jdk.incubator.foreign.MemorySegment;
+
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
-import jdk.incubator.foreign.MemorySegment;
 
 import java.util.Arrays;
 import java.util.Collections;
