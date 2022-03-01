@@ -1,9 +1,9 @@
 package ru.mail.polis.test.glebkomissarov;
 
+import jdk.incubator.foreign.MemorySegment;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
