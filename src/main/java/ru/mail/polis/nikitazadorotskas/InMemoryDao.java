@@ -31,7 +31,9 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         return getMap(from, to).values().iterator();
     }
 
-    private ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> getMap(MemorySegment from, MemorySegment to) {
+    private ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> getMap(
+            MemorySegment from, MemorySegment to
+    ) {
         if (from == null && to == null) {
             return memory;
         }
