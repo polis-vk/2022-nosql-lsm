@@ -6,12 +6,11 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
 import java.util.Iterator;
-import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
-    private final ConcurrentNavigableMap<MemorySegment, MemorySegment> memory
+    private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory
             = new ConcurrentSkipListMap<>(this::compareMemorySegment);
 
     private int compareMemorySegment(MemorySegment first, MemorySegment second) {
@@ -29,10 +28,10 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     @Override
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
-        return new BaseEntryIterator(getMap(from, to));
+        return getMap(from, to).values().iterator();
     }
 
-    private ConcurrentNavigableMap<MemorySegment, MemorySegment> getMap(MemorySegment from, MemorySegment to) {
+    private ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> getMap(MemorySegment from, MemorySegment to) {
         if (from == null && to == null) {
             return memory;
         }
@@ -48,30 +47,8 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         return memory.subMap(from, to);
     }
 
-    private class BaseEntryIterator implements Iterator<BaseEntry<MemorySegment>> {
-        private final Iterator<Entry<MemorySegment, MemorySegment>> iterator;
-
-        private BaseEntryIterator(ConcurrentNavigableMap<MemorySegment, MemorySegment> map) {
-            iterator = map.entrySet().iterator();
-        }
-
-        @Override
-        public boolean hasNext() {
-            return iterator.hasNext();
-        }
-
-        @Override
-        public BaseEntry<MemorySegment> next() {
-            return toBaseEntry(iterator.next());
-        }
-    }
-
-    private BaseEntry<MemorySegment> toBaseEntry(Entry<MemorySegment, MemorySegment> entry) {
-        return new BaseEntry<>(entry.getKey(), entry.getValue());
-    }
-
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
-        memory.put(entry.key(), entry.value());
+        memory.put(entry.key(), entry);
     }
 }
