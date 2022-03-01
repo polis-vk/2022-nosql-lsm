@@ -7,7 +7,7 @@ import ru.mail.polis.deniszhidkov.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
 @DaoFactory
-public class StringDaoFactory implements DaoFactory.Factory<String, BaseEntry<String> >{
+public class StringDaoFactory implements DaoFactory.Factory<String, BaseEntry<String>> {
 
     @Override
     public Dao<String, BaseEntry<String>> createDao() {
