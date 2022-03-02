@@ -32,7 +32,10 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
                 if (offset == rhs.byteSize()) {
                     return 1;
                 }
-                return Byte.compare(MemoryAccess.getByteAtOffset(lhs, offset), MemoryAccess.getByteAtOffset(rhs, offset));
+                return Byte.compare(
+                        MemoryAccess.getByteAtOffset(lhs, offset),
+                        MemoryAccess.getByteAtOffset(rhs, offset)
+                );
             });
 
     private static <K, V> Iterator<V> iterator(Map<K, V> map) {
