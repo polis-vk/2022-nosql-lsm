@@ -20,7 +20,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
                 return Character.compare(MemoryAccess.getCharAtOffset(firstSegment, offsetMismatch),
                         MemoryAccess.getCharAtOffset(secondSegment, offsetMismatch));
             }
-    );
+            );
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
