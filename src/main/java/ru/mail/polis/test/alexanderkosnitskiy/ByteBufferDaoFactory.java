@@ -9,7 +9,6 @@ import ru.mail.polis.test.DaoFactory;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 0)
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
