@@ -14,10 +14,20 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) {
-
         Map<String, BaseEntry<String>> dataSet;
+        boolean isFromEqualsNull = from == null;
+        boolean isToEqualsNull = to == null;
 
-        dataSet = from == null ? (to == null ? data : data.headMap(to)) : (to == null ? data.tailMap(from) : data.subMap(from, to));
+        if (isFromEqualsNull && isToEqualsNull) {
+            dataSet = data;
+        } else if (isFromEqualsNull) {
+            dataSet = data.headMap(to);
+        } else if (isToEqualsNull) {
+            dataSet = data.tailMap(from);
+        } else {
+            dataSet = data.subMap(from, to);
+        }
+
         return dataSet.values().iterator();
     }
 
