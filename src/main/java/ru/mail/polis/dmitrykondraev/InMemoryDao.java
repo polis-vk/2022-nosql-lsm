@@ -16,30 +16,27 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
 
-    private final ConcurrentNavigableMap<MemorySegment, MemorySegment> map = new ConcurrentSkipListMap<>((lhs, rhs) -> {
-        // lexicographic comparison of UTF-8 strings can be done by byte, according to RFC 3239
-        // (https://www.rfc-editor.org/rfc/rfc3629.txt, page 2)
+    private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> map =
+            new ConcurrentSkipListMap<>((lhs, rhs) -> {
+                // lexicographic comparison of UTF-8 strings can be done by byte, according to RFC 3239
+                // (https://www.rfc-editor.org/rfc/rfc3629.txt, page 2)
 
-        // this string comparison likely won't work with collation different from ASCII
-        long offset = lhs.mismatch(rhs);
-        if (offset == -1) {
-            return 0;
-        }
-        if (offset == lhs.byteSize()) {
-            return -1;
-        }
-        if (offset == rhs.byteSize()) {
-            return 1;
-        }
-        return Byte.compare(MemoryAccess.getByteAtOffset(lhs, offset), MemoryAccess.getByteAtOffset(rhs, offset));
-    });
+                // this string comparison likely won't work with collation different from ASCII
+                long offset = lhs.mismatch(rhs);
+                if (offset == -1) {
+                    return 0;
+                }
+                if (offset == lhs.byteSize()) {
+                    return -1;
+                }
+                if (offset == rhs.byteSize()) {
+                    return 1;
+                }
+                return Byte.compare(MemoryAccess.getByteAtOffset(lhs, offset), MemoryAccess.getByteAtOffset(rhs, offset));
+            });
 
-    private static Iterator<BaseEntry<MemorySegment>> iterator(Map<MemorySegment, MemorySegment> map) {
-        return map
-                .entrySet()
-                .stream()
-                .map(e -> new BaseEntry<>(e.getKey(), e.getValue()))
-                .iterator();
+    private static <K, V> Iterator<V> iterator(Map<K, V> map) {
+        return map.values().iterator();
     }
 
     @Override
@@ -58,15 +55,12 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
-        map.put(entry.key(), entry.value());
+        // implicit check for non-null entry and entry.key()
+        map.put(entry.key(), entry);
     }
 
     @Override
     public BaseEntry<MemorySegment> get(MemorySegment key) {
-        MemorySegment value = map.get(key);
-        if (value == null) {
-            return null;
-        }
-        return new BaseEntry<>(key, value);
+        return map.get(key);
     }
 }
