@@ -14,7 +14,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        if(from == null && to == null) {
+        if (from == null && to == null) {
             return dataBase.values().iterator();
         }
         if (from != null && to == null) {
