@@ -36,5 +36,5 @@ checkstyle {
 }
 
 var incubatorArguments = ["--enable-preview","--add-modules", "jdk.incubator.foreign"]
-tasks.withType(AbstractCompile) { options.compilerArgs += incubatorArguments }
+tasks.withType(JavaCompile) { options.compilerArgs += incubatorArguments }
 tasks.withType(Test) { jvmArgs += incubatorArguments }
