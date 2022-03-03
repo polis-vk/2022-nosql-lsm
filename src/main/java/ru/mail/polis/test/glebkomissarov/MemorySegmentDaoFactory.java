@@ -9,8 +9,6 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.glebkomissarov.MyMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
-import java.nio.charset.Charset;
-
 @DaoFactory(stage = 1, week = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
     @Override
