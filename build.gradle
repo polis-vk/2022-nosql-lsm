@@ -36,6 +36,14 @@ compileTestJava {
     options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
 }
 
+compileJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+
+compileTestJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+
 test {
     maxHeapSize = "64m"
     useJUnitPlatform()
@@ -45,12 +53,4 @@ test {
 checkstyle {
     configFile = new File("checkstyle.xml")
     checkstyleTest.enabled = false
-}
-
-compileJava {
-    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
-}
-
-compileTestJava {
-    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
 }
