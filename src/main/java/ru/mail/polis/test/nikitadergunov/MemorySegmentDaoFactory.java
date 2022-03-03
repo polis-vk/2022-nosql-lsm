@@ -7,6 +7,8 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.nikitadergunov.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
+import java.nio.charset.StandardCharsets;
+
 @DaoFactory
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, Entry<MemorySegment>> {
     @Override
@@ -16,13 +18,13 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
 
     @Override
     public String toString(MemorySegment data) {
-        return data == null ? null : new String(data.toCharArray());
+        return data == null ? null : new String(data.toByteArray(), StandardCharsets.UTF_8);
 
     }
 
     @Override
     public MemorySegment fromString(String data) {
-        return data == null ? null : MemorySegment.ofArray(data.toCharArray());
+        return data == null ? null : MemorySegment.ofArray(data.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
