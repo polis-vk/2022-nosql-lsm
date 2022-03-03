@@ -1,8 +1,10 @@
 package ru.mail.polis;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.Iterator;
 
-public interface Dao<D, E extends Entry<D>> {
+public interface Dao<D, E extends Entry<D>> extends Closeable {
 
     /**
      * Returns ordered iterator of entries with keys between from (inclusive) and to (exclusive).
@@ -34,7 +36,7 @@ public interface Dao<D, E extends Entry<D>> {
      * @param from lower bound of range (inclusive)
      * @return entries with key >= from
      */
-    default Iterator<E> allFrom(D from) {
+    default Iterator<E> allFrom(D from) throws IOException {
         return get(from, null);
     }
 
@@ -60,5 +62,18 @@ public interface Dao<D, E extends Entry<D>> {
      * @param entry element to upsert
      */
     void upsert(E entry);
+
+    /*
+     * Persists data (no-op by default).
+     */
+    default void flush() throws IOException {}
+
+    /*
+     * Releases Dao (calls flush by default).
+     */
+    @Override
+    default void close() throws IOException {
+        flush();
+    }
 
 }
