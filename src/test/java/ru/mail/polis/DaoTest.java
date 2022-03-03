@@ -8,16 +8,23 @@ import org.junit.jupiter.params.provider.ArgumentsProvider;
 import org.junit.jupiter.params.provider.ArgumentsSource;
 import ru.mail.polis.test.DaoFactory;
 
+import java.io.IOException;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -29,6 +36,8 @@ import java.util.stream.Stream;
 public @interface DaoTest {
 
     class DaoList implements ArgumentsProvider {
+        private static final AtomicInteger ID = new AtomicInteger();
+
         @Override
         public Stream<? extends Arguments> provideArguments(ExtensionContext context) throws Exception {
             CodeSource codeSource = DaoFactory.class.getProtectionDomain().getCodeSource();
@@ -62,9 +71,20 @@ public @interface DaoTest {
 
                 return maxFactories.stream().map(c -> {
                     try {
-                        DaoFactory.Factory<?, ?> f = (DaoFactory.Factory<?, ?>) c.getDeclaredConstructor()
-                                .newInstance();
-                        return Arguments.of(f.createStringDao());
+                        Class<?> parameterType = context.getRequiredTestMethod().getParameterTypes()[0];
+                        if (parameterType == Dao.class) {
+                            Dao<String, Entry<String>> dao = createDao(context, c);
+                            return Arguments.of(dao);
+                        } else if (parameterType == Supplier.class) {
+                            return Arguments.of((Supplier<Dao<String, Entry<String>>>) () -> {
+                                try {
+                                    return createDao(context, c);
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
+                            });
+                        }
+                        throw new IllegalArgumentException("Unknown type:" + parameterType);
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
@@ -91,6 +111,38 @@ public @interface DaoTest {
                 throw new IllegalArgumentException("DaoFactory should be under package ru.mail.polis.test.<username>");
             }
             return clazz;
+        }
+
+        private Dao<String, Entry<String>> createDao(ExtensionContext context, Class<?> clazz) throws IOException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
+            Path tmp = Files.createTempDirectory("dao");
+            ExtensionContext.Store.CloseableResource res = () -> {
+                if (!Files.exists(tmp)) {
+                    return;
+                }
+                Files.walkFileTree(tmp, new SimpleFileVisitor<>() {
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                        Files.delete(file);
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                        Files.delete(dir);
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            };
+            context.getStore(ExtensionContext.Namespace.GLOBAL).put(ID.incrementAndGet() + "", res);
+
+            DaoFactory.Factory<?, ?> f = (DaoFactory.Factory<?, ?>) clazz.getDeclaredConstructor().newInstance();
+
+            Dao<String, Entry<String>> dao = f.createStringDao(new Config(tmp));
+
+            ExtensionContext.Store.CloseableResource resDao = dao::close;
+            context.getStore(ExtensionContext.Namespace.GLOBAL).put(ID.incrementAndGet() + "", resDao);
+
+            return dao;
         }
     }
 
