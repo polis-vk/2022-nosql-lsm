@@ -1,10 +1,10 @@
 package ru.mail.polis.glebkomissarov;
 
+import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
@@ -12,7 +12,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<>(
-            (i, j) -> Arrays.compare(i.toByteArray(), j.toByteArray())
+            (i, j) -> {
+                long result = i.mismatch(j);
+                return i.mismatch(j) == -1 ? 0 : Byte.compare(MemoryAccess.getByteAtOffset(i, result),
+                        MemoryAccess.getByteAtOffset(j, result));
+            }
     );
 
     @Override
