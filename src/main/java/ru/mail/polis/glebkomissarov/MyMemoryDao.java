@@ -14,8 +14,9 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     private final ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<>(
             (i, j) -> {
                 long result = i.mismatch(j);
-                return i.mismatch(j) == -1 ? 0 : Byte.compare(MemoryAccess.getByteAtOffset(i, result),
-                        MemoryAccess.getByteAtOffset(j, result));
+                return result == -1 ? 0 : Byte.compare(
+                        MemoryAccess.getByteAtOffset(i, result), MemoryAccess.getByteAtOffset(j, result)
+                );
             }
     );
 
