@@ -20,12 +20,12 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
 
     @Override
     public String toString(@Nullable MemorySegment data) {
-        return data == null ? null : new String(data.toByteArray(), Charset.defaultCharset());
+        return data == null ? null : new String(data.toCharArray());
     }
 
     @Override
     public MemorySegment fromString(@Nullable String data) {
-        return data == null ? null : MemorySegment.ofArray(data.getBytes(Charset.defaultCharset()));
+        return data == null ? null : MemorySegment.ofArray(data.toCharArray());
     }
 
     @Override
