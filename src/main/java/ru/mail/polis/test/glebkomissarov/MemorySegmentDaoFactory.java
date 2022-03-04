@@ -1,5 +1,7 @@
 package ru.mail.polis.test.glebkomissarov;
 
+import java.nio.charset.StandardCharsets;
+
 import jdk.incubator.foreign.MemorySegment;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -18,12 +20,12 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
 
     @Override
     public String toString(@Nullable MemorySegment data) {
-        return data == null ? null : new String(data.toCharArray());
+        return data == null ? null : new String(data.toByteArray(), StandardCharsets.UTF_8);
     }
 
     @Override
     public MemorySegment fromString(@Nullable String data) {
-        return data == null ? null : MemorySegment.ofArray(data.toCharArray());
+        return data == null ? null : MemorySegment.ofArray(data.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
