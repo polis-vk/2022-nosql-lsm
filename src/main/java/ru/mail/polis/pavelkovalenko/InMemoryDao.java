@@ -18,12 +18,12 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    private Config config;
-    private String pathToFile;
+    private final Config config;
+    private final String pathToFile;
 
     public InMemoryDao(Config config) {
         this.config = config;
-        this.pathToFile = new StringBuilder(config.basePath().toString()).append("\\file1.txt").toString();
+        this.pathToFile = config.basePath().toString() + "\\file1.txt";
         try {
             if (!Files.exists(Path.of(this.pathToFile))) {
                 Files.createFile(Path.of(this.pathToFile));
@@ -121,10 +121,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         fout.write(bb.array());
     }
 
-    private InMemoryDao read() throws IOException {
+    private void read() throws IOException {
         try (FileInputStream fin = new FileInputStream(pathToFile)) {
             if (fin.available() == 0) {
-                return null;
+                return;
             }
 
             ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> newData = new ConcurrentSkipListMap<>();
@@ -138,7 +138,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 }
             }
             this.data = newData;
-            return this;
         }
     }
 
