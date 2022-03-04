@@ -13,11 +13,12 @@ java {
 repositories {
     mavenCentral()
 }
-
 dependencies {
     // Checks
     errorprone 'com.google.errorprone:error_prone_core:2.11.0'
     checkstyle 'com.puppycrawl.tools:checkstyle:9.3'
+
+    //implementation 'jdk.incubator.foreign'
 
     // JUnit Jupiter test framework
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
@@ -43,3 +44,12 @@ checkstyle {
     configFile = new File("checkstyle.xml")
     checkstyleTest.enabled = false
 }
+
+compileJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+
+compileTestJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+
