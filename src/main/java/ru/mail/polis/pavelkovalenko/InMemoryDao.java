@@ -30,7 +30,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
             read();
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println(e.getMessage());
         }
     }
 
@@ -84,7 +84,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         try {
             write();
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println(e.getMessage());
         }
     }
 
@@ -116,8 +116,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private void writeByteBuffer(FileOutputStream fout, ByteBuffer bb) throws IOException {
-        writeInt(fout, bb.array().length);
-        fout.write(bb.array());
+        writeInt(fout, bb.remaining());
+        byte[] bytes = new byte[bb.remaining()];
+        bb.get(bytes);
+        fout.write(bytes);
     }
 
     private InMemoryDao read() throws IOException {
