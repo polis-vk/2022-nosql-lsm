@@ -29,7 +29,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 Files.createFile(Path.of(this.pathToFile));
             }
             read();
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -73,14 +74,18 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void flush() throws IOException {
+    public void flush() {
         close();
         reopen();
     }
 
     @Override
-    public void close() throws IOException {
-        write();
+    public void close() {
+        try {
+            write();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public InMemoryDao reopen() {
