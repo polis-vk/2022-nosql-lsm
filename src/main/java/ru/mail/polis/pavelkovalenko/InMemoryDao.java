@@ -16,9 +16,9 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>>, Serializable {
 
-    ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    Config config;
-    String pathToFile;
+    private ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
+    private final Config config;
+    private final String pathToFile;
 
     public InMemoryDao(Config config) {
         this.config = config;
@@ -28,10 +28,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>>, Seri
                 Files.createFile(Path.of(this.pathToFile));
             }
             read();
-            if (!this.data.isEmpty()) {
-                System.out.println("DATA: key=" + new ByteBufferDaoFactory().toString(this.data.firstKey())
-                        + ", value=" + new ByteBufferDaoFactory().toString(this.data.values().iterator().next().value()));
-            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -152,8 +148,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>>, Seri
     }
 
     private ByteBuffer readByteBuffer(FileInputStream fin) throws IOException {
-        int nBytes = readInt(fin);
-        byte[] bytes = new byte[nBytes];
+        int numberOfBytes = readInt(fin);
+        byte[] bytes = new byte[numberOfBytes];
         fin.read(bytes);
         return ByteBuffer.wrap(bytes);
     }
