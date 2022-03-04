@@ -29,8 +29,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 Files.createFile(Path.of(this.pathToFile));
             }
             read();
-        } catch (IOException e) {
-            e.printStackTrace();
+        } catch (IOException ignored) {
         }
     }
 
@@ -74,27 +73,22 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void flush() {
+    public void flush() throws IOException {
         close();
         reopen();
     }
 
     @Override
-    public void close() {
-        try {
-            write();
-        } catch (IOException ex) {
-            ex.printStackTrace();
-        }
+    public void close() throws IOException {
+        write();
     }
 
     public InMemoryDao reopen() {
         try {
-            read();
-        } catch (IOException ex) {
-            ex.printStackTrace();
+            return read();
+        } catch (IOException ignored) {
+            return null;
         }
-        return this;
     }
 
     public Config getConfig() {
@@ -121,10 +115,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         fout.write(bb.array());
     }
 
-    private void read() throws IOException {
+    private InMemoryDao read() throws IOException {
         try (FileInputStream fin = new FileInputStream(pathToFile)) {
             if (fin.available() == 0) {
-                return;
+                return null;
             }
 
             ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> newData = new ConcurrentSkipListMap<>();
@@ -139,6 +133,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
             this.data = newData;
         }
+        return this;
     }
 
     private int readInt(FileInputStream fin) throws IOException {
