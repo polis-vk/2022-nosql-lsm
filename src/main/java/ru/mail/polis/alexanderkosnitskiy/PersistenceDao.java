@@ -24,7 +24,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     public PersistenceDao(Config config) {
         ConcurrentNavigableMap<ByteBuffer, ByteBuffer> temp = null;
-        try(FileInputStream in = new FileInputStream(config.basePath().toString() + "/data.txt");
+        try (FileInputStream in = new FileInputStream(config.basePath().toString() + "/data.txt");
             ObjectInputStream reader = new ObjectInputStream(in)) {
             Map<ByteBuffer, ByteBuffer> map = ((Map<byte[], byte[]>) reader.readObject()).entrySet().stream()
                     .collect(Collectors.toMap(k -> ByteBuffer.wrap(k.getKey()), v -> ByteBuffer.wrap(v.getValue())));
@@ -59,7 +59,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        try(FileOutputStream out = new FileOutputStream(config.basePath().toString() + "/data.txt");
+        try (FileOutputStream out = new FileOutputStream(config.basePath().toString() + "/data.txt");
             ObjectOutputStream writer = new ObjectOutputStream(out)) {
             Map<byte[], byte[]> map = storage.entrySet().stream()
                     .collect(Collectors.toMap(k -> k.getKey().array(), v -> v.getValue().array()));
