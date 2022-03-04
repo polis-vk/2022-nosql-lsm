@@ -105,7 +105,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         try (FileOutputStream fout = new FileOutputStream(pathToFile)) {
             writeInt(fout, data.size());
             for (Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry: data.entrySet()) {
-                // Записываем 2 раза, так как entry.key = entry.value.key
+                // Write 2 times due to entry.key = entry.value.key
                 writeByteBuffer(fout, entry.getKey());
                 writeByteBuffer(fout, entry.getValue().value());
             }
@@ -131,7 +131,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             int sizeOfData = readInt(fin);
             while (fin.available() != 0) {
                 for (int i = 0; i < sizeOfData; ++i) {
-                    // Читаем 2 раза, так как entry.key = entry.value.key
+                    // Read 2 times due to entry.key = entry.value.key
                     ByteBuffer key = readByteBuffer(fin);
                     ByteBuffer value = readByteBuffer(fin);
                     newData.put(key, new BaseEntry<>(key, value));
