@@ -12,7 +12,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 
 public class PersistentTest extends BaseTest {
 
-    @DaoTest
+    @DaoTest(stage = 2)
     void persistent(Dao<String, Entry<String>> dao) throws IOException {
         dao.upsert(entry("k1", "v1"));
         dao.close();
@@ -21,7 +21,7 @@ public class PersistentTest extends BaseTest {
         assertSame(dao.get("k1"), entry("k1", "v1"));
     }
 
-    @DaoTest
+    @DaoTest(stage = 2)
     void cleanup(Dao<String, Entry<String>> dao) throws IOException {
         dao.upsert(entry("k1", "v1"));
         dao.close();
