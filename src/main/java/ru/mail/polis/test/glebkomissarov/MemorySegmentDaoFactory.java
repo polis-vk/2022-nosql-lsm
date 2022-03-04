@@ -1,7 +1,5 @@
 package ru.mail.polis.test.glebkomissarov;
 
-import java.nio.charset.StandardCharsets;
-
 import jdk.incubator.foreign.MemorySegment;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -10,6 +8,8 @@ import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.glebkomissarov.MyMemoryDao;
 import ru.mail.polis.test.DaoFactory;
+
+import java.nio.charset.StandardCharsets;
 
 @DaoFactory(stage = 1, week = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
