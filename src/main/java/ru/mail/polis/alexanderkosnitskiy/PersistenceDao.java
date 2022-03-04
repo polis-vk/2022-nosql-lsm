@@ -12,6 +12,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.nio.ByteBuffer;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -61,7 +62,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public void flush() throws IOException {
         try (FileOutputStream out = new FileOutputStream(config.basePath().toString() + "/data.txt");
             ObjectOutputStream writer = new ObjectOutputStream(out)) {
-            Map<byte[], byte[]> map = storage.entrySet().stream()
+            HashMap<byte[], byte[]> map =(HashMap<byte[], byte[]>) storage.entrySet().stream()
                     .collect(Collectors.toMap(k -> k.getKey().array(), v -> v.getValue().array()));
             writer.writeObject(map);
         }
