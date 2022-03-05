@@ -5,7 +5,9 @@ plugins:
     config:
       languages:
         java:
-          mass_threshold: 90
+    checks:
+      Similar code:
+        enabled: false
   checkstyle:
     enabled: true
     config:
