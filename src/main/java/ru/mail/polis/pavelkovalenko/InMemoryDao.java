@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
@@ -21,7 +22,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final String pathToFile;
 
     public InMemoryDao(Config config) {
-        this.pathToFile = config.basePath().toString() + "\\file1.txt";
+        this.pathToFile = config.basePath().toString() + FileSystems.getDefault().getSeparator() + "file1.txt";
         try {
             if (!Files.exists(Path.of(this.pathToFile))) {
                 Files.createFile(Path.of(this.pathToFile));
