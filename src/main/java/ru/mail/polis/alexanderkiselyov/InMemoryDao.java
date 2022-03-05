@@ -4,10 +4,10 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -18,7 +18,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
     private final Config config;
     private final int bufferSize = 2 * Character.BYTES;
-    private final String fileName = "myData.txt";
+    private final static String fileName = "myData.txt";
 
     public InMemoryDao(Config config) {
         this.config = config;
