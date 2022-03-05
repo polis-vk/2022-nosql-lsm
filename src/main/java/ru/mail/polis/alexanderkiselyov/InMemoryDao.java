@@ -18,12 +18,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
     private final Config config;
     private final int bufferSize = 2 * Character.BYTES;
-    private final static String fileName = "myData.txt";
+    private static final String FILE_NAME = "myData.txt";
 
     public InMemoryDao(Config config) {
         this.config = config;
         pairs = new ConcurrentSkipListMap<>(Arrays::compare);
-        try (FileInputStream fis = new FileInputStream(String.valueOf(config.basePath().resolve(fileName)));
+        try (FileInputStream fis = new FileInputStream(String.valueOf(config.basePath().resolve(FILE_NAME)));
              BufferedInputStream reader = new BufferedInputStream(fis, bufferSize)) {
             while (reader.available() != 0) {
                 int keyLength = reader.read();
@@ -69,7 +69,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     @Override
     public void flush() {
-        try (FileOutputStream fos = new FileOutputStream(String.valueOf(config.basePath().resolve(fileName)));
+        try (FileOutputStream fos = new FileOutputStream(String.valueOf(config.basePath().resolve(FILE_NAME)));
              BufferedOutputStream writer = new BufferedOutputStream(fos, bufferSize)) {
             for (var pair : pairs.entrySet()) {
                 writer.write(pair.getKey().length);
