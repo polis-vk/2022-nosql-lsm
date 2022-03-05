@@ -8,7 +8,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
@@ -22,7 +21,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final String pathToFile;
 
     public InMemoryDao(Config config) {
-        this.pathToFile = config.basePath().toString() + FileSystems.getDefault().getSeparator() + "file1.txt";
+        this.pathToFile = config.basePath().resolve("file1.txt").toString();
         try {
             if (!Files.exists(Path.of(this.pathToFile))) {
                 Files.createFile(Path.of(this.pathToFile));
@@ -53,26 +52,14 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void flush() {
+    public void flush() throws IOException {
         close();
-        reopen();
+        read();
     }
 
     @Override
-    public void close() {
-        try {
-            write();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public InMemoryDao reopen() {
-        try {
-            return read();
-        } catch (IOException ignored) {
-            return null;
-        }
+    public void close() throws IOException {
+        write();
     }
 
     private void write() throws IOException {
@@ -92,15 +79,13 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private void writeByteBuffer(FileOutputStream fout, ByteBuffer bb) throws IOException {
         writeInt(fout, bb.remaining());
-        byte[] bytes = new byte[bb.remaining()];
-        bb.get(bytes);
-        fout.write(bytes);
+        fout.write(bb.array());
     }
 
-    private InMemoryDao read() throws IOException {
+    private void read() throws IOException {
         try (FileInputStream fin = new FileInputStream(pathToFile)) {
             if (fin.available() == 0) {
-                return null;
+                return;
             }
 
             ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> newData = new ConcurrentSkipListMap<>();
@@ -115,7 +100,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
             this.data = newData;
         }
-        return this;
     }
 
     private int readInt(FileInputStream fin) throws IOException {
