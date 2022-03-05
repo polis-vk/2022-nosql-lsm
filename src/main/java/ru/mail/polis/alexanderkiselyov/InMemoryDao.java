@@ -4,10 +4,10 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -17,13 +17,14 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
     private final Config config;
-    private final int BUFFER_SIZE = 2 * Character.BYTES;
+    private final int bufferSize = 2 * Character.BYTES;
+    private final String fileName = "myData.txt";
 
     public InMemoryDao(Config config) {
         this.config = config;
         pairs = new ConcurrentSkipListMap<>(Arrays::compare);
-        try (FileInputStream fis = new FileInputStream(config.basePath() + "\\myData.txt");
-             BufferedInputStream reader = new BufferedInputStream(fis, BUFFER_SIZE)) {
+        try (FileInputStream fis = new FileInputStream(String.valueOf(config.basePath().resolve(fileName)));
+             BufferedInputStream reader = new BufferedInputStream(fis, bufferSize)) {
             while (reader.available() != 0) {
                 int keyLength = reader.read();
                 byte[] key = reader.readNBytes(keyLength);
@@ -68,8 +69,8 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     @Override
     public void flush() {
-        try (FileOutputStream fos = new FileOutputStream(config.basePath() + "\\myData.txt");
-             BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
+        try (FileOutputStream fos = new FileOutputStream(String.valueOf(config.basePath().resolve(fileName)));
+             BufferedOutputStream writer = new BufferedOutputStream(fos, bufferSize)) {
             for (var pair : pairs.entrySet()) {
                 writer.write(pair.getKey().length);
                 writer.write(pair.getKey());
