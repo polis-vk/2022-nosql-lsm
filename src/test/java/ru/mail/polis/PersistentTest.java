@@ -49,31 +49,52 @@ public class PersistentTest extends BaseTest {
 
     @DaoTest(stage = 2)
     void persistentPreventInMemoryStorage(Dao<String, Entry<String>> dao) throws IOException {
-        entries("k", "v", 200_000).forEach(dao::upsert);
+        int keys = 200_000;
+
+        // Fill
+        List<Entry<String>> entries = entries("k", "v", keys);
+        entries.forEach(dao::upsert);
         dao.close();
 
-        List<Entry<String>> tmp = new ArrayList<>(entries("k", "v", 200_000));
+        // Materialize to consume heap
+        List<Entry<String>> tmp = new ArrayList<>(entries);
 
-        try {
-            Entry<String> entry = DaoFactory.Factory.reopen(dao).get(keyAt("k", 50_023));
-            assertSame(
-                    entry,
-                    entry(
-                            keyAt("k", 50_023),
-                            valueAt("v", 50_023)
-                    )
-            );
-        } catch (OutOfMemoryError error) {
-            throw new RuntimeException(error);
-        }
+        Entry<String> entry = DaoFactory.Factory.reopen(dao).get(keyAt("k", keys / 2));
+        assertSame(
+                entry,
+                entries.get(keys / 2)
+        );
 
         assertSame(
-                tmp.get(0),
-                entry(
-                        keyAt("k", 0),
-                        valueAt("v", 0)
-                )
+                tmp.get(keys - 1),
+                entries.get(keys - 1)
         );
+    }
+
+    @DaoTest(stage = 2)
+    void replaceWithClose(Dao<String, Entry<String>> dao) throws IOException {
+        final String key = "key";
+        Entry<String> e1 = entry(key, "value1");
+        Entry<String> e2 = entry(key, "value2");
+
+        // Initial insert
+        try (Dao<String, Entry<String>> dao1 = dao) {
+            dao1.upsert(e1);
+
+            assertSame(dao1.get(key), e1);
+        }
+
+        // Reopen and replace
+        try (Dao<String, Entry<String>> dao2 = DaoFactory.Factory.reopen(dao)) {
+            assertSame(dao2.get(key), e1);
+            dao2.upsert(e2);
+            assertSame(dao2.get(key), e2);
+        }
+
+        // Reopen and check
+        try (Dao<String, Entry<String>> dao3 = DaoFactory.Factory.reopen(dao)) {
+            assertSame(dao3.get(key), e2);
+        }
     }
 
 }
