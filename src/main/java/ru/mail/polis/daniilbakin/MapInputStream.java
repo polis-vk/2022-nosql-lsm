@@ -8,8 +8,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.SortedMap;
-import java.util.concurrent.ConcurrentSkipListMap;
 
 public class MapInputStream extends FileInputStream {
 
@@ -17,27 +15,20 @@ public class MapInputStream extends FileInputStream {
         super(file);
     }
 
-    public SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> readMap() throws IOException {
-        SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-        while (available() > 0) {
-            ByteBuffer key = readByteBuffer();
-            BaseEntry<ByteBuffer> value = readBaseEntry();
-            data.put(key, value);
+    public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) throws IOException {
+        ByteBuffer currKey = readByteBuffer();
+        while (available() > 0 && currKey.compareTo(key) < 0) {
+            skipValue();
+            currKey = readByteBuffer();
         }
-        return data;
-    }
-
-    private BaseEntry<ByteBuffer> readBaseEntry() throws IOException {
-        ByteBuffer baseKey = readByteBuffer();
-        ByteBuffer baseValue = readByteBuffer();
-        return new BaseEntry<>(baseKey, baseValue);
+        if (currKey.compareTo(key) == 0) {
+            return new BaseEntry<>(currKey, readByteBuffer());
+        }
+        return null;
     }
 
     private ByteBuffer readByteBuffer() throws IOException {
         int length = readInt();
-        if (length == -1) {
-            return null;
-        }
         ByteBuffer buffer = ByteBuffer.allocate(length);
         byte[] bytes = new byte[length];
         if (read(bytes) != length) {
@@ -57,6 +48,13 @@ public class MapInputStream extends FileInputStream {
         buffer.put(bytes);
         buffer.flip();
         return buffer.getInt();
+    }
+
+    private void skipValue() throws IOException {
+        int length = readInt();
+        if (skip(length) != length) {
+            throw new EOFException("Skip value error");
+        }
     }
 
 }

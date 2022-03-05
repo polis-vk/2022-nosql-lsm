@@ -7,14 +7,16 @@ import ru.mail.polis.Dao;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data;
-    private Config config;
+    private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
+    private final Config config;
+    private final File file;
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
@@ -32,7 +34,14 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) {
-        return data.get(key);
+        if (data.containsKey(key)) {
+            return data.get(key);
+        }
+        try {
+            return getFromLog(key);
+        } catch (IOException ignored) {
+            return null;
+        }
     }
 
     @Override
@@ -41,28 +50,19 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     public InMemoryDao() {
-        data = new ConcurrentSkipListMap<>();
+        config = new Config(Paths.get("tmp/" + System.currentTimeMillis()));
+        file = new File(config.basePath().toString() + File.separator + "myLog");
     }
 
     public InMemoryDao(Config config) {
         this.config = config;
-        SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> map;
-        try {
-            map = initializeFromConfig();
-        } catch (IOException e) {
-            e.printStackTrace();
-            map = new ConcurrentSkipListMap<>();
-        }
-        data = map;
+        file = new File(config.basePath().toString() + File.separator + "myLog");
     }
 
-    private SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> initializeFromConfig() throws IOException {
-        File file = new File(config.basePath().toString() + File.separator + "myLog");
-        file.createNewFile();
-        MapInputStream reader = new MapInputStream(file);
-        SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> map = reader.readMap();
-        reader.close();
-        return map;
+    @Override
+    public void close() throws IOException {
+        flush();
+        data.clear();
     }
 
     @Override
@@ -70,5 +70,13 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         MapOutputStream writer = new MapOutputStream(config.basePath().toString() + File.separator + "myLog");
         writer.writeMap(data);
         writer.close();
+    }
+
+    private BaseEntry<ByteBuffer> getFromLog(ByteBuffer key) throws IOException {
+        file.createNewFile();
+        MapInputStream reader = new MapInputStream(file);
+        BaseEntry<ByteBuffer> value = reader.readByKey(key);
+        reader.close();
+        return value;
     }
 }

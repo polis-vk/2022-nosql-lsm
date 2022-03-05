@@ -10,6 +10,9 @@ import java.util.Map;
 
 public class MapOutputStream extends FileOutputStream {
 
+    private static final int BUFFER_SIZE = 1024;
+    ByteBuffer localBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+
     public MapOutputStream(String name) throws FileNotFoundException {
         super(name);
     }
@@ -17,38 +20,28 @@ public class MapOutputStream extends FileOutputStream {
     public void writeMap(Map<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
         for (Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry : data.entrySet()) {
             writeEntry(entry);
+            byte[] array = new byte[localBuffer.position()];
+            localBuffer.flip();
+            localBuffer.get(array);
+            write(array);
+            localBuffer.clear();
         }
     }
 
-    private void writeEntry(Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry) throws IOException {
+    private void writeEntry(Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry) {
         writeByteBuffer(entry.getKey());
-        writeBaseEntry(entry.getValue());
+        writeByteBuffer(entry.getValue().value());
     }
 
-    private void writeBaseEntry(BaseEntry<ByteBuffer> entry) throws IOException {
-        if (entry == null) {
-            writeInt(-1);
-            return;
-        }
-        writeByteBuffer(entry.key());
-        writeByteBuffer(entry.value());
-    }
-
-    private void writeByteBuffer(ByteBuffer buffer) throws IOException {
-        if (buffer == null) {
-            writeInt(-1);
-            return;
-        }
+    private void writeByteBuffer(ByteBuffer buffer) {
         buffer.position(buffer.arrayOffset());
         byte[] array = buffer.array();
         writeInt(array.length);
-        write(array);
+        localBuffer.put(array);
     }
 
-    private void writeInt(Integer i) throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
-        buffer.putInt(i);
-        write(buffer.array());
+    private void writeInt(int i) {
+        localBuffer.putInt(i);
     }
 
 }
