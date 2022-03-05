@@ -17,8 +17,8 @@ import java.util.stream.Stream;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
+    private static final String KEY_VALUE_SEPARATOR = ":";
     private Path path;
-    private final String KEY_VALUE_SEPARATOR = ":";
     private final NavigableMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
 
     public InMemoryDao() {
