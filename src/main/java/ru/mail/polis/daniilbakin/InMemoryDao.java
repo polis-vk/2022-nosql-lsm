@@ -31,6 +31,11 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
+    public BaseEntry<ByteBuffer> get(ByteBuffer key) {
+        return data.get(key);
+    }
+
+    @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         data.put(entry.key(), entry);
     }
