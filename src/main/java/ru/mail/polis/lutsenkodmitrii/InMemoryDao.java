@@ -19,13 +19,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private static final String KEY_VALUE_SEPARATOR = ":";
     private Path path;
-    private final NavigableMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
+    private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
 
     public InMemoryDao() {
     }
 
     public InMemoryDao(Config config) {
-        path = Path.of(config.basePath() + File.separator + "daoData.txt");
+        path = config.basePath().resolve("daoData.txt");
+        System.out.println("C = " + path);
         try (Stream<String> lines = Files.lines(path, Charset.defaultCharset())) {
             lines.forEach(line -> {
                 String[] keyValue = line.split(KEY_VALUE_SEPARATOR);
@@ -56,18 +57,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public void flush() {
-        try {
-            if (!Files.exists(path)) {
-                Files.createFile(path);
-            }
-            String stingToWrite;
-            for (BaseEntry<String> baseEntry : data.values()) {
-                stingToWrite = baseEntry.key() + KEY_VALUE_SEPARATOR + baseEntry.value() + '\n';
-                Files.writeString(path, stingToWrite, Charset.defaultCharset(), StandardOpenOption.APPEND);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+    public void flush() throws IOException {
+        if (!Files.exists(path)) {
+            Files.createFile(path);
+        }
+        String stingToWrite;
+        for (BaseEntry<String> baseEntry : data.values()) {
+            stingToWrite = baseEntry.key() + KEY_VALUE_SEPARATOR + baseEntry.value() + '\n';
+            Files.writeString(path, stingToWrite, Charset.defaultCharset(), StandardOpenOption.APPEND);
         }
     }
 }
