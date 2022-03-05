@@ -9,6 +9,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.List;
 
 public class PersistentTest extends BaseTest {
 
@@ -43,6 +45,35 @@ public class PersistentTest extends BaseTest {
         dao = DaoFactory.Factory.reopen(dao);
 
         Assertions.assertNull(dao.get("k1"));
+    }
+
+    @DaoTest(stage = 2)
+    void persistentPreventInMemoryStorage(Dao<String, Entry<String>> dao) throws IOException {
+        entries("k", "v", 200_000).forEach(dao::upsert);
+        dao.close();
+
+        List<Entry<String>> tmp = new ArrayList<>(entries("k", "v", 200_000));
+
+        try {
+            Entry<String> entry = DaoFactory.Factory.reopen(dao).get(keyAt("k", 50_023));
+            assertSame(
+                    entry,
+                    entry(
+                            keyAt("k", 50_023),
+                            valueAt("v", 50_023)
+                    )
+            );
+        } catch (OutOfMemoryError error) {
+            throw new RuntimeException(error);
+        }
+
+        assertSame(
+                tmp.get(0),
+                entry(
+                        keyAt("k", 0),
+                        valueAt("v", 0)
+                )
+        );
     }
 
 }
