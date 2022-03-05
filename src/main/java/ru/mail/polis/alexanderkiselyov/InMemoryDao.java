@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
     private final Config config;
-    private final int bufferSize = 2 * Character.BYTES;
+    private final int bufferSize = 20 * Character.BYTES;
     private static final String FILE_NAME = "myData.txt";
 
     public InMemoryDao(Config config) {
