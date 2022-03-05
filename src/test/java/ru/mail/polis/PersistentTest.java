@@ -54,14 +54,18 @@ public class PersistentTest extends BaseTest {
 
         List<Entry<String>> tmp = new ArrayList<>(entries("k", "v", 200_000));
 
-        Entry<String> entry = DaoFactory.Factory.reopen(dao).get(keyAt("k", 50_023));
-        assertSame(
-                entry,
-                entry(
-                        keyAt("k", 50_023),
-                        valueAt("v", 50_023)
-                )
-        );
+        try {
+            Entry<String> entry = DaoFactory.Factory.reopen(dao).get(keyAt("k", 50_023));
+            assertSame(
+                    entry,
+                    entry(
+                            keyAt("k", 50_023),
+                            valueAt("v", 50_023)
+                    )
+            );
+        } catch (OutOfMemoryError error) {
+            throw new RuntimeException(error);
+        }
 
         assertSame(
                 tmp.get(0),
