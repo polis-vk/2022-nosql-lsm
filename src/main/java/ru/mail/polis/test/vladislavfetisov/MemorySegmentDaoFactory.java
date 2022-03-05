@@ -1,6 +1,7 @@
 package ru.mail.polis.test.vladislavfetisov;
 
 import jdk.incubator.foreign.MemorySegment;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.test.DaoFactory;
@@ -8,11 +9,11 @@ import ru.mail.polis.vladislavfetisov.InMemoryDao;
 
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory
+@DaoFactory(stage = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, Entry<MemorySegment>> {
     @Override
-    public Dao<MemorySegment, Entry<MemorySegment>> createDao() {
-        return new InMemoryDao();
+    public Dao<MemorySegment, Entry<MemorySegment>> createDao(Config config) {
+        return new InMemoryDao(config);
     }
 
     @Override
