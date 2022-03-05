@@ -19,21 +19,17 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection = new ConcurrentSkipListMap<>();
 
-    private final int bufferSize = 1 * Character.BYTES;
-
     private final Config config;
 
-    public InMemoryDao(Config config){
+    public InMemoryDao(Config config) {
         this.config = config;
         Path path = config.basePath().resolve(DATA_FILE_NAME);
-        if(Files.exists(path)) {
-            try(InputStream reader = Files.newInputStream(path);
-            BufferedInputStream in = new BufferedInputStream(reader, bufferSize)
-            ) {
+        if (Files.exists(path)) {
+            try (InputStream in = Files.newInputStream(path)) {
                 int size;
-                while((size = in.read()) > -1) {
-                    BaseEntry<ByteBuffer> entry = new BaseEntry(ByteBuffer.wrap(in.readNBytes(size)),ByteBuffer.wrap(in.readNBytes(in.read())));
-                   collection.put(entry.key(), entry);
+                while ((size = in.read()) > -1) {
+                    BaseEntry<ByteBuffer> entry = new BaseEntry(ByteBuffer.wrap(in.readNBytes(size)), ByteBuffer.wrap(in.readNBytes(in.read())));
+                    collection.put(entry.key(), entry);
                 }
             } catch (IOException e) {
                 throw new RuntimeException(e); // зато сигнатура целая
@@ -43,7 +39,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        if(collection.isEmpty()){
+        if (collection.isEmpty()) {
             return Collections.emptyIterator();
         }
 
@@ -71,13 +67,11 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void flush() throws IOException {
         Path path = config.basePath().resolve(DATA_FILE_NAME);
-        if(collection.isEmpty()) {
+        if (collection.isEmpty()) {
             return;
         }
-        try(OutputStream writer = Files.newOutputStream(path);
-        BufferedOutputStream out = new BufferedOutputStream(writer, bufferSize)
-        ) {
-            for(BaseEntry<ByteBuffer> entry : collection.values()) {
+        try (OutputStream out = Files.newOutputStream(path)) {
+            for (BaseEntry<ByteBuffer> entry : collection.values()) {
                 write(out, entry.key());
                 write(out, entry.value());
             }
