@@ -4,7 +4,11 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.*;
+import java.io.FileInputStream;
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
@@ -21,6 +25,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final ConcurrentSkipListMap<ByteBuffer, BaseEntry<ByteBuffer>> entrys = new ConcurrentSkipListMap<>();
 
     public InMemoryDao() {
+        // This constructor is intentionally empty. Nothing special is needed here.
     }
 
     public InMemoryDao(Config config) {
@@ -30,7 +35,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
 
         try (
-                BufferedInputStream bs = new BufferedInputStream(new FileInputStream(fileConfigPath.toFile()), ALLOC_SIZE);
+                BufferedInputStream bs =
+                        new BufferedInputStream(new FileInputStream(fileConfigPath.toFile()), ALLOC_SIZE);
                 DataInputStream stream = new DataInputStream(bs)
         ) {
             for (int i = 0; i < ENTRYS_PORTION && stream.available() >= BYTES_IN_INT; i++) {
@@ -111,12 +117,17 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     /**
+     * Finds entry with given key in file
+     *
      * @param file - path of file to find in
      * @param key  - key for entry to find
-     * @return entry with the same key
-     * null if there is no entry with the same key
+     * @return entry with the same key or null if there is no entry with the same key
      */
     private static BaseEntry<ByteBuffer> findEntryInFile(ByteBuffer key, Path file) {
+        if(file == null) {
+            return null;
+        }
+
         try (
                 BufferedInputStream bs = new BufferedInputStream(new FileInputStream(file.toFile()), ALLOC_SIZE);
                 DataInputStream stream = new DataInputStream(bs)
