@@ -8,25 +8,24 @@ import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.util.Iterator;
 
-class TestDao<Data, E extends Entry<Data>> implements Dao<String, Entry<String>> {
+class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
 
-    Dao<Data, E> delegate;
+    Dao<D, E> delegate;
 
-    final DaoFactory.Factory<Data, E> factory;
+    final DaoFactory.Factory<D, E> factory;
     final Config config;
     final String name;
 
-    TestDao(DaoFactory.Factory<Data, E> factory, Config config) {
+    TestDao(DaoFactory.Factory<D, E> factory, Config config) {
         this.factory = factory;
         this.config = config;
-        delegate = factory.createDao(config);
-
+        this.delegate = factory.createDao(config);
 
         Class<?> delegateClass = delegate.getClass();
         String packageName = delegateClass.getPackageName();
         String lastPackagePart = packageName.substring(packageName.lastIndexOf('.') + 1);
 
-        name = "TestDao<" + lastPackagePart + "." + delegateClass.getSimpleName() + ">";
+        this.name = "TestDao<" + lastPackagePart + "." + delegateClass.getSimpleName() + ">";
     }
 
     public Dao<String, Entry<String>> reopen() {
@@ -69,7 +68,7 @@ class TestDao<Data, E extends Entry<Data>> implements Dao<String, Entry<String>>
 
     @Override
     public void upsert(Entry<String> entry) {
-        BaseEntry<Data> e = new BaseEntry<>(
+        BaseEntry<D> e = new BaseEntry<>(
                 factory.fromString(entry.key()),
                 factory.fromString(entry.value())
         );
