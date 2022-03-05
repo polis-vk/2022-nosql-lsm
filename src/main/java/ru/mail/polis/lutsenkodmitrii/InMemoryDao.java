@@ -26,7 +26,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     public InMemoryDao(Config config) {
         path = config.basePath().resolve("daoData.txt");
-        System.out.println("C = " + path);
         try (Stream<String> lines = Files.lines(path, Charset.defaultCharset())) {
             lines.forEach(line -> {
                 String[] keyValue = line.split(KEY_VALUE_SEPARATOR);
