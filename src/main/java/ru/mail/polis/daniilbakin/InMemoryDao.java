@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
+    private static final String LOG_NAME = "myLog";
     private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final Config config;
     private final File file;
@@ -51,12 +52,12 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     public InMemoryDao() {
         config = new Config(Paths.get("tmp/" + System.currentTimeMillis()));
-        file = new File(config.basePath().toString() + File.separator + "myLog");
+        file = new File(config.basePath().toString() + File.separator + LOG_NAME);
     }
 
     public InMemoryDao(Config config) {
         this.config = config;
-        file = new File(config.basePath().toString() + File.separator + "myLog");
+        file = new File(config.basePath().toString() + File.separator + LOG_NAME);
     }
 
     @Override
@@ -67,7 +68,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        MapOutputStream writer = new MapOutputStream(config.basePath().toString() + File.separator + "myLog");
+        MapOutputStream writer = new MapOutputStream(config.basePath().toString() + File.separator + LOG_NAME);
         writer.writeMap(data);
         writer.close();
     }
