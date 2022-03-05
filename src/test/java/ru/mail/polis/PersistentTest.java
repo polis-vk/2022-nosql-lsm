@@ -49,10 +49,10 @@ public class PersistentTest extends BaseTest {
 
     @DaoTest(stage = 2)
     void persistentPreventInMemoryStorage(Dao<String, Entry<String>> dao) throws IOException {
-        entries("k", "v", 150_000).forEach(dao::upsert);
+        entries("k", "v", 200_000).forEach(dao::upsert);
         dao.close();
 
-        List<Entry<String>> tmp = new ArrayList<>(entries("k", "v", 150_000));
+        List<Entry<String>> tmp = new ArrayList<>(entries("k", "v", 200_000));
 
         Entry<String> entry = DaoFactory.Factory.reopen(dao).get(keyAt("k", 50_023));
         assertSame(
