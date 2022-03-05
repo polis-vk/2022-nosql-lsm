@@ -45,7 +45,7 @@ public class PersistentTest extends BaseTest {
         Assertions.assertNull(dao.get("k1"));
     }
 
-    @DaoTest
+    @DaoTest(stage = 2)
     void manyRecords(Dao<String, Entry<String>> dao) throws IOException {
         dao.upsert(entry("k1", "v1"));
         dao.upsert(entry("k10", "v10"));
