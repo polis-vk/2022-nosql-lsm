@@ -4,8 +4,8 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.DataInputStream;
 import java.io.BufferedInputStream;
+import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -41,7 +41,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         ) {
             for (int i = 0; i < ENTRYS_PORTION && stream.available() >= BYTES_IN_INT; i++) {
                 BaseEntry<ByteBuffer> entry = readEntry(stream);
-                upsert(entry);
+                entrys.put(entry.key(), entry);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -117,7 +117,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         return new BaseEntry<>(ByteBuffer.wrap(key), ByteBuffer.wrap(value));
     }
 
-    /** Finds entry with given key in file
+    /**
+     * Finds entry with given key in file.
      *
      * @param file - path of file to find in
      * @param key  - key for entry to find
