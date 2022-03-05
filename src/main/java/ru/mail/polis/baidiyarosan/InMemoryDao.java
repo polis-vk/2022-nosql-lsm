@@ -4,7 +4,9 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,7 +30,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             try (InputStream in = Files.newInputStream(path)) {
                 int size;
                 while ((size = in.read()) > -1) {
-                    BaseEntry<ByteBuffer> entry = new BaseEntry(ByteBuffer.wrap(in.readNBytes(size)), ByteBuffer.wrap(in.readNBytes(in.read())));
+                    BaseEntry<ByteBuffer> entry = new BaseEntry(ByteBuffer.wrap(in.readNBytes(size)),
+                            ByteBuffer.wrap(in.readNBytes(in.read())));
                     collection.put(entry.key(), entry);
                 }
             } catch (IOException e) {
