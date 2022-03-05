@@ -34,12 +34,4 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
         return new BaseEntry<>(baseEntry.key(), baseEntry.value());
     }
 
-    public Config extractConfig(Dao<ByteBuffer, BaseEntry<ByteBuffer>> dao) {
-        return ((InMemoryDao)dao).getConfig();
-    }
-
-    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> reopen(Dao<ByteBuffer, BaseEntry<ByteBuffer>> dao) {
-        return ((InMemoryDao)dao).reopen();
-    }
-
 }
