@@ -10,14 +10,23 @@ import java.util.Iterator;
 
 class TestDao<Data, E extends Entry<Data>> implements Dao<String, Entry<String>> {
 
-    final Dao<Data, E> delegate;
+    Dao<Data, E> delegate;
+
     final DaoFactory.Factory<Data, E> factory;
     final Config config;
+    final String name;
 
     TestDao(DaoFactory.Factory<Data, E> factory, Config config) {
         this.factory = factory;
         this.config = config;
         delegate = factory.createDao(config);
+
+
+        Class<?> delegateClass = delegate.getClass();
+        String packageName = delegateClass.getPackageName();
+        String lastPackagePart = packageName.substring(packageName.lastIndexOf('.') + 1);
+
+        name = "TestDao<" + lastPackagePart + "." + delegateClass.getSimpleName() + ">";
     }
 
     public Dao<String, Entry<String>> reopen() {
@@ -74,11 +83,14 @@ class TestDao<Data, E extends Entry<Data>> implements Dao<String, Entry<String>>
 
     @Override
     public void close() throws IOException {
-        delegate.close();
+        if (delegate != null) {
+            delegate.close();
+            delegate = null;
+        }
     }
 
     @Override
     public String toString() {
-        return "TestDao<" + delegate.getClass().getSimpleName() + ">";
+        return name;
     }
 }

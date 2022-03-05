@@ -36,7 +36,7 @@ public interface Dao<D, E extends Entry<D>> extends Closeable {
      * @param from lower bound of range (inclusive)
      * @return entries with key >= from
      */
-    default Iterator<E> allFrom(D from) throws IOException {
+    default Iterator<E> allFrom(D from) {
         return get(from, null);
     }
 

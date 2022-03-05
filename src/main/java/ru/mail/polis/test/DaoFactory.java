@@ -18,7 +18,14 @@ public @interface DaoFactory {
 
     interface Factory<Data, E extends Entry<Data>> {
 
-        Dao<Data, E> createDao(Config config);
+        default Dao<Data, E> createDao() {
+            throw new UnsupportedOperationException("Need to override one of createDao methods");
+        }
+
+        default Dao<Data, E> createDao(Config config) {
+            return createDao();
+        }
+
         String toString(Data data);
         Data fromString(String data);
         E fromBaseEntry(Entry<Data> baseEntry);
