@@ -24,7 +24,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
-    private static final int MAX_FILES_NUMBER = 40;
+    private static final int MAX_FILES_NUMBER = 20;
     private static final int BUFFER_FLUSH_LIMIT = 256;
     private static final OpenOption[] writeOptions = new OpenOption[]{
             StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE
@@ -85,13 +85,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         ExecutorService executor = Executors.newCachedThreadPool();
         CountDownLatch countDownLatch = new CountDownLatch(filesNumber);
         Path[] paths = new Path[filesNumber];
-
         for (int i = 0; i < paths.length; i++) {
             paths[i] = config.basePath().resolve("daoData" + (i + 1) + ".txt");
         }
         try (BufferedWriter bufferedKeyRangesFileWriter
                      = Files.newBufferedWriter(keyRangesPath, StandardCharsets.UTF_8, writeOptions)) {
-
             bufferedKeyRangesFileWriter.write(intToCharArray(filesNumber));
             bufferedKeyRangesFileWriter.flush();
             for (int i = 0; i < filesNumber; i++) {
@@ -102,8 +100,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             }
             countDownLatch.await();
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
             e.printStackTrace();
+            Thread.currentThread().interrupt();
         }
         executor.shutdown();
     }
