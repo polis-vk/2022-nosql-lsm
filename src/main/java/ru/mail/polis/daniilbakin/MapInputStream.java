@@ -16,7 +16,7 @@ public class MapInputStream extends FileInputStream {
 
     protected MapInputStream(int[] indexes, File file) throws IOException {
         super(file);
-        this.indexes = indexes;
+        this.indexes = indexes.clone();
     }
 
     protected BaseEntry<ByteBuffer> readByKey(ByteBuffer key) throws IOException {
