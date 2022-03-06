@@ -64,6 +64,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                     break;
                 }
             }
+            
             return result;
         } catch (IOException e) {
             e.printStackTrace();
