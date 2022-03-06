@@ -38,7 +38,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 return;
             }
 
-            for (String file: files) {
+            for (int i = 0; i < files.length; ++i) {
                 addDataFile();
             }
         } catch (IOException e) {
