@@ -38,7 +38,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 return;
             }
 
-            for (String ignored: files) {
+            for (String file: files) {
                 addDataFile();
             }
         } catch (IOException e) {
@@ -58,15 +58,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
             BaseEntry<ByteBuffer> result = null;
             for (String dataFile: dataFiles) {
-                try (RandomAccessFile raf = new RandomAccessFile(dataFile, "rw")) {
-                    do {
-                        result = readEntry(raf);
-                    } while (!result.key().equals(key) && raf.getFilePointer() != raf.length());
-                    if (result.key().equals(key)) {
-                        break;
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
+                result = findEntry(dataFile, key);
+                if (result != null && result.key().equals(key)) {
                     break;
                 }
             }
@@ -112,6 +105,21 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             Files.createFile(Path.of(dataFile));
         }
     }
+
+    private BaseEntry<ByteBuffer> findEntry(String dataFile, ByteBuffer key) throws IOException {
+        BaseEntry<ByteBuffer> result;
+        try (RandomAccessFile raf = new RandomAccessFile(dataFile, "rw")) {
+            do {
+                result = readEntry(raf);
+            } while (!result.key().equals(key) && !reachedEOF(raf));
+        }
+        return result;
+    }
+
+    private boolean reachedEOF(RandomAccessFile raf) throws IOException {
+        return raf.getFilePointer() == raf.length();
+    }
+
     private void flushIfChanged() throws IOException {
         if (dataWasChanged) {
             flush();
