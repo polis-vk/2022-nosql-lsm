@@ -9,6 +9,7 @@ import ru.mail.polis.test.DaoFactory;
 
 @DaoFactory(stage = 1, week = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, Entry<MemorySegment>> {
+
     @Override
     public Dao<MemorySegment, Entry<MemorySegment>> createDao() {
         return new InMemoryDao();
