@@ -43,7 +43,7 @@ public class BasicTest extends BaseTest {
 
     @DaoTest(stage = 1)
     void testManyIterators(Dao<String, Entry<String>> dao) throws Exception {
-        List<Entry<String>> entries = new ArrayList<>(entries("k", "v", 10_000));
+        List<Entry<String>> entries = new ArrayList<>(entries(10_000));
         for (Entry<String> entry : entries) {
             dao.upsert(entry);
         }
@@ -111,11 +111,10 @@ public class BasicTest extends BaseTest {
     @DaoTest(stage = 1)
     void testHugeData(Dao<String, Entry<String>> dao) throws Exception {
         int count = 100_000;
-        List<Entry<String>> entries = entries("k", "v", count);
-        entries.forEach(dao::upsert);
+        entries(count).forEach(dao::upsert);
 
         for (int i = 0; i < count; i++) {
-            assertSame(dao.get(keyAt("k", i)), entries.get(i));
+            assertSame(dao.get(keyAt(i)), entryAt(i));
         }
     }
 
