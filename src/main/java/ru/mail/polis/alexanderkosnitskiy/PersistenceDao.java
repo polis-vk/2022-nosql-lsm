@@ -30,10 +30,10 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public PersistenceDao(Config config) {
         ConcurrentNavigableMap<ByteBuffer, ByteBuffer> temp = null;
         String[] str = new File(config.basePath().toString()).list();
-        if(str != null) {
-            currentFile = str.length;
-        } else {
+        if (str == null) {
             currentFile = 0;
+        } else {
+            currentFile = str.length;
         }
         try (FileInputStream in = new FileInputStream(config.basePath().toString()
                 + file + currentFile + ".txt");
