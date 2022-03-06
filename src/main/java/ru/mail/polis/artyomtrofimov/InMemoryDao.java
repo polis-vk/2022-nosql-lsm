@@ -171,7 +171,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         if (Files.isDirectory(path)) {
             path = Path.of(path + FILENAME);
         }
-        try (RandomAccessFile output = new RandomAccessFile(path.toString(), "rws")) {
+        try (RandomAccessFile output = new RandomAccessFile(path.toString(), "rw")) {
             output.seek(lastWritePos);
             StringBuilder result = new StringBuilder();
             for (Entry<String> value : data.values()) {
