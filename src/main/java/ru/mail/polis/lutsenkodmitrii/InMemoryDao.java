@@ -120,14 +120,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             }
             bufferedFileWriter.write(intToCharArray(subList.size()));
             String stingToWrite;
-            int counter = 0;
+            int bufferedEntriescounter = 0;
             for (BaseEntry<String> baseEntry : subList) {
                 stingToWrite = baseEntry.key() + baseEntry.value() + '\n';
                 bufferedFileWriter.write(intToCharArray(baseEntry.key().length()));
                 bufferedFileWriter.write(intToCharArray(baseEntry.value().length()));
-                counter++;
+                bufferedEntriescounter++;
                 bufferedFileWriter.write(stingToWrite);
-                if (counter % BUFFER_FLUSH_LIMIT == 0) {
+                if (bufferedEntriescounter % BUFFER_FLUSH_LIMIT == 0) {
                     bufferedFileWriter.flush();
                 }
             }
