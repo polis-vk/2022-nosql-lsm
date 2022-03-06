@@ -7,6 +7,7 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.alexanderkosnitskiy.PersistenceDao;
 import ru.mail.polis.test.DaoFactory;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
@@ -14,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
-    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) {
+    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
         return new PersistenceDao(config);
     }
 
