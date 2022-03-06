@@ -3,7 +3,14 @@ package ru.mail.polis;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.opentest4j.AssertionFailedError;
+import ru.mail.polis.test.DaoFactory;
 
+import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -63,6 +70,10 @@ public class BaseTest {
         throw new AssertionFailedError(entry + " not found in iterator with elements count " + count);
     }
 
+    public void assertValueAt(Dao<String, Entry<String>> dao, int index) {
+        assertSame(dao.get(keyAt(index)), entryAt(index));
+    }
+
     public void sleep(int millis) {
         try {
             Thread.sleep(millis);
@@ -74,6 +85,10 @@ public class BaseTest {
     public Entry<String> entry(String key, String value) {
         checkInterrupted();
         return new BaseEntry<>(key, value);
+    }
+
+    public List<Entry<String>> entries(int count) {
+        return entries("k", "v", count);
     }
 
     public List<Entry<String>> entries(String keyPrefix, String valuePrefix, int count) {
@@ -93,6 +108,18 @@ public class BaseTest {
                 return count;
             }
         };
+    }
+
+    public Entry<String> entryAt(int index) {
+        return new BaseEntry<>(keyAt(index), valueAt(index));
+    }
+
+    public String keyAt(int index) {
+        return keyAt("k", index);
+    }
+
+    public String valueAt(int index) {
+        return valueAt("v", index);
     }
 
     public String keyAt(String prefix, int index) {
@@ -151,6 +178,30 @@ public class BaseTest {
         for (ExecutorService executor : executors) {
             executor.shutdownNow();
         }
+    }
+
+    public void cleanUpPersistentData(Dao<String, Entry<String>> dao) throws IOException {
+        Config config = DaoFactory.Factory.extractConfig(dao);
+        cleanUpDir(config);
+    }
+
+    public void cleanUpDir(Config config) throws IOException {
+        if (!Files.exists(config.basePath())) {
+            return;
+        }
+        Files.walkFileTree(config.basePath(), new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                Files.delete(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
 }
