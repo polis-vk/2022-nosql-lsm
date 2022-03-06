@@ -43,13 +43,9 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        Iterator<BaseEntry<ByteBuffer>> iterator = get(key, null);
-        if (!iterator.hasNext()) {
-            return findInFiles(key);
-        }
-        BaseEntry<ByteBuffer> next = iterator.next();
-        if (next.key().equals(key)) {
-            return next;
+        BaseEntry<ByteBuffer> result = memory.get(key);
+        if(result != null) {
+            return result;
         }
         return findInFiles(key);
     }
