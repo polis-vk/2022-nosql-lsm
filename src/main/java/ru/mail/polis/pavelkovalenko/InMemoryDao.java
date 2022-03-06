@@ -3,27 +3,27 @@ package ru.mail.polis.pavelkovalenko;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
-import ru.mail.polis.test.pavelkovalenko.ByteBufferDaoFactory;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    private ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    private final ArrayList<String> dataFiles = new ArrayList<>();
+    private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
+    private final List<String> dataFiles = new ArrayList<>();
     private static final int DATA_SIZE_TRESHOLD = 20_000;
-    private volatile boolean dataWasChanged = false;
+    private volatile boolean dataWasChanged;
     private final ReentrantLock lock = new ReentrantLock();
     private final Config config;
 
@@ -32,11 +32,13 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         try {
             File configDir = new File(config.basePath().toString());
             String[] files = configDir.list();
-            if (files != null && files.length != 0) {
-                for (int i = 0; i < files.length; ++i) {
-                    addDataFile();
-                }
-            } else {
+
+            if (files == null || files.length == 0) {
+                addDataFile();
+                return;
+            }
+
+            for (String ignored: files) {
                 addDataFile();
             }
         } catch (IOException e) {
@@ -51,26 +53,28 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) {
-        BaseEntry<ByteBuffer> result = null;
-        for (String dataFile: dataFiles) {
-            try (RandomAccessFile raf = new RandomAccessFile(dataFile, "rw")) {
-                if (dataWasChanged) {
-                    flush();
-                    dataWasChanged = false;
-                }
+        try {
+            flushIfChanged();
 
-                do {
-                    result = readEntry(raf);
-                } while (!result.key().equals(key) && raf.getFilePointer() != raf.length());
-                if (result.key().equals(key)) {
+            BaseEntry<ByteBuffer> result = null;
+            for (String dataFile: dataFiles) {
+                try (RandomAccessFile raf = new RandomAccessFile(dataFile, "rw")) {
+                    do {
+                        result = readEntry(raf);
+                    } while (!result.key().equals(key) && raf.getFilePointer() != raf.length());
+                    if (result.key().equals(key)) {
+                        break;
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
                     break;
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
-                break;
             }
+            return result;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
         }
-        return result;
     }
 
     @Override
@@ -106,6 +110,12 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         dataFiles.add(dataFile);
         if (!Files.exists(Path.of(dataFile))) {
             Files.createFile(Path.of(dataFile));
+        }
+    }
+    private void flushIfChanged() throws IOException {
+        if (dataWasChanged) {
+            flush();
+            dataWasChanged = false;
         }
     }
 
