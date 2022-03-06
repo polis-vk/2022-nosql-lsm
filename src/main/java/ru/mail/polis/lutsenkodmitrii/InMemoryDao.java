@@ -33,8 +33,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final Lock keyRangesFileWriteLock = new ReentrantLock();
     private final Config config;
     private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
-    private int oneFileDataSize = 0;
-    private int leastFileDataSize = 0;
+    private int oneFileDataSize;
+    private int leastFileDataSize;
 
     public InMemoryDao() {
         keyRangesPath = null;
