@@ -35,7 +35,6 @@ compileTestJava {
 }
 
 test {
-    jvmArgs += ["--add-modules", "jdk.incubator.foreign"]
     maxHeapSize = "64m"
     useJUnitPlatform()
     jvmArgs += ["--add-modules", "jdk.incubator.foreign"]
