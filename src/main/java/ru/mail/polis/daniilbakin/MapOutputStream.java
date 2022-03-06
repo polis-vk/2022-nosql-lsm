@@ -11,7 +11,7 @@ import java.util.Map;
 public class MapOutputStream extends FileOutputStream {
 
     private static final int BUFFER_SIZE = 128;
-    ByteBuffer localBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+    private final ByteBuffer localBuffer = ByteBuffer.allocate(BUFFER_SIZE);
 
     public MapOutputStream(String name) throws FileNotFoundException {
         super(name);

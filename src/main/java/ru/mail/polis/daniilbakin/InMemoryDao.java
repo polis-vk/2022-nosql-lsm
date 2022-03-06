@@ -19,6 +19,14 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final Config config;
     private File file;
 
+    public InMemoryDao() {
+        config = new Config(Paths.get("tmp/" + System.currentTimeMillis()));
+    }
+
+    public InMemoryDao(Config config) {
+        this.config = config;
+    }
+
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
         if (from == null && to == null) {
@@ -50,15 +58,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         data.put(entry.key(), entry);
     }
 
-    public InMemoryDao() {
-        config = new Config(Paths.get("tmp/" + System.currentTimeMillis()));
-    }
-
-    public InMemoryDao(Config config) {
-        this.config = config;
-        file = new File(config.basePath().toString() + File.separator + LOG_NAME);
-    }
-
     @Override
     public void close() throws IOException {
         if (file == null) {
@@ -69,20 +68,24 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        file.createNewFile();
+        createFileIfNeed();
         MapOutputStream writer = new MapOutputStream(config.basePath().toString() + File.separator + LOG_NAME);
         writer.writeMap(data);
         writer.close();
     }
 
     private BaseEntry<ByteBuffer> getFromLog(ByteBuffer key) throws IOException {
-        if (file == null) {
-            file = new File(config.basePath().toString() + File.separator + LOG_NAME);
-        }
-        file.createNewFile();
+        createFileIfNeed();
         MapInputStream reader = new MapInputStream(file);
         BaseEntry<ByteBuffer> value = reader.readByKey(key);
         reader.close();
         return value;
+    }
+
+    private void createFileIfNeed() throws IOException {
+        if (file == null) {
+            file = new File(config.basePath().toString() + File.separator + LOG_NAME);
+        }
+        file.createNewFile();
     }
 }
