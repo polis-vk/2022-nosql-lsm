@@ -30,8 +30,8 @@ public class BasicConcurrentTest extends BaseTest {
     }
 
     @DaoTest(stage = 1)
-    void testConcurrentRead_10_000(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 10_000;
+    void testConcurrentRead_8_000(Dao<String, Entry<String>> dao) throws Exception {
+        int count = 8_000;
         List<Entry<String>> entries = entries("k", "v", count);
         for (Entry<String> entry : entries) {
             dao.upsert(entry);
