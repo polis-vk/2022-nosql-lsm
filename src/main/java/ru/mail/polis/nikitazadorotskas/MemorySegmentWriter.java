@@ -6,20 +6,27 @@ import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.util.Arrays;
 
 class MemorySegmentWriter {
     private final long[] indexes;
     private int arrayIndex;
-    private final MemorySegment mappedMemorySegment;
-    private final Utils utils;
+    private final MemorySegment mappedMemorySegmentForStorage;
+    private final MemorySegment mappedMemorySegmentForIndexes;
 
     MemorySegmentWriter(int arraySize, long storageSize, Utils utils) throws IOException {
-        this.utils = utils;
         indexes = new long[arraySize * 2 + 1];
-        mappedMemorySegment = MemorySegment.mapFile(
-                utils.getStoragePath(),
+        mappedMemorySegmentForStorage = createMappedSegment(utils.getStoragePath(), storageSize);
+        long longSize = 8;
+        mappedMemorySegmentForIndexes = createMappedSegment(utils.getIndexesPath(), longSize * indexes.length);
+    }
+
+    private MemorySegment createMappedSegment(Path path, long size) throws IOException {
+        return MemorySegment.mapFile(
+                path,
                 0,
-                storageSize,
+                size,
                 FileChannel.MapMode.READ_WRITE,
                 ResourceScope.globalScope()
         );
@@ -37,32 +44,30 @@ class MemorySegmentWriter {
     private void writeIndex(long size) {
         indexes[arrayIndex + 1] = indexes[arrayIndex] + size;
         arrayIndex++;
+        long longSize = 8;
+        writeToMappedMemorySegment(mappedMemorySegmentForIndexes,
+                arrayIndex * longSize,
+                longSize,
+                MemorySegment.ofArray(Arrays.copyOfRange(indexes, arrayIndex, arrayIndex + 1))
+        );
     }
 
     private void writeData(MemorySegment other) {
         long byteOffset = indexes[arrayIndex - 1];
         long size = indexes[arrayIndex] - byteOffset;
-        writeMemorySegment(byteOffset, size, other);
+        writeToMappedMemorySegment(mappedMemorySegmentForStorage, byteOffset, size, other);
     }
 
-    void saveIndexes() throws IOException {
-        long longSize = 8;
-        MemorySegment mapped = MemorySegment.mapFile(
-                utils.getIndexesPath(),
-                0,
-                longSize * indexes.length,
-                FileChannel.MapMode.READ_WRITE,
-                ResourceScope.globalScope()
-        );
-        mapped.copyFrom(MemorySegment.ofArray(indexes));
-        mapped.load();
+    private void writeToMappedMemorySegment(MemorySegment mapped, long byteOffset, long byteSize, MemorySegment other) {
+        mapped.asSlice(byteOffset, byteSize).copyFrom(other);
     }
 
-    private void writeMemorySegment(long byteOffset, long byteSize, MemorySegment other) {
-        mappedMemorySegment.asSlice(byteOffset, byteSize).copyFrom(other);
-    }
 
     void saveMemorySegments() {
-        mappedMemorySegment.load();
+        mappedMemorySegmentForStorage.load();
+    }
+
+    void saveIndexes() {
+        mappedMemorySegmentForIndexes.load();
     }
 }
