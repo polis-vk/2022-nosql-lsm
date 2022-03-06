@@ -60,10 +60,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             for (String dataFile: dataFiles) {
                 result = findEntry(dataFile, key);
 
-                if (result == null) {
-                    continue;
-                }
-
                 if (result.key().equals(key)) {
                     break;
                 }
