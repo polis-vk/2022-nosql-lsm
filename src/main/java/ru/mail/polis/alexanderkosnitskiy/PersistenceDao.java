@@ -1,5 +1,9 @@
 package ru.mail.polis.alexanderkosnitskiy;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+import ru.mail.polis.Dao;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -16,11 +20,8 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Collectors;
 
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
-import ru.mail.polis.Dao;
-
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
+    private final String file = File.separator + "data";
     private final Config config;
     private ConcurrentNavigableMap<ByteBuffer, ByteBuffer> memory;
     private int currentFile = 0;
@@ -34,7 +35,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             currentFile = 0;
         }
         try (FileInputStream in = new FileInputStream(config.basePath().toString()
-                + "/data" + currentFile + ".txt");
+                + file + currentFile + ".txt");
              ObjectInputStream reader = new ObjectInputStream(in)) {
             Map<ByteBuffer, ByteBuffer> map = ((Map<byte[], byte[]>) reader.readObject()).entrySet().stream()
                     .collect(Collectors.toMap(k -> ByteBuffer.wrap(k.getKey()), v -> ByteBuffer.wrap(v.getValue())));
@@ -94,7 +95,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             readerMode = false;
             memory.clear();
         }
-        if (memory.size() >= 25000) {
+        if (memory.size() >= 20000) {
             try {
                 flush();
             } catch (IOException e) {
@@ -107,7 +108,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void flush() throws IOException {
         try (FileOutputStream out = new FileOutputStream(config.basePath().toString()
-                + "/data" + currentFile + ".txt");
+                + file + currentFile + ".txt");
              ObjectOutputStream writer = new ObjectOutputStream(out)) {
             HashMap<byte[], byte[]> map = (HashMap<byte[], byte[]>) memory.entrySet().stream()
                     .collect(Collectors.toMap(k -> k.getKey().array(), v -> v.getValue().array()));
@@ -124,7 +125,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
         for (int i = currentFile - 1; i >= 0; i--) {
             try (FileInputStream in = new FileInputStream(config.basePath().toString()
-                    + "/data" + i + ".txt");
+                    + file + i + ".txt");
                  ObjectInputStream reader = new ObjectInputStream(in)) {
                 Map<ByteBuffer, ByteBuffer> map = ((Map<byte[], byte[]>) reader.readObject()).entrySet().stream()
                         .collect(Collectors.toMap(k -> ByteBuffer.wrap(k.getKey()), v -> ByteBuffer.wrap(v.getValue())));
