@@ -52,3 +52,4 @@ compileJava {
 compileTestJava {
     options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
 }
+
