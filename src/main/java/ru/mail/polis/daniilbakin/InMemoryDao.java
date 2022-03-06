@@ -17,7 +17,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String LOG_NAME = "myLog";
     private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final Config config;
-    private final File file;
+    private File file;
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
@@ -52,7 +52,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     public InMemoryDao() {
         config = new Config(Paths.get("tmp/" + System.currentTimeMillis()));
-        file = new File(config.basePath().toString() + File.separator + LOG_NAME);
     }
 
     public InMemoryDao(Config config) {
@@ -62,6 +61,9 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void close() throws IOException {
+        if (file == null) {
+            file = new File(config.basePath().toString() + File.separator + LOG_NAME);
+        }
         flush();
     }
 
@@ -74,6 +76,9 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private BaseEntry<ByteBuffer> getFromLog(ByteBuffer key) throws IOException {
+        if (file == null) {
+            file = new File(config.basePath().toString() + File.separator + LOG_NAME);
+        }
         file.createNewFile();
         MapInputStream reader = new MapInputStream(file);
         BaseEntry<ByteBuffer> value = reader.readByKey(key);
