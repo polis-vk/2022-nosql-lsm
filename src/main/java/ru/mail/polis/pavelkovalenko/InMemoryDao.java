@@ -3,27 +3,41 @@ package ru.mail.polis.pavelkovalenko;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
+import ru.mail.polis.test.pavelkovalenko.ByteBufferDaoFactory;
 
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    private final String pathToFile;
-    private final int DATA_SIZE_TRESHOLD = 25_000;
+    private final ArrayList<String> dataFiles = new ArrayList<>();
+    private static final int DATA_SIZE_TRESHOLD = 20_000;
+    private volatile boolean dataWasChanged = false;
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Config config;
 
     public InMemoryDao(Config config) {
-        this.pathToFile = config.basePath().resolve("DB1.txt").toString();
+        this.config = config;
         try {
-            if (!Files.exists(Path.of(this.pathToFile))) {
-                Files.createFile(Path.of(this.pathToFile));
+            File configDir = new File(config.basePath().toString());
+            String[] files = configDir.list();
+            if (files != null && files.length != 0) {
+                for (int i = 0; i < files.length; ++i) {
+                    addDataFile();
+                }
+            } else {
+                addDataFile();
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -32,22 +46,45 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        try {
-            flush();
-            return new DBIterator(from, to);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return null;
+        return null;
+    }
+
+    @Override
+    public BaseEntry<ByteBuffer> get(ByteBuffer key) {
+        BaseEntry<ByteBuffer> result = null;
+        for (String dataFile: dataFiles) {
+            try (RandomAccessFile raf = new RandomAccessFile(dataFile, "rw")) {
+                if (dataWasChanged) {
+                    flush();
+                    dataWasChanged = false;
+                }
+
+                do {
+                    result = readEntry(raf);
+                } while (!result.key().equals(key) && raf.getFilePointer() != raf.length());
+                if (result.key().equals(key)) {
+                    break;
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                break;
+            }
         }
+        return result;
     }
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         try {
-            if (data.size() > DATA_SIZE_TRESHOLD) {
+            lock.lock();
+            if (data.size() >= DATA_SIZE_TRESHOLD) {
                 flush();
+                addDataFile();
             }
+            lock.unlock();
+
             data.put(entry.key(), entry);
+            dataWasChanged = true;
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -64,12 +101,11 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         write();
     }
 
-    private void read() throws IOException {
-        data.clear();
-        DBIterator dbIterator = new DBIterator(null, null);
-        while (dbIterator.hasNext()) {
-            BaseEntry<ByteBuffer> entry = dbIterator.next();
-            upsert(entry);
+    private void addDataFile() throws IOException {
+        String dataFile = config.basePath().resolve("data" + dataFiles.size() + ".txt").toString();
+        dataFiles.add(dataFile);
+        if (!Files.exists(Path.of(dataFile))) {
+            Files.createFile(Path.of(dataFile));
         }
     }
 
@@ -88,7 +124,12 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private void write() throws IOException {
-        try (RandomAccessFile raf = new RandomAccessFile(pathToFile, "w")) {
+        if (data.isEmpty()) {
+            return;
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(dataFiles.get(dataFiles.size() - 1), "rw")) {
+            raf.setLength(0);
             for (Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry: data.entrySet()) {
                 writeEntry(raf, entry.getValue());
             }
@@ -104,50 +145,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private void writeByteBuffer(RandomAccessFile raf, ByteBuffer bb) throws IOException {
         raf.writeInt(bb.remaining());
         raf.write(bb.array());
-    }
-
-    private class DBIterator implements Iterator<BaseEntry<ByteBuffer>> {
-
-        private final RandomAccessFile raf;
-        private final ByteBuffer to;
-
-        public DBIterator(ByteBuffer from, ByteBuffer to) throws IOException {
-            raf = new RandomAccessFile(pathToFile, "r");
-            this.to = to;
-            boolean foundFrom = false;
-
-            if (from != null) {
-                while (hasNext()) {
-                    ByteBuffer read = next().key();
-                    if (read.equals(from)) {
-                        foundFrom = true;
-                        break;
-                    }
-                }
-
-                if (!foundFrom) {
-                    throw new IllegalArgumentException("No such key in data");
-                }
-            }
-        }
-
-        @Override
-        public boolean hasNext() {
-            return raf.getChannel().isOpen();
-        }
-
-        @Override
-        public BaseEntry<ByteBuffer> next() {
-            try {
-                BaseEntry<ByteBuffer> readEntry = readEntry(raf);
-                if (to == null && !hasNext() || readEntry.key().equals(to)) {
-                    raf.close();
-                }
-                return readEntry;
-            } catch (IOException e) {
-                return null;
-            }
-        }
     }
 
 }
