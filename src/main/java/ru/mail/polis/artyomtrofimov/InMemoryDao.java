@@ -1,13 +1,9 @@
 package ru.mail.polis.artyomtrofimov;
 
-
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-
-
-import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
@@ -20,31 +16,24 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<String, Entry<String>> {
     private static final int MAX_CAPACITY = 20_000;
-    private static final String FILENAME = File.separator + "db.txt";
+    private static final String FILENAME = "db.txt";
     private ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
-    private long lastPos = 0;
-    private long lastWritePos = 0;
-    private volatile boolean commit = false;
-    private Config config = null;
-
-    public InMemoryDao() {
-    }
+    private final Config config;
+    private long lastPos;
+    private long lastWritePos;
+    private volatile boolean commit;
 
     public InMemoryDao(Config config) {
         this.config = config;
         loadFromFile(data, 0);
     }
 
-    private Path getPath() {
+    private Path getPath() throws IOException {
         Path path = config.basePath();
         if (Files.isDirectory(path)) {
-            path = Path.of(path + FILENAME);
-            try {
-                if (Files.notExists(path)) {
-                    Files.createFile(path);
-                }
-            } catch (IOException e) {
-                throw new IllegalArgumentException("Directory was provided but the file is expected;" + e);
+            path = path.resolve(FILENAME);
+            if (Files.notExists(path)) {
+                Files.createFile(path);
             }
         }
         return path;
@@ -60,7 +49,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 if (delimiterIndex == -1) {
                     continue;
                 }
-                Entry<String> entry = new BaseEntry<>(line.substring(0, delimiterIndex), line.substring(delimiterIndex + 1));
+                Entry<String> entry = new BaseEntry<>(line.substring(0, delimiterIndex),
+                        line.substring(delimiterIndex + 1));
                 storage.put(entry.key(), entry);
             }
             return input.getFilePointer();
@@ -69,7 +59,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         }
     }
 
-    private Entry<String> findByKey(String key) {
+    private Entry<String> findInFileByKey(String key) {
         try (RandomAccessFile input = new RandomAccessFile(getPath().toString(), "r")) {
             input.seek(0);
             String line;
@@ -103,20 +93,9 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         }
         if (isToNull) {
             if (!data.containsKey(from)) {
-                ConcurrentNavigableMap<String, Entry<String>> tempStorage = new ConcurrentSkipListMap<>();
-                long pos = 0;
-                do {
-                    tempStorage.clear();
-                    pos = loadFromFile(tempStorage, pos);
-                } while (pos != -1 && !tempStorage.containsKey(from));
-                if (tempStorage.containsKey(from)) {
-                    try {
-                        flush();
-                    } catch (IOException ignored) {
-                    }
-                    NavigableMap<String, Entry<String>> tmp = data;
-                    data = tempStorage;
-                    tmp.clear();
+                Entry<String> value = findInFileByKey(from);
+                if (value != null) {
+                    loadFromLastPos();
                 }
             }
             return data.tailMap(from).values().iterator();
@@ -127,22 +106,26 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     @Override
     public Entry<String> get(String key) {
         if (!data.containsKey(key)) {
-            Entry<String> value = findByKey(key);
+            Entry<String> value = findInFileByKey(key);
             if (value != null) {
-                ConcurrentNavigableMap<String, Entry<String>> tempStorage = new ConcurrentSkipListMap<>();
-                loadFromFile(tempStorage, lastPos);
-                try {
-                    flush();
-                } catch (IOException ignored) {
-
-                }
-                NavigableMap<String, Entry<String>> tmp = data;
-                data = tempStorage;
-                tmp.clear();
+                loadFromLastPos();
             }
             return value;
         }
         return data.get(key);
+    }
+
+    private void loadFromLastPos() {
+        ConcurrentNavigableMap<String, Entry<String>> tempStorage = new ConcurrentSkipListMap<>();
+        loadFromFile(tempStorage, lastPos);
+        try {
+            flush();
+            NavigableMap<String, Entry<String>> tmp = data;
+            data = tempStorage;
+            tmp.clear();
+        } catch (IOException e) {
+            tempStorage.clear();
+        }
     }
 
     @Override
@@ -155,7 +138,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                     try {
                         flush();
                         data.clear();
-                    } catch (IOException ignored) {
+                    } catch (IOException e) {
+                        return;
                     }
                 }
             }
@@ -167,11 +151,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         if (config == null || commit) {
             return;
         }
-        Path path = config.basePath();
-        if (Files.isDirectory(path)) {
-            path = Path.of(path + FILENAME);
-        }
-        try (RandomAccessFile output = new RandomAccessFile(path.toString(), "rw")) {
+        try (RandomAccessFile output = new RandomAccessFile(getPath().toString(), "rw")) {
             output.seek(lastWritePos);
             StringBuilder result = new StringBuilder();
             for (Entry<String> value : data.values()) {

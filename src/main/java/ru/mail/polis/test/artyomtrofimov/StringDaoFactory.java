@@ -9,10 +9,6 @@ import ru.mail.polis.test.DaoFactory;
 
 @DaoFactory(stage = 2)
 public class StringDaoFactory implements DaoFactory.Factory<String, Entry<String>> {
-    @Override
-    public Dao<String, Entry<String>> createDao() {
-        return new InMemoryDao();
-    }
 
     @Override
     public String toString(String data) {
