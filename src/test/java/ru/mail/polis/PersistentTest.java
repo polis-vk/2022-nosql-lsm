@@ -45,7 +45,7 @@ public class PersistentTest extends BaseTest {
         assertValueAt(DaoFactory.Factory.reopen(dao), entityIndex);
 
         assertSame(
-                tmp.get(keys - 1),
+                tmp.get(entityIndex),
                 entries.get(entityIndex)
         );
     }
