@@ -24,14 +24,15 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final String file = File.separator + "data";
     private final Config config;
     private ConcurrentNavigableMap<ByteBuffer, ByteBuffer> memory;
-    private int currentFile = 0;
-    private boolean readerMode = false;
+    private int currentFile;
+    private boolean readerMode;
 
     public PersistenceDao(Config config) {
         ConcurrentNavigableMap<ByteBuffer, ByteBuffer> temp = null;
-        try {
-            currentFile = new File(config.basePath().toString()).list().length;
-        } catch (NullPointerException e) {
+        String[] str = new File(config.basePath().toString()).list();
+        if(str != null) {
+            currentFile = str.length;
+        } else {
             currentFile = 0;
         }
         try (FileInputStream in = new FileInputStream(config.basePath().toString()
@@ -45,6 +46,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        readerMode = false;
         this.config = config;
         memory = temp;
     }
@@ -128,7 +130,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                     + file + i + ".txt");
                  ObjectInputStream reader = new ObjectInputStream(in)) {
                 Map<ByteBuffer, ByteBuffer> map = ((Map<byte[], byte[]>) reader.readObject()).entrySet().stream()
-                        .collect(Collectors.toMap(k -> ByteBuffer.wrap(k.getKey()), v -> ByteBuffer.wrap(v.getValue())));
+                        .collect(Collectors
+                                .toMap(k -> ByteBuffer.wrap(k.getKey()), v -> ByteBuffer.wrap(v.getValue())));
                 ByteBuffer value = map.get(key);
                 if (value != null) {
                     memory = new ConcurrentSkipListMap<>(map);
