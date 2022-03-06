@@ -10,6 +10,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Iterator;
@@ -22,6 +23,10 @@ import java.util.concurrent.Executors;
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private static final int MAX_FILES_NUMBER = 20;
+    private static final int BUFFER_FLUSH_LIMIT = 256;
+    private static final OpenOption[] writeOptions = new OpenOption[]{
+            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE
+    };
     private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
     private final Path keyRangesPath;
     private final Config config;
@@ -70,7 +75,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         int filesNumber = Math.min(MAX_FILES_NUMBER, data.size());
         int oneFileDataSize = data.size() / filesNumber;
-        int leastFileDataSile = oneFileDataSize + data.size() % filesNumber;
+        int leastFileDataSize = oneFileDataSize + data.size() % filesNumber;
         List<BaseEntry<String>> dataList = data.values().parallelStream().toList();
         ExecutorService executor = Executors.newCachedThreadPool();
         CountDownLatch countDownLatch = new CountDownLatch(filesNumber);
@@ -79,61 +84,67 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         for (int i = 0; i < paths.length; i++) {
             paths[i] = config.basePath().resolve("daoData" + (i + 1) + ".txt");
         }
-        try (BufferedWriter bufferedKeyRangesFileWriter = Files.newBufferedWriter(keyRangesPath, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
-
+        try (BufferedWriter bufferedKeyRangesFileWriter
+                     = Files.newBufferedWriter(keyRangesPath, StandardCharsets.UTF_8, writeOptions)) {
             bufferedKeyRangesFileWriter.write(intToCharArray(filesNumber));
             bufferedKeyRangesFileWriter.flush();
             for (int i = 0; i < filesNumber; i++) {
-                int finalI = i;
+                int fileIndex = i;
                 executor.execute(() -> {
-                    try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(paths[finalI], StandardCharsets.UTF_8,
-                            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
-
-                        List<BaseEntry<String>> list;
-                        if (finalI == 0) {
-                            list = dataList.subList(0, leastFileDataSile);
-                        } else {
-                            int k = leastFileDataSile + (finalI - 1) * oneFileDataSize;
-                            list = dataList.subList(k, k + oneFileDataSize);
-                        }
-                        bufferedFileWriter.write(intToCharArray(list.size()));
-                        String stingToWrite;
-                        int counter = 0;
-                        for (BaseEntry<String> baseEntry : list) {
-                            stingToWrite = baseEntry.key() + baseEntry.value() + '\n';
-                            bufferedFileWriter.write(intToCharArray(baseEntry.key().length()));
-                            bufferedFileWriter.write(intToCharArray(baseEntry.value().length()));
-                            counter++;
-                            bufferedFileWriter.write(stingToWrite);
-                            if (counter % 256 == 0) {
-                                bufferedFileWriter.flush();
-                            }
-                        }
-                        bufferedFileWriter.flush();
-                        String firstKey = list.get(0).key();
-                        String lastKey = list.get(list.size() - 1).key();
-                        String pathInString = paths[finalI].toString();
-                        synchronized (bufferedKeyRangesFileWriter) {
-                            bufferedKeyRangesFileWriter.write(intToCharArray(firstKey.length()));
-                            bufferedKeyRangesFileWriter.write(intToCharArray(lastKey.length()));
-                            bufferedKeyRangesFileWriter.write(intToCharArray(pathInString.length()));
-                            bufferedKeyRangesFileWriter.write(firstKey);
-                            bufferedKeyRangesFileWriter.write(lastKey);
-                            bufferedKeyRangesFileWriter.write(pathInString + '\n');
-                            bufferedKeyRangesFileWriter.flush();
-                            countDownLatch.countDown();
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
+                    writeToFile(oneFileDataSize, leastFileDataSize, dataList, countDownLatch,
+                            paths[fileIndex], bufferedKeyRangesFileWriter, fileIndex);
                 });
             }
             countDownLatch.await();
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             e.printStackTrace();
         }
         executor.shutdown();
+    }
+
+    private void writeToFile(int oneFileDataSize, int leastFileDataSize, List<BaseEntry<String>> dataList,
+                             CountDownLatch countDownLatch, Path path,
+                             BufferedWriter bufferedKeyRangesFileWriter, int fileIndex) {
+        try (BufferedWriter bufferedFileWriter
+                     = Files.newBufferedWriter(path, StandardCharsets.UTF_8, writeOptions)) {
+            List<BaseEntry<String>> list;
+            if (fileIndex == 0) {
+                list = dataList.subList(0, leastFileDataSize);
+            } else {
+                int k = leastFileDataSize + (fileIndex - 1) * oneFileDataSize;
+                list = dataList.subList(k, k + oneFileDataSize);
+            }
+            bufferedFileWriter.write(intToCharArray(list.size()));
+            String stingToWrite;
+            int counter = 0;
+            for (BaseEntry<String> baseEntry : list) {
+                stingToWrite = baseEntry.key() + baseEntry.value() + '\n';
+                bufferedFileWriter.write(intToCharArray(baseEntry.key().length()));
+                bufferedFileWriter.write(intToCharArray(baseEntry.value().length()));
+                counter++;
+                bufferedFileWriter.write(stingToWrite);
+                if (counter % BUFFER_FLUSH_LIMIT == 0) {
+                    bufferedFileWriter.flush();
+                }
+            }
+            bufferedFileWriter.flush();
+            String firstKey = list.get(0).key();
+            String lastKey = list.get(list.size() - 1).key();
+            String pathInString = path.toString();
+            synchronized (bufferedKeyRangesFileWriter) {
+                bufferedKeyRangesFileWriter.write(intToCharArray(firstKey.length()));
+                bufferedKeyRangesFileWriter.write(intToCharArray(lastKey.length()));
+                bufferedKeyRangesFileWriter.write(intToCharArray(pathInString.length()));
+                bufferedKeyRangesFileWriter.write(firstKey);
+                bufferedKeyRangesFileWriter.write(lastKey);
+                bufferedKeyRangesFileWriter.write(pathInString + '\n');
+                bufferedKeyRangesFileWriter.flush();
+                countDownLatch.countDown();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private BaseEntry<String> getEntryFromFileByKey(String key, Path fileContainsKeyPath) {
@@ -198,6 +209,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return null;
     }
 
+
     private static char[] intToCharArray(int k) {
         char[] writeBuffer = new char[Integer.BYTES];
         writeBuffer[0] = (char) (k >>> 24);
@@ -212,8 +224,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         int ch2 = bufferedReader.read();
         int ch3 = bufferedReader.read();
         int ch4 = bufferedReader.read();
-        if ((ch1 | ch2 | ch3 | ch4) < 0)
+        if ((ch1 | ch2 | ch3 | ch4) < 0) {
             throw new EOFException();
+        }
         return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
     }
 }
