@@ -30,7 +30,7 @@ public class StringDaoFactory implements DaoFactory.Factory<String, Entry<String
     }
 
     @Override
-    public Dao<String, Entry<String>> createStringDao(Config config) {
+    public Dao<String, Entry<String>> createDao(Config config) {
         return new InMemoryDao(config);
     }
 }
