@@ -24,7 +24,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
-    private static final int MAX_FILES_NUMBER = 20;
+    private static final int MAX_FILES_NUMBER = 40;
     private static final int BUFFER_FLUSH_LIMIT = 256;
     private static final OpenOption[] writeOptions = new OpenOption[]{
             StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE
@@ -33,8 +33,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final Lock keyRangesFileWriteLock = new ReentrantLock();
     private final Config config;
     private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
-    private int oneFileDataSize = 0;
-    private int leastFileDataSize = 0;
+    private int oneFileDataSize;
+    private int leastFileDataSize;
 
     public InMemoryDao() {
         keyRangesPath = null;
