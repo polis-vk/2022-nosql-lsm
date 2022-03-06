@@ -45,9 +45,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) {
-        if (data.containsKey(key)) {
-            return data.get(key);
-        }
+        BaseEntry<ByteBuffer> value = data.get(key);
+        if (value != null) return value;
         try {
             return getFromLog(key);
         } catch (IOException ignored) {
