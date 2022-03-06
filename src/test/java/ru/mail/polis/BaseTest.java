@@ -70,7 +70,7 @@ public class BaseTest {
         throw new AssertionFailedError(entry + " not found in iterator with elements count " + count);
     }
 
-    public void assertValueAt(Dao<String, Entry<String>> dao, int index) {
+    public void assertValueAt(Dao<String, Entry<String>> dao, int index) throws IOException {
         assertSame(dao.get(keyAt(index)), entryAt(index));
     }
 
@@ -138,11 +138,11 @@ public class BaseTest {
         return result;
     }
 
-    public AutoCloseable runInParallel(int tasksCount, IntConsumer runnable) {
+    public AutoCloseable runInParallel(int tasksCount, ParallelTask runnable) {
         return runInParallel(tasksCount, tasksCount, runnable);
     }
 
-    public AutoCloseable runInParallel(int threadCount, int tasksCount, IntConsumer runnable) {
+    public AutoCloseable runInParallel(int threadCount, int tasksCount, ParallelTask runnable) {
         ExecutorService service = Executors.newFixedThreadPool(threadCount);
         executors.add(service);
         try {
@@ -153,7 +153,7 @@ public class BaseTest {
                     if (i >= tasksCount) {
                         return null;
                     }
-                    runnable.accept(i);
+                    runnable.run(i);
                 }
                 throw new InterruptedException("Execution is interrupted");
             }));
@@ -165,6 +165,10 @@ public class BaseTest {
         } catch (InterruptedException | OutOfMemoryError e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public interface ParallelTask {
+        void run(int taskIndex) throws Exception;
     }
 
     public void checkInterrupted() {
