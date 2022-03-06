@@ -41,7 +41,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     private long loadFromFile(Map<String, Entry<String>> storage, long pos) {
         try (RandomAccessFile input = new RandomAccessFile(getPath().toString(), "r")) {
-            input.seek(pos);
+            input.seek(pos < 0 ? 0 : pos);
             String line;
             while (storage.size() <= MAX_CAPACITY) {
                 line = input.readUTF();
@@ -61,6 +61,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     private Entry<String> findInFileByKey(String key) {
         try (RandomAccessFile input = new RandomAccessFile(getPath().toString(), "r")) {
+            lastPos = -1;
             input.seek(0);
             String line;
             while (input.getFilePointer() <= input.length()) {
@@ -93,10 +94,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         }
         if (isToNull) {
             if (!data.containsKey(from)) {
-                Entry<String> value = findInFileByKey(from);
-                if (value != null) {
-                    loadFromLastPos();
-                }
+                findInFileByKey(from);
+                loadFromLastPos();
             }
             return data.tailMap(from).values().iterator();
         }
@@ -107,9 +106,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     public Entry<String> get(String key) {
         if (!data.containsKey(key)) {
             Entry<String> value = findInFileByKey(key);
-            if (value != null) {
-                loadFromLastPos();
-            }
+            loadFromLastPos();
             return value;
         }
         return data.get(key);
