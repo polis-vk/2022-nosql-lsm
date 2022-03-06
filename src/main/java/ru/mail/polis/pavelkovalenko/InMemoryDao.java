@@ -4,9 +4,7 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,14 +17,14 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final String pathToFile;
+    private final int DATA_SIZE_TRESHOLD = 25_000;
 
     public InMemoryDao(Config config) {
-        this.pathToFile = config.basePath().resolve("file1.txt").toString();
+        this.pathToFile = config.basePath().resolve("DB1.txt").toString();
         try {
             if (!Files.exists(Path.of(this.pathToFile))) {
                 Files.createFile(Path.of(this.pathToFile));
             }
-            read();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -34,27 +32,31 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        if (from != null && to != null) {
-            return data.subMap(from, to).values().iterator();
+        try {
+            flush();
+            return new DBIterator(from, to);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
         }
-        if (from != null) {
-            return data.tailMap(from).values().iterator();
-        }
-        if (to != null) {
-            return data.headMap(to).values().iterator();
-        }
-        return data.values().iterator();
     }
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
-        data.put(entry.key(), entry);
+        try {
+            if (data.size() > DATA_SIZE_TRESHOLD) {
+                flush();
+            }
+            data.put(entry.key(), entry);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
     public void flush() throws IOException {
-        close();
-        read();
+        write();
+        data.clear();
     }
 
     @Override
@@ -62,57 +64,90 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         write();
     }
 
+    private void read() throws IOException {
+        data.clear();
+        DBIterator dbIterator = new DBIterator(null, null);
+        while (dbIterator.hasNext()) {
+            BaseEntry<ByteBuffer> entry = dbIterator.next();
+            upsert(entry);
+        }
+    }
+
+    private BaseEntry<ByteBuffer> readEntry(RandomAccessFile raf) throws IOException {
+        ByteBuffer key = readByteBuffer(raf);
+        ByteBuffer value = readByteBuffer(raf);
+        raf.readLine();
+        return new BaseEntry<>(key, value);
+    }
+
+    private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
+        int numberOfBytes = raf.readInt();
+        byte[] bytes = new byte[numberOfBytes];
+        raf.read(bytes);
+        return ByteBuffer.wrap(bytes);
+    }
+
     private void write() throws IOException {
-        try (FileOutputStream fout = new FileOutputStream(pathToFile)) {
-            writeInt(fout, data.size());
+        try (RandomAccessFile raf = new RandomAccessFile(pathToFile, "w")) {
             for (Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry: data.entrySet()) {
-                // Write 2 times due to entry.key = entry.value.key
-                writeByteBuffer(fout, entry.getKey());
-                writeByteBuffer(fout, entry.getValue().value());
+                writeEntry(raf, entry.getValue());
             }
         }
     }
 
-    private void writeInt(FileOutputStream fout, int a) throws IOException {
-        fout.write(ByteBuffer.allocate(Integer.BYTES).putInt(a).array());
+    private void writeEntry(RandomAccessFile raf, BaseEntry<ByteBuffer> entry) throws IOException {
+        writeByteBuffer(raf, entry.key());
+        writeByteBuffer(raf, entry.value());
+        raf.write('\n');
     }
 
-    private void writeByteBuffer(FileOutputStream fout, ByteBuffer bb) throws IOException {
-        writeInt(fout, bb.remaining());
-        fout.write(bb.array());
+    private void writeByteBuffer(RandomAccessFile raf, ByteBuffer bb) throws IOException {
+        raf.writeInt(bb.remaining());
+        raf.write(bb.array());
     }
 
-    private void read() throws IOException {
-        try (FileInputStream fin = new FileInputStream(pathToFile)) {
-            if (fin.available() == 0) {
-                return;
-            }
+    private class DBIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
-            ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> newData = new ConcurrentSkipListMap<>();
-            int sizeOfData = readInt(fin);
-            while (fin.available() != 0) {
-                for (int i = 0; i < sizeOfData; ++i) {
-                    // Read 2 times due to entry.key = entry.value.key
-                    ByteBuffer key = readByteBuffer(fin);
-                    ByteBuffer value = readByteBuffer(fin);
-                    newData.put(key, new BaseEntry<>(key, value));
+        private final RandomAccessFile raf;
+        private final ByteBuffer to;
+
+        public DBIterator(ByteBuffer from, ByteBuffer to) throws IOException {
+            raf = new RandomAccessFile(pathToFile, "r");
+            this.to = to;
+            boolean foundFrom = false;
+
+            if (from != null) {
+                while (hasNext()) {
+                    ByteBuffer read = next().key();
+                    if (read.equals(from)) {
+                        foundFrom = true;
+                        break;
+                    }
+                }
+
+                if (!foundFrom) {
+                    throw new IllegalArgumentException("No such key in data");
                 }
             }
-            this.data = newData;
         }
-    }
 
-    private int readInt(FileInputStream fin) throws IOException {
-        byte[] bytes = new byte[Integer.BYTES];
-        fin.read(bytes);
-        return ByteBuffer.allocate(bytes.length).put(bytes).flip().getInt();
-    }
+        @Override
+        public boolean hasNext() {
+            return raf.getChannel().isOpen();
+        }
 
-    private ByteBuffer readByteBuffer(FileInputStream fin) throws IOException {
-        int numberOfBytes = readInt(fin);
-        byte[] bytes = new byte[numberOfBytes];
-        fin.read(bytes);
-        return ByteBuffer.wrap(bytes);
+        @Override
+        public BaseEntry<ByteBuffer> next() {
+            try {
+                BaseEntry<ByteBuffer> readEntry = readEntry(raf);
+                if (to == null && !hasNext() || readEntry.key().equals(to)) {
+                    raf.close();
+                }
+                return readEntry;
+            } catch (IOException e) {
+                return null;
+            }
+        }
     }
 
 }
