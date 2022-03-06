@@ -14,7 +14,7 @@ public class MapInputStream extends FileInputStream {
     private final byte[] bytes = new byte[available()];
     private int currentFullness = -1;
 
-    protected MapInputStream(File file, int[] indexes) throws IOException {
+    protected MapInputStream(int[] indexes, File file) throws IOException {
         super(file);
         this.indexes = indexes;
     }

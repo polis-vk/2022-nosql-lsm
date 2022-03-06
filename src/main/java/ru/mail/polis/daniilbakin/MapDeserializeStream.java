@@ -14,7 +14,7 @@ public class MapDeserializeStream {
 
     public MapDeserializeStream(File map, File indexes) throws IOException {
         indexesReader = new FileInputStream(indexes);
-        mapReader = new MapInputStream(map, getIndexes());
+        mapReader = new MapInputStream(getIndexes(), map);
     }
 
     public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) throws IOException {
