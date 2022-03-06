@@ -14,6 +14,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -22,6 +23,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private static final String TABLE_NAME = "SSTable";
+    public static final String TEMP = "_TEMP";
     private final Config config;
     private final Comparator<MemorySegment> comparator = this::compareMemorySegments;
     private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage = new ConcurrentSkipListMap<>(comparator);
@@ -99,10 +101,12 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public void flush() throws IOException {
-        Path ssTable = config.basePath().resolve(Path.of(TABLE_NAME));
+        Path table = config.basePath().resolve(Path.of(TABLE_NAME));
+        Path temp = table.resolveSibling(TEMP);
+        Files.deleteIfExists(temp);
         Iterator<Entry<MemorySegment>> iterator = storage.values().iterator();
         ByteBuffer forLength = ByteBuffer.allocate(Long.BYTES);
-        try (FileChannel channel = open(ssTable)) {
+        try (FileChannel channel = open(temp)) {
             while (iterator.hasNext()) {
                 Entry<MemorySegment> entry = iterator.next();
                 writeBuffer(forLength, channel, entry.key());
@@ -114,6 +118,8 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             }
             channel.force(false);
         }
+        Files.deleteIfExists(table);
+        Files.move(temp, table, StandardCopyOption.ATOMIC_MOVE);
     }
 
     private void writeBuffer(ByteBuffer forLength, FileChannel channel, MemorySegment value) throws IOException {
@@ -131,8 +137,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private static FileChannel open(Path filename) throws IOException {
         return FileChannel.open(filename,
                 StandardOpenOption.CREATE_NEW,
-                StandardOpenOption.WRITE,
-                StandardOpenOption.TRUNCATE_EXISTING);
+                StandardOpenOption.WRITE);
     }
 
     @Override
