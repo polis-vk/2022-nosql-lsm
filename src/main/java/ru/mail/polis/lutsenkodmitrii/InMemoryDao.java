@@ -8,7 +8,6 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.EOFException;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
@@ -21,6 +20,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
@@ -89,9 +90,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         for (int i = 0; i < paths.length; i++) {
             paths[i] = config.basePath().resolve("daoData" + (i + 1) + ".txt");
         }
-        try (BufferedWriter bufferedKeyRangesFileWriter
-                     = Files.newBufferedWriter(keyRangesPath, StandardCharsets.UTF_8, writeOptions)) {
-
+        try (BufferedWriter bufferedKeyRangesFileWriter = Files.newBufferedWriter(keyRangesPath, UTF_8, writeOptions)) {
             bufferedKeyRangesFileWriter.write(intToCharArray(filesNumber));
             bufferedKeyRangesFileWriter.flush();
             for (int i = 0; i < filesNumber; i++) {
@@ -110,7 +109,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private void writeToFile(Path path, int fileIndex, List<BaseEntry<String>> dataList,
                              CountDownLatch countDownLatch, BufferedWriter bufferedKeyRangesFileWriter) {
-        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(path, StandardCharsets.UTF_8, writeOptions)) {
+        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(path, UTF_8, writeOptions)) {
             List<BaseEntry<String>> subList;
             if (fileIndex == 0) {
                 subList = dataList.subList(0, leastFileDataSize);
@@ -120,14 +119,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             }
             bufferedFileWriter.write(intToCharArray(subList.size()));
             String stingToWrite;
-            int bufferedEntriescounter = 0;
+            int bufferedEntriesCounter = 0;
             for (BaseEntry<String> baseEntry : subList) {
                 stingToWrite = baseEntry.key() + baseEntry.value() + '\n';
                 bufferedFileWriter.write(intToCharArray(baseEntry.key().length()));
                 bufferedFileWriter.write(intToCharArray(baseEntry.value().length()));
-                bufferedEntriescounter++;
+                bufferedEntriesCounter++;
                 bufferedFileWriter.write(stingToWrite);
-                if (bufferedEntriescounter % BUFFER_FLUSH_LIMIT == 0) {
+                if (bufferedEntriesCounter % BUFFER_FLUSH_LIMIT == 0) {
                     bufferedFileWriter.flush();
                 }
             }
@@ -157,7 +156,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (fileContainsKeyPath == null) {
             return null;
         }
-        try (BufferedReader bufferedReader = Files.newBufferedReader(fileContainsKeyPath, StandardCharsets.UTF_8)) {
+        try (BufferedReader bufferedReader = Files.newBufferedReader(fileContainsKeyPath, UTF_8)) {
             int currentKeyLength;
             int valueLength;
             char[] currentKeyChars;
@@ -183,7 +182,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private Path getPathOfDataFile(String key) {
-        try (BufferedReader bufferedReader = Files.newBufferedReader(keyRangesPath, StandardCharsets.UTF_8)) {
+        try (BufferedReader bufferedReader = Files.newBufferedReader(keyRangesPath, UTF_8)) {
             int firstKeyLength;
             int lastKeyLength;
             int pathLength;
