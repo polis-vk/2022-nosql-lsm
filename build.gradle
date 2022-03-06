@@ -44,3 +44,11 @@ checkstyle {
     configFile = new File("checkstyle.xml")
     checkstyleTest.enabled = false
 }
+
+compileJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+
+compileTestJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
