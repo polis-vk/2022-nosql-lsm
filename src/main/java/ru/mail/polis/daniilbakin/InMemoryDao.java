@@ -67,6 +67,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
+        file.createNewFile();
         MapOutputStream writer = new MapOutputStream(config.basePath().toString() + File.separator + LOG_NAME);
         writer.writeMap(data);
         writer.close();

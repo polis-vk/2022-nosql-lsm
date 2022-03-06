@@ -10,7 +10,7 @@ import java.util.Map;
 
 public class MapOutputStream extends FileOutputStream {
 
-    private static final int BUFFER_SIZE = 1024;
+    private static final int BUFFER_SIZE = 128;
     ByteBuffer localBuffer = ByteBuffer.allocate(BUFFER_SIZE);
 
     public MapOutputStream(String name) throws FileNotFoundException {
@@ -20,10 +20,7 @@ public class MapOutputStream extends FileOutputStream {
     public void writeMap(Map<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
         for (Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry : data.entrySet()) {
             writeEntry(entry);
-            byte[] array = new byte[localBuffer.position()];
-            localBuffer.flip();
-            localBuffer.get(array);
-            write(array);
+            write(localBuffer.array());
             localBuffer.clear();
         }
     }
