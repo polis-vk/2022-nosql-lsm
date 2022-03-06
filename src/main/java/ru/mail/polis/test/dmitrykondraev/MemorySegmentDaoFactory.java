@@ -13,7 +13,7 @@ import java.nio.charset.StandardCharsets;
  * Author: Dmitry Kondraev.
  */
 
-@DaoFactory
+@DaoFactory(week = 3)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
 
     @Override
