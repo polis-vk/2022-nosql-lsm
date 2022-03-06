@@ -62,7 +62,6 @@ class MemorySegmentWriter {
         mapped.asSlice(byteOffset, byteSize).copyFrom(other);
     }
 
-
     void saveMemorySegments() {
         mappedMemorySegmentForStorage.load();
     }
