@@ -68,7 +68,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             readerMode = false;
             memory.clear();
         }
-        if (memory.size() >= 50000) {
+        if (memory.size() >= 30000) {
             try {
                 flush();
             } catch (IOException e) {
