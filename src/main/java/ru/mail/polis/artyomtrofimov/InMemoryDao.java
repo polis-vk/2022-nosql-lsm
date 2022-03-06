@@ -1,5 +1,12 @@
 package ru.mail.polis.artyomtrofimov;
 
+
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+import ru.mail.polis.Dao;
+import ru.mail.polis.Entry;
+
+
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -10,12 +17,6 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
-import ru.mail.polis.Dao;
-import ru.mail.polis.Entry;
-
 
 public class InMemoryDao implements Dao<String, Entry<String>> {
     private static final int MAX_CAPACITY = 20_000;
