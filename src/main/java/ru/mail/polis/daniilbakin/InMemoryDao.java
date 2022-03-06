@@ -60,9 +60,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void close() throws IOException {
-        if (file == null) {
-            file = new File(config.basePath().toString() + File.separator + LOG_NAME);
-        }
         flush();
     }
 
