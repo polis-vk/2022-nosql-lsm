@@ -15,8 +15,6 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private final String EXTENSION = ".seg";
-
     private final String file = File.separator + "data";
     private final Config config;
     private ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory;
@@ -44,7 +42,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> result = memory.get(key);
-        if(result != null) {
+        if (result != null) {
             return result;
         }
         return findInFiles(key);

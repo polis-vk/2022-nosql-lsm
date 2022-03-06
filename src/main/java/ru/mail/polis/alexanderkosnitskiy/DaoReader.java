@@ -1,5 +1,7 @@
 package ru.mail.polis.alexanderkosnitskiy;
 
+import ru.mail.polis.BaseEntry;
+
 import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -7,8 +9,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-
-import ru.mail.polis.BaseEntry;
 
 public class DaoReader implements Closeable {
     private final FileInputStream reader;
@@ -21,7 +21,7 @@ public class DaoReader implements Closeable {
         int size = readInt();
         ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
         BaseEntry<ByteBuffer> entry;
-        for(int i = 0; i < size; i++) {
+        for (int i = 0; i < size; i++) {
             entry = readElementPair();
             map.put(entry.key(), entry);
         }

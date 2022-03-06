@@ -1,13 +1,13 @@
 package ru.mail.polis.alexanderkosnitskiy;
 
+import ru.mail.polis.BaseEntry;
+
 import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentNavigableMap;
-
-import ru.mail.polis.BaseEntry;
 
 public class DaoWriter implements Closeable {
     private final FileOutputStream writer;
