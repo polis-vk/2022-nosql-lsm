@@ -8,16 +8,21 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 
 class MemorySegmentWriter {
-    private static final long longSize = 8;
     private final long[] indexes;
-    private int arrayIndex = 0;
+    private int arrayIndex;
     private final MemorySegment mappedMemorySegment;
     Utils utils;
 
     MemorySegmentWriter(int arraySize, long storageSize, Utils utils) throws IOException {
         this.utils = utils;
         indexes = new long[arraySize * 2 + 1];
-        mappedMemorySegment = MemorySegment.mapFile(utils.getStoragePath(), 0, storageSize, FileChannel.MapMode.READ_WRITE, ResourceScope.globalScope());
+        mappedMemorySegment = MemorySegment.mapFile(
+                utils.getStoragePath(),
+                0,
+                storageSize,
+                FileChannel.MapMode.READ_WRITE,
+                ResourceScope.globalScope()
+        );
     }
 
     void writeEntry(BaseEntry<MemorySegment> entry) {
@@ -41,6 +46,7 @@ class MemorySegmentWriter {
     }
 
     void saveIndexes() throws IOException {
+        long longSize = 8;
         MemorySegment mapped = MemorySegment.mapFile(
                 utils.getIndexesPath(),
                 0,

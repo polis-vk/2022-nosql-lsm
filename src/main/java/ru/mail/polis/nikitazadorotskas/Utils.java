@@ -1,6 +1,5 @@
 package ru.mail.polis.nikitazadorotskas;
 
-
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Config;
@@ -10,8 +9,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 class Utils {
-    private final static String STORAGE_FILE_NAME = "storage";
-    private final static String INDEXES_FILE_NAME = "sizes";
+    private static final String STORAGE_FILE_NAME = "storage";
+    private static final String INDEXES_FILE_NAME = "sizes";
     private final Path storagePath;
     private final Path indexesPath;
 

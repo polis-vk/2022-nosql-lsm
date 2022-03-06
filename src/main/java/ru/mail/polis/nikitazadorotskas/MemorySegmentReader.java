@@ -11,8 +11,8 @@ import static java.nio.channels.FileChannel.MapMode.READ_ONLY;
 import static java.nio.channels.FileChannel.MapMode.READ_WRITE;
 
 class MemorySegmentReader {
-    private long[] indexes = null;
-    MemorySegment mappedSegment = null;
+    private long[] indexes;
+    MemorySegment mappedSegment;
     Utils utils;
 
     MemorySegmentReader(Utils utils) {
@@ -47,7 +47,13 @@ class MemorySegmentReader {
     private void readIndexes() {
         try {
             long fileSize = Files.size(utils.getIndexesPath());
-            MemorySegment ms = MemorySegment.mapFile(utils.getIndexesPath(), 0, fileSize, READ_ONLY, ResourceScope.globalScope());
+            MemorySegment ms = MemorySegment.mapFile(
+                    utils.getIndexesPath(),
+                    0,
+                    fileSize,
+                    READ_ONLY,
+                    ResourceScope.globalScope()
+            );
             indexes = ms.toLongArray();
         } catch (IOException e) {
             e.printStackTrace();
@@ -56,17 +62,13 @@ class MemorySegmentReader {
 
     private void createdMapped() throws IOException {
         long fileSize = Files.size(utils.getStoragePath());
-        mappedSegment = MemorySegment.mapFile(utils.getStoragePath(), 0, fileSize, READ_WRITE, ResourceScope.globalScope());
-    }
-
-    private BaseEntry<MemorySegment> linearSearch(MemorySegment key) {
-        for (int i = 0; i < indexes.length - 3; i += 2) {
-            MemorySegment currentKey = getMemorySegment(i);
-            if (Utils.compareMemorySegment(key, currentKey) == 0) {
-                return new BaseEntry<>(currentKey, getMemorySegment(i + 1));
-            }
-        }
-        return null;
+        mappedSegment = MemorySegment.mapFile(
+                utils.getStoragePath(),
+                0,
+                fileSize,
+                READ_WRITE,
+                ResourceScope.globalScope()
+        );
     }
 
     private BaseEntry<MemorySegment> binarySearch(MemorySegment key) {
