@@ -15,9 +15,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private static final String LOG_NAME = "myLog";
+    private static final String INDEXES_NAME = "indexes";
     private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final Config config;
-    private File file;
+    private File mapFile;
+    private File indexesFile;
 
     public InMemoryDao() {
         config = new Config(Paths.get("tmp/" + System.currentTimeMillis()));
@@ -65,24 +67,28 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        createFileIfNeed();
-        MapOutputStream writer = new MapOutputStream(config.basePath().toString() + File.separator + LOG_NAME);
-        writer.writeMap(data);
+        createFilesIfNeed();
+        MapSerializeStream writer = new MapSerializeStream(mapFile, indexesFile);
+        writer.serializeMap(data);
         writer.close();
     }
 
     private BaseEntry<ByteBuffer> getFromLog(ByteBuffer key) throws IOException {
-        createFileIfNeed();
-        MapInputStream reader = new MapInputStream(file);
+        createFilesIfNeed();
+        MapDeserializeStream reader = new MapDeserializeStream(mapFile, indexesFile);
         BaseEntry<ByteBuffer> value = reader.readByKey(key);
         reader.close();
         return value;
     }
 
-    private void createFileIfNeed() throws IOException {
-        if (file == null) {
-            file = new File(config.basePath().toString() + File.separator + LOG_NAME);
+    private void createFilesIfNeed() throws IOException {
+        if (mapFile == null) {
+            mapFile = new File(config.basePath().toString() + File.separator + LOG_NAME);
         }
-        file.createNewFile();
+        if (indexesFile == null) {
+            indexesFile = new File(config.basePath().toString() + File.separator + INDEXES_NAME);
+        }
+        mapFile.createNewFile();
+        indexesFile.createNewFile();
     }
 }
