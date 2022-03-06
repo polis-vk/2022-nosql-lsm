@@ -11,7 +11,7 @@ class MemorySegmentWriter {
     private final long[] indexes;
     private int arrayIndex;
     private final MemorySegment mappedMemorySegment;
-    Utils utils;
+    private final Utils utils;
 
     MemorySegmentWriter(int arraySize, long storageSize, Utils utils) throws IOException {
         this.utils = utils;

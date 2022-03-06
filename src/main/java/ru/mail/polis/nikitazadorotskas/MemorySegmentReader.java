@@ -12,15 +12,17 @@ import static java.nio.channels.FileChannel.MapMode.READ_WRITE;
 
 class MemorySegmentReader {
     private long[] indexes;
-    MemorySegment mappedSegment;
-    Utils utils;
+    private MemorySegment mappedSegment;
+    private final Utils utils;
+    private final boolean filesExist;
 
     MemorySegmentReader(Utils utils) {
         this.utils = utils;
+        filesExist = filesExists();
     }
 
     BaseEntry<MemorySegment> getFromDisk(MemorySegment key) {
-        if (filesDoesNotExist()) {
+        if (!filesExist) {
             return null;
         }
 
@@ -40,8 +42,8 @@ class MemorySegmentReader {
         return binarySearch(key);
     }
 
-    private boolean filesDoesNotExist() {
-        return !Files.exists(utils.getIndexesPath()) || !Files.exists(utils.getStoragePath());
+    private boolean filesExists() {
+        return Files.exists(utils.getIndexesPath()) && Files.exists(utils.getStoragePath());
     }
 
     private void readIndexes() {
