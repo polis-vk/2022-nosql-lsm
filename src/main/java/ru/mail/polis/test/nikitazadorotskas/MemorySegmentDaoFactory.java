@@ -2,18 +2,24 @@ package ru.mail.polis.test.nikitazadorotskas;
 
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.nikitazadorotskas.InMemoryDao;
+import ru.mail.polis.nikitazadorotskas.PersistentDao;
 import ru.mail.polis.test.DaoFactory;
 
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory
+@DaoFactory(stage = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
     @Override
     public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao() {
-        return new InMemoryDao();
+        return new PersistentDao(null);
+    }
+
+    @Override
+    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) {
+        return new PersistentDao(config);
     }
 
     @Override
