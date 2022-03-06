@@ -31,15 +31,15 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         this.config = config;
         try {
             File configDir = new File(config.basePath().toString());
-            String[] files = configDir.list();
+            String[] filenames = configDir.list();
 
-            if (files == null || files.length == 0) {
-                addDataFile();
+            if (filenames == null || filenames.length == 0) {
+                addDataFile("data0.txt");
                 return;
             }
 
-            for (String ignored: files) {
-                addDataFile();
+            for (String filename: filenames) {
+                addDataFile(filename);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -59,7 +59,12 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             BaseEntry<ByteBuffer> result = null;
             for (String dataFile: dataFiles) {
                 result = findEntry(dataFile, key);
-                if (result != null && result.key().equals(key)) {
+
+                if (result == null) {
+                    continue;
+                }
+
+                if (result.key().equals(key)) {
                     break;
                 }
             }
@@ -76,7 +81,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             lock.lock();
             if (data.size() >= DATA_SIZE_TRESHOLD) {
                 flush();
-                addDataFile();
+                addDataFile("data" + dataFiles.size() + ".txt");
             }
             lock.unlock();
 
@@ -98,8 +103,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         write();
     }
 
-    private void addDataFile() throws IOException {
-        String dataFile = config.basePath().resolve("data" + dataFiles.size() + ".txt").toString();
+    private void addDataFile(String filename) throws IOException {
+        String dataFile = config.basePath().resolve(filename).toString();
         dataFiles.add(dataFile);
         if (!Files.exists(Path.of(dataFile))) {
             Files.createFile(Path.of(dataFile));
