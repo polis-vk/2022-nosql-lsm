@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -25,8 +26,8 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private final Config config;
     private final MemorySegment mapFile;
     private final MemorySegment mapIndex;
-    private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage =
-            new ConcurrentSkipListMap<>(Utils::compareMemorySegments);
+    public static final Comparator<MemorySegment> comparator = Utils::compareMemorySegments;
+    private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage = new ConcurrentSkipListMap<>(comparator);
 
     public InMemoryDao(Config config) {
         this.config = config;
