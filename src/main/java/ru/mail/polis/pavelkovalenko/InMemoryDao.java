@@ -20,7 +20,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final List<String> dataFiles = new ArrayList<>();
-    private static final int DATA_SIZE_TRESHOLD = 85_000;
+    private static final int DATA_SIZE_TRESHOLD = 100_000;
     private final Config config;
 
     public InMemoryDao(Config config) {
