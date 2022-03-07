@@ -17,7 +17,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final String pathToDataFile;
-    private static final int DATA_SIZE_TRESHOLD = 100_000;
+    private static final int DATA_SIZE_TRESHOLD = 20_000;
     private long lastWrittenPos = 0;
 
     public InMemoryDao(Config config) {
@@ -70,7 +70,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void flush() throws IOException {
         write();
-        data.clear();
     }
 
     @Override
@@ -89,12 +88,16 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private BaseEntry<ByteBuffer> findEntryInFiles(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> result;
-        data.clear();
         try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "r")) {
             do {
                 result = readEntry(raf);
             } while (!result.key().equals(key) && !reachedEOF(raf));
 
+            if (reachedEOF(raf) && !result.key().equals(key)) {
+                return null;
+            }
+
+            data.clear();
             while (!reachedEOF(raf)) {
                 upsert(readEntry(raf));
             }
