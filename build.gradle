@@ -32,7 +32,7 @@ test {
 
 checkstyle {
     configFile = new File("checkstyle.xml")
-    checkstyleTest.enabled = false
+    checkstyleTest.enabled = true
 }
 
 compileJava {

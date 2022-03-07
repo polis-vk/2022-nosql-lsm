@@ -9,32 +9,30 @@ import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
     private final Config config;
     private final int bufferSize = 80 * Character.BYTES;
-    private static final String FILE_NAME = "myData.txt";
+    private static final String FILE_NAME = "myData";
+    private int filesCount;
+    private final Logger log;
 
     public InMemoryDao(Config config) {
         this.config = config;
         pairs = new ConcurrentSkipListMap<>(Arrays::compare);
-        try (FileInputStream fis = new FileInputStream(String.valueOf(config.basePath().resolve(FILE_NAME)));
-             BufferedInputStream reader = new BufferedInputStream(fis, bufferSize)) {
-            while (reader.available() != 0) {
-                int keyLength = reader.read();
-                byte[] key = reader.readNBytes(keyLength);
-                int valueLength = reader.read();
-                byte[] value = reader.readNBytes(valueLength);
-                pairs.put(key, new BaseEntry<>(key, value));
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        File[] files = config.basePath().toFile().listFiles();
+        filesCount = files == null ? 0 : files.length;
+        log = Logger.getLogger(InMemoryDao.class.getName());
     }
 
     @Override
@@ -51,15 +49,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     @Override
     public BaseEntry<byte[]> get(byte[] key) {
-        Iterator<BaseEntry<byte[]>> iterator = get(key, null);
-        if (!iterator.hasNext()) {
-            return null;
+        BaseEntry<byte[]> value = pairs.get(key);
+        if (value != null && Arrays.equals(value.key(), key)) {
+            return value;
         }
-        BaseEntry<byte[]> next = iterator.next();
-        if (Arrays.equals(next.key(), key)) {
-            return next;
-        }
-        return null;
+        return findInFiles(key);
     }
 
     @Override
@@ -69,7 +63,15 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     @Override
     public void flush() {
-        try (FileOutputStream fos = new FileOutputStream(String.valueOf(config.basePath().resolve(FILE_NAME)));
+        Path newFilePath = config.basePath().resolve(FILE_NAME + filesCount + ".txt");
+        if (!Files.exists(newFilePath)) {
+            try {
+                Files.createFile(newFilePath);
+            } catch (IOException e) {
+                log.logp(Level.WARNING, "class: InMemoryDao", "method: flush", e.getMessage());
+            }
+        }
+        try (FileOutputStream fos = new FileOutputStream(String.valueOf(newFilePath));
              BufferedOutputStream writer = new BufferedOutputStream(fos, bufferSize)) {
             for (var pair : pairs.entrySet()) {
                 writer.write(pair.getKey().length);
@@ -78,7 +80,29 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
                 writer.write(pair.getValue().value());
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            log.logp(Level.WARNING, "class: InMemoryDao", "method: flush", e.getMessage());
         }
+        filesCount++;
+    }
+
+    private BaseEntry<byte[]> findInFiles(byte[] key) {
+        for (int i = filesCount - 1; i >= 0; i++) {
+            Path currentFile = config.basePath().resolve(FILE_NAME + i + ".txt");
+            try (FileInputStream fis = new FileInputStream(String.valueOf(currentFile));
+                 BufferedInputStream reader = new BufferedInputStream(fis, bufferSize)) {
+                while (reader.available() != 0) {
+                    int keyLength = reader.read();
+                    byte[] currentKey = reader.readNBytes(keyLength);
+                    int valueLength = reader.read();
+                    byte[] currentValue = reader.readNBytes(valueLength);
+                    if (Arrays.equals(currentKey, key)) {
+                        return new BaseEntry<>(currentKey, currentValue);
+                    }
+                }
+            } catch (IOException e) {
+                log.logp(Level.WARNING, "class: InMemoryDao", "method: InMemoryDao", e.getMessage());
+            }
+        }
+        return null;
     }
 }
