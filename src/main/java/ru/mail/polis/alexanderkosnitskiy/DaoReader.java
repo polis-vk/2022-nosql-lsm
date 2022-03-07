@@ -17,6 +17,42 @@ public class DaoReader implements Closeable {
         reader = new FileInputStream(name);
     }
 
+    public BaseEntry<ByteBuffer> retrieveElement(ByteBuffer key) throws IOException {
+        int size = readInt();
+        BaseEntry<ByteBuffer> elem;
+        for (int i = 0; i < size; i++) {
+            elem = readElementPair();
+            if(elem.key().compareTo(key) == 0) {
+                return elem;
+            }
+        }
+        return null;
+    }
+
+    public int checkForKey(ByteBuffer key) throws IOException {
+        int size = readInt();
+        ByteBuffer prevElem = null, elem;
+        for (int i = 0; i < size; i++) {
+            elem = readElementPair().key();
+
+            if(i == 0 && elem.compareTo(key) > 0) {
+                return -1;
+            }
+            else if(prevElem != null && prevElem.compareTo(key) < 0 && elem.compareTo(key) > 0) {
+                return 404;
+            }
+            else if(elem.compareTo(key) < 0 && i + 1 == size) {
+                return 1;
+            }
+            else if(elem.compareTo(key) == 0) {
+                return 0;
+            }
+
+            prevElem = elem;
+        }
+        return -2;
+    }
+
     public ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> readMap() throws IOException {
         int size = readInt();
         ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
