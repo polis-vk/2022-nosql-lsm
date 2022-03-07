@@ -102,7 +102,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
                     }
                 }
             } catch (IOException e) {
-                log.logp(Level.WARNING, CLASS_NAME, "method: InMemoryDao", e.getMessage());
+                log.logp(Level.WARNING, CLASS_NAME, "method: findInFiles", e.getMessage());
             }
         }
         return null;
