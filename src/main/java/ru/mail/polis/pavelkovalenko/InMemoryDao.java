@@ -22,8 +22,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final List<String> dataFiles = new ArrayList<>();
-    private static final int DATA_SIZE_TRESHOLD = 20_000;
-    private volatile boolean dataWasChanged;
+    private static final int DATA_SIZE_TRESHOLD = 50_000;
     private final ReentrantLock lock = new ReentrantLock();
     private final Config config;
 
@@ -48,26 +47,14 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        return null;
+        throw new UnsupportedOperationException("Unsupported range get");
     }
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) {
         try {
-            flushIfChanged();
-
-            BaseEntry<ByteBuffer> result = null;
-            for (String dataFile: dataFiles) {
-                result = findEntry(dataFile, key);
-
-                if (result.key().equals(key)) {
-                    break;
-                }
-            }
-            
-            return result;
+            return findEntry(key);
         } catch (IOException e) {
-            e.printStackTrace();
             return null;
         }
     }
@@ -83,7 +70,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             lock.unlock();
 
             data.put(entry.key(), entry);
-            dataWasChanged = true;
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -108,25 +94,36 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
     }
 
-    private BaseEntry<ByteBuffer> findEntry(String dataFile, ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> result;
-        try (RandomAccessFile raf = new RandomAccessFile(dataFile, "rw")) {
-            do {
-                result = readEntry(raf);
-            } while (!result.key().equals(key) && !reachedEOF(raf));
+    private BaseEntry<ByteBuffer> findEntry(ByteBuffer key) throws IOException {
+        BaseEntry<ByteBuffer> result = findEntryInMap(key);
+        return result != null ? result : findEntryInFiles(key);
+    }
+
+    private BaseEntry<ByteBuffer> findEntryInMap(ByteBuffer key) {
+        return data.getOrDefault(key, null);
+    }
+
+    private BaseEntry<ByteBuffer> findEntryInFiles(ByteBuffer key) throws IOException {
+        BaseEntry<ByteBuffer> result = null;
+        for (int i = 0; i < dataFiles.size(); ++i) {
+            String newestDataFile = dataFiles.get(dataFiles.size() - i - 1);
+            data.clear();
+            try (RandomAccessFile raf = new RandomAccessFile(newestDataFile, "rw")) {
+                do {
+                    result = readEntry(raf);
+                    upsert(result);
+                } while (!result.key().equals(key) && !reachedEOF(raf));
+            }
+
+            if (result.key().equals(key)) {
+                break;
+            }
         }
         return result;
     }
 
     private boolean reachedEOF(RandomAccessFile raf) throws IOException {
         return raf.getFilePointer() == raf.length();
-    }
-
-    private void flushIfChanged() throws IOException {
-        if (dataWasChanged) {
-            flush();
-            dataWasChanged = false;
-        }
     }
 
     private BaseEntry<ByteBuffer> readEntry(RandomAccessFile raf) throws IOException {
