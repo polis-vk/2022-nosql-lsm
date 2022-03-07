@@ -4,38 +4,27 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    private final List<String> dataFiles = new ArrayList<>();
+    private final String pathToDataFile;
     private static final int DATA_SIZE_TRESHOLD = 100_000;
-    private final Config config;
+    private long lastWrittenPos = 0;
 
     public InMemoryDao(Config config) {
-        this.config = config;
+        pathToDataFile = config.basePath().resolve("data.txt").toString();
         try {
-            File configDir = new File(config.basePath().toString());
-            String[] filenames = configDir.list();
-
-            if (filenames == null || filenames.length == 0) {
-                addDataFile("data0.txt");
-                return;
-            }
-
-            for (String filename: filenames) {
-                addDataFile(filename);
+            if (!Files.exists(Path.of(pathToDataFile))) {
+                Files.createFile(Path.of(pathToDataFile));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -70,7 +59,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         try {
             if (data.size() >= DATA_SIZE_TRESHOLD) {
                 flush();
-                addDataFile("data" + dataFiles.size() + ".txt");
             }
 
             data.put(entry.key(), entry);
@@ -90,37 +78,25 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         write();
     }
 
-    private void addDataFile(String filename) throws IOException {
-        String dataFile = config.basePath().resolve(filename).toString();
-        dataFiles.add(dataFile);
-        if (!Files.exists(Path.of(dataFile))) {
-            Files.createFile(Path.of(dataFile));
-        }
-    }
-
     private BaseEntry<ByteBuffer> findEntry(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> result = findEntryInMap(key);
         return result == null ? findEntryInFiles(key) : result;
     }
 
     private BaseEntry<ByteBuffer> findEntryInMap(ByteBuffer key) {
-        return data.getOrDefault(key, null);
+        return data.get(key);
     }
 
     private BaseEntry<ByteBuffer> findEntryInFiles(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> result = null;
-        for (int i = dataFiles.size() - 1; i >= 0; --i) {
-            String newestDataFile = dataFiles.get(i);
-            data.clear();
-            try (RandomAccessFile raf = new RandomAccessFile(newestDataFile, "r")) {
-                do {
-                    result = readEntry(raf);
-                    upsert(result);
-                } while (!result.key().equals(key) && !reachedEOF(raf));
-            }
+        BaseEntry<ByteBuffer> result;
+        data.clear();
+        try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "r")) {
+            do {
+                result = readEntry(raf);
+            } while (!result.key().equals(key) && !reachedEOF(raf));
 
-            if (result.key().equals(key)) {
-                break;
+            while (!reachedEOF(raf)) {
+                upsert(readEntry(raf));
             }
         }
         return result;
@@ -149,11 +125,12 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return;
         }
 
-        try (RandomAccessFile raf = new RandomAccessFile(dataFiles.get(dataFiles.size() - 1), "rw")) {
-            raf.setLength(0);
+        try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "rw")) {
+            raf.seek(lastWrittenPos);
             for (BaseEntry<ByteBuffer> entry: data.values()) {
                 writeEntry(raf, entry);
             }
+            lastWrittenPos = raf.getFilePointer();
         }
     }
 
