@@ -22,7 +22,7 @@ import java.util.logging.Logger;
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
     private final Config config;
-    private final int bufferSize = 80 * Character.BYTES;
+    private final int bufferSize = 100 * Character.BYTES;
     private static final String FILE_NAME = "myData";
     private int filesCount;
     private final Logger log;
