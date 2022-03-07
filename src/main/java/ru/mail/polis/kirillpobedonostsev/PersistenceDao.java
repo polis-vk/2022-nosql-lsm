@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
-    private static final int MAX_ENTRIES = 1_000_000;
+    private static final int MAX_ENTRIES = 100_000;
     private static final String DATA_FILENAME = "data.txt";
     private static final String INDEX_FILENAME = "index.txt";
     private final Path dataPath;
