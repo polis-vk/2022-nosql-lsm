@@ -25,7 +25,8 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private final Config config;
     private final MemorySegment mapFile;
     private final MemorySegment mapIndex;
-    private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage = new ConcurrentSkipListMap<>(Utils::compareMemorySegments);
+    private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage =
+            new ConcurrentSkipListMap<>(Utils::compareMemorySegments);
 
     public InMemoryDao(Config config) {
         this.config = config;

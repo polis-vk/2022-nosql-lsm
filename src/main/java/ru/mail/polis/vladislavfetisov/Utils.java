@@ -5,7 +5,7 @@ import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 
-public class Utils {
+public final class Utils {
     private Utils() {
 
     }
