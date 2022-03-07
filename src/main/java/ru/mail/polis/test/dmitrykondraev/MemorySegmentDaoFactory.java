@@ -2,9 +2,10 @@ package ru.mail.polis.test.dmitrykondraev;
 
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.dmitrykondraev.InMemoryDao;
+import ru.mail.polis.dmitrykondraev.FileBackedDao;
 import ru.mail.polis.test.DaoFactory;
 
 import java.nio.charset.StandardCharsets;
@@ -13,12 +14,17 @@ import java.nio.charset.StandardCharsets;
  * Author: Dmitry Kondraev.
  */
 
-@DaoFactory(week = 3)
+@DaoFactory(stage = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
 
     @Override
     public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao() {
-        return new InMemoryDao();
+        return new FileBackedDao();
+    }
+
+    @Override
+    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) {
+        return new FileBackedDao(config);
     }
 
     @Override
