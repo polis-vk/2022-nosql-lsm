@@ -4,6 +4,7 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
@@ -23,23 +24,24 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     private long lastWritePos;
     private volatile boolean commit;
 
-    public InMemoryDao(Config config) {
+    public InMemoryDao(Config config) throws IOException {
         this.config = config;
         loadFromFile(data, 0);
     }
 
     private Path getPath() throws IOException {
         Path path = config.basePath();
-        if (Files.isDirectory(path)) {
-            path = path.resolve(FILENAME);
-            if (Files.notExists(path)) {
-                Files.createFile(path);
-            }
+        if (Files.notExists(path)) {
+            Files.createDirectories(path);
+        }
+        path = path.resolve(FILENAME);
+        if (Files.notExists(path)) {
+            Files.createFile(path);
         }
         return path;
     }
 
-    private long loadFromFile(Map<String, Entry<String>> storage, long pos) {
+    private long loadFromFile(Map<String, Entry<String>> storage, long pos) throws IOException {
         try (RandomAccessFile input = new RandomAccessFile(getPath().toString(), "r")) {
             input.seek(pos < 0 ? 0 : pos);
             String line;
@@ -54,12 +56,12 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 storage.put(entry.key(), entry);
             }
             return input.getFilePointer();
-        } catch (IOException ignored) {
+        } catch (EOFException e) {
             return -1;
         }
     }
 
-    private Entry<String> findInFileByKey(String key) {
+    private Entry<String> findInFileByKey(String key) throws IOException {
         try (RandomAccessFile input = new RandomAccessFile(getPath().toString(), "r")) {
             lastPos = -1;
             input.seek(0);
@@ -77,13 +79,13 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 }
             }
             return null;
-        } catch (IOException e) {
+        } catch (EOFException e) {
             return null;
         }
     }
 
     @Override
-    public Iterator<Entry<String>> get(String from, String to) {
+    public Iterator<Entry<String>> get(String from, String to) throws IOException {
         boolean isFromNull = from == null;
         boolean isToNull = to == null;
         if (isFromNull && isToNull) {
@@ -103,7 +105,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     }
 
     @Override
-    public Entry<String> get(String key) {
+    public Entry<String> get(String key) throws IOException {
         if (!data.containsKey(key)) {
             Entry<String> value = findInFileByKey(key);
             loadFromLastPos();
@@ -112,16 +114,17 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         return data.get(key);
     }
 
-    private void loadFromLastPos() {
+    private void loadFromLastPos() throws IOException {
         ConcurrentNavigableMap<String, Entry<String>> tempStorage = new ConcurrentSkipListMap<>();
-        loadFromFile(tempStorage, lastPos);
         try {
+            loadFromFile(tempStorage, lastPos);
             flush();
             NavigableMap<String, Entry<String>> tmp = data;
             data = tempStorage;
             tmp.clear();
         } catch (IOException e) {
             tempStorage.clear();
+            throw e;
         }
     }
 

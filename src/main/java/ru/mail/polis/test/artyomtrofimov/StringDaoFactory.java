@@ -1,5 +1,7 @@
 package ru.mail.polis.test.artyomtrofimov;
 
+import java.io.IOException;
+
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -26,7 +28,7 @@ public class StringDaoFactory implements DaoFactory.Factory<String, Entry<String
     }
 
     @Override
-    public Dao<String, Entry<String>> createDao(Config config) {
+    public Dao<String, Entry<String>> createDao(Config config) throws IOException {
         return new InMemoryDao(config);
     }
 }
