@@ -14,10 +14,9 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
-    private static final int MAX_ENTRIES = 100_000;
+    private static final int MAX_ENTRIES = 50_000;
     private static final String DATA_FILENAME = "data.txt";
     private static final String INDEX_FILENAME = "index.txt";
-    private final Path dataPath;
     private final FileWriter writer;
     private final FileSeeker seeker;
     private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> map =
@@ -26,7 +25,7 @@ public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegmen
             new ConcurrentSkipListMap<>(new MemorySegmentComparator());
 
     public PersistenceDao(Config config) {
-        dataPath = config.basePath().resolve(DATA_FILENAME);
+        Path dataPath = config.basePath().resolve(DATA_FILENAME);
         Path indexPath = config.basePath().resolve(INDEX_FILENAME);
         try {
             if (!Files.exists(dataPath)) {
@@ -77,12 +76,7 @@ public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegmen
 
     @Override
     public void flush() throws IOException {
-        long readBytes = Files.size(dataPath);
-        for (BaseEntry<MemorySegment> entry : map.values()) {
-            writer.write(entry);
-            index.put(entry.key(), readBytes);
-            readBytes = readBytes + Long.BYTES * 2 + entry.key().byteSize() + entry.value().byteSize();
-        }
+        writer.write(map, index);
         writer.write(index);
         map.clear();
     }

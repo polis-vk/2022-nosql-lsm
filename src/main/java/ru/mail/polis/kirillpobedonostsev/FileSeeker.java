@@ -41,7 +41,7 @@ public class FileSeeker {
     public void fill(ConcurrentMap<MemorySegment, Long> map) {
         long readBytes = 0;
         try (RandomAccessFile file = new RandomAccessFile(indexFilename.toFile(), "r")) {
-            for (long length = file.length(); length > 0; length -= readBytes) {
+            for (long length = file.length(); length > 0; length = file.length() - readBytes) {
                 long keyLength = file.readLong();
                 MemorySegment key = MemorySegment.mapFile(indexFilename, readBytes + Long.BYTES, keyLength,
                         FileChannel.MapMode.READ_ONLY, ResourceScope.newSharedScope());
