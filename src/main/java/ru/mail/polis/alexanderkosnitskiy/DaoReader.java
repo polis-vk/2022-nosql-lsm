@@ -22,7 +22,7 @@ public class DaoReader implements Closeable {
         BaseEntry<ByteBuffer> elem;
         for (int i = 0; i < size; i++) {
             elem = readElementPair();
-            if(elem.key().compareTo(key) == 0) {
+            if (elem.key().compareTo(key) == 0) {
                 return elem;
             }
         }
@@ -31,20 +31,18 @@ public class DaoReader implements Closeable {
 
     public int checkForKey(ByteBuffer key) throws IOException {
         int size = readInt();
-        ByteBuffer prevElem = null, elem;
+        ByteBuffer prevElem = null;
+        ByteBuffer elem;
         for (int i = 0; i < size; i++) {
             elem = readElementPair().key();
 
-            if(i == 0 && elem.compareTo(key) > 0) {
+            if (i == 0 && elem.compareTo(key) > 0) {
                 return -1;
-            }
-            else if(prevElem != null && prevElem.compareTo(key) < 0 && elem.compareTo(key) > 0) {
+            } else if (prevElem != null && prevElem.compareTo(key) < 0 && elem.compareTo(key) > 0) {
                 return 404;
-            }
-            else if(elem.compareTo(key) < 0 && i + 1 == size) {
+            } else if (elem.compareTo(key) < 0 && i + 1 == size) {
                 return 1;
-            }
-            else if(elem.compareTo(key) == 0) {
+            } else if (elem.compareTo(key) == 0) {
                 return 0;
             }
 

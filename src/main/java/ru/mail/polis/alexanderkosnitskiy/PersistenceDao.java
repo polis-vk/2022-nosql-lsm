@@ -17,9 +17,9 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private final static int IN_MEMORY_SIZE = 100000;
-    private final static int CHUNK_SIZE = 100;
-    private final static String FILE_EXTENSION = ".seg";
+    private static final int IN_MEMORY_SIZE = 100000;
+    private static final int CHUNK_SIZE = 100;
+    private static final String FILE_EXTENSION = ".seg";
     private final Config config;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory = new ConcurrentSkipListMap<>();
     private int currentFolder;
@@ -80,7 +80,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         String path = config.basePath() + File.separator + currentFolder + File.separator;
         new File(path).mkdirs();
 
-        if(memory.size() < CHUNK_SIZE) {
+        if (memory.size() < CHUNK_SIZE) {
             try (DaoWriter out = new DaoWriter(path + 0 + FILE_EXTENSION)) {
                 out.writeMap(memory);
                 return;
@@ -111,13 +111,10 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     }
 
-    private int counter = 0;
     private BaseEntry<ByteBuffer> findInFiles(ByteBuffer key) throws IOException {
         for (int i = currentFolder - 1; i >= 0; i--) {
             BaseEntry<ByteBuffer> result = binarySearchInFolder(key, i);
-            if(result != null) {
-                counter++;
-                System.out.println("Записано: " + counter);
+            if (result != null) {
                 return result;
             }
         }
@@ -128,7 +125,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         String path = config.basePath() + File.separator + folder + File.separator;
 
         String[] files = (new File(path)).list();
-        if(files == null) {
+        if (files == null) {
             return null;
         }
         Arrays.sort(files, Comparator.comparingInt(this::extractInt));
@@ -137,24 +134,20 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         int higherBond = files.length - 1;
         int middle = files.length / 2;
 
-        while(lowerBond <= higherBond) {
+        while (lowerBond <= higherBond) {
             int result = checkFile(path, files[middle], key);
             if (result == 1) {
                 lowerBond = middle + 1;
-            }
-            else if (result == -1){
+            } else if (result == -1) {
                 higherBond = middle - 1;
-            }
-            else if (result == 0) {
+            } else if (result == 0) {
                 return retrieveFromFile(path, files[middle], key);
-            }
-            else if (result == 404) {
+            } else if (result == 404) {
                 return null;
-            }
-            else {
+            } else {
                 throw new UnexpectedException("Something is very wrong with comparator");
             }
-            middle = (lowerBond + higherBond)/2;
+            middle = (lowerBond + higherBond) / 2;
         }
 
         return null;
