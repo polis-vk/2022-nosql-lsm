@@ -35,7 +35,8 @@ public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegmen
             if (!Files.exists(indexPath)) {
                 Files.createFile(indexPath);
             }
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            e.printStackTrace();
         }
         writer = new FileWriter(dataPath, indexPath);
         seeker = new FileSeeker(dataPath, indexPath);
