@@ -44,7 +44,16 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        throw new UnsupportedOperationException("Unsupported range get");
+        if (from != null && to != null) {
+            return data.subMap(from, to).values().iterator();
+        }
+        if (from != null) {
+            return data.tailMap(from).values().iterator();
+        }
+        if (to != null) {
+            return data.headMap(to).values().iterator();
+        }
+        return data.values().iterator();
     }
 
     @Override
