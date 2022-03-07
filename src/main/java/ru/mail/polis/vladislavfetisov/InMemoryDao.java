@@ -1,9 +1,7 @@
 package ru.mail.polis.vladislavfetisov;
 
-import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
@@ -16,7 +14,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -24,65 +21,38 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private static final String TABLE_NAME = "SSTable";
     public static final String TEMP = "_TEMP";
+    public static final String INDEX = "_i";
     private final Config config;
-    private final Comparator<MemorySegment> comparator = this::compareMemorySegments;
-    private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage = new ConcurrentSkipListMap<>(comparator);
+    private final MemorySegment mapFile;
+    private final MemorySegment mapIndex;
+    private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage = new ConcurrentSkipListMap<>(Utils::compareMemorySegments);
 
     public InMemoryDao(Config config) {
         this.config = config;
         Path table = config.basePath().resolve(Path.of(TABLE_NAME));
         if (!Files.exists(table)) {
+            mapFile = null;
+            mapIndex = null;
             return;
         }
-        ByteBuffer forLength = ByteBuffer.allocate(Long.BYTES);
-        try (FileChannel channel = FileChannel.open(table)) {
-            while (channel.position() != channel.size()) {
-                long keyLength = getLength(forLength, channel);
-                MemorySegment key = getMemorySegment(table, channel, keyLength);
-                long valueLength = getLength(forLength, channel);
-                if (valueLength == -1) {
-                    storage.put(key, new BaseEntry<>(key, null));
-                    continue;
-                }
-                MemorySegment value = getMemorySegment(table, channel, valueLength);
-                storage.put(key, new BaseEntry<>(key, value));
-            }
+        Path index = table.resolveSibling(TABLE_NAME + INDEX);
+        try (FileChannel channel = FileChannel.open(table);
+             FileChannel indexChannel = FileChannel.open(index)) {
+
+            mapFile = map(table, channel.size());
+            mapIndex = map(index, indexChannel.size());
+
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
-    private MemorySegment getMemorySegment(Path table, FileChannel channel, long length) throws IOException {
-        MemorySegment key = MemorySegment.mapFile(table,
-                channel.position(),
+    private static MemorySegment map(Path table, long length) throws IOException {
+        return MemorySegment.mapFile(table,
+                0,
                 length,
                 FileChannel.MapMode.READ_ONLY,
                 ResourceScope.globalScope());
-        channel.position(channel.position() + length);
-        return key;
-    }
-
-    private long getLength(ByteBuffer forLength, FileChannel channel) throws IOException {
-        forLength.position(0);
-        channel.read(forLength);
-        forLength.position(0);
-        return forLength.getLong();
-    }
-
-    private int compareMemorySegments(MemorySegment o1, MemorySegment o2) {
-        long mismatch = o1.mismatch(o2);
-        if (mismatch == -1) {
-            return 0;
-        }
-        if (mismatch == o1.byteSize()) {
-            return -1;
-        }
-        if (mismatch == o2.byteSize()) {
-            return 1;
-        }
-        byte b1 = MemoryAccess.getByteAtOffset(o1, mismatch);
-        byte b2 = MemoryAccess.getByteAtOffset(o2, mismatch);
-        return Byte.compare(b1, b2);
     }
 
     @Override
@@ -102,34 +72,52 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     @Override
     public void flush() throws IOException {
         Path table = config.basePath().resolve(Path.of(TABLE_NAME));
-        Path temp = table.resolveSibling(TEMP);
-        Files.deleteIfExists(temp);
+        Path tableTemp = table.resolveSibling(table.getFileName() + TEMP);
+
+        Path index = table.resolveSibling(TABLE_NAME + INDEX);
+        Path indexTemp = index.resolveSibling(index.getFileName() + TEMP);
+
+        Files.deleteIfExists(tableTemp);
+        Files.deleteIfExists(indexTemp);
+
         Iterator<Entry<MemorySegment>> iterator = storage.values().iterator();
         ByteBuffer forLength = ByteBuffer.allocate(Long.BYTES);
-        try (FileChannel channel = open(temp)) {
+        long offset = 0;
+        try (FileChannel channel = open(tableTemp);
+             FileChannel indexChannel = open(indexTemp)) {
             while (iterator.hasNext()) {
                 Entry<MemorySegment> entry = iterator.next();
+
+                writeLong(forLength, indexChannel, offset);
+                offset += Utils.sizeOfEntry(entry);
+
                 writeBuffer(forLength, channel, entry.key());
                 if (entry.value() == null) {
-                    writeLength(forLength, channel, -1);
+                    writeLong(forLength, channel, -1);
                     continue;
                 }
                 writeBuffer(forLength, channel, entry.value());
             }
             channel.force(false);
+            indexChannel.force(false);
         }
+        rename(table, tableTemp);
+        rename(index, indexTemp);
+    }
+
+    private static void rename(Path table, Path temp) throws IOException {
         Files.deleteIfExists(table);
         Files.move(temp, table, StandardCopyOption.ATOMIC_MOVE);
     }
 
     private void writeBuffer(ByteBuffer forLength, FileChannel channel, MemorySegment value) throws IOException {
-        writeLength(forLength, channel, value.byteSize());
+        writeLong(forLength, channel, value.byteSize());
         channel.write(value.asByteBuffer());
     }
 
-    private void writeLength(ByteBuffer forLength, FileChannel channel, long length) throws IOException {
+    private void writeLong(ByteBuffer forLength, FileChannel channel, long value) throws IOException {
         forLength.position(0);
-        forLength.putLong(length);
+        forLength.putLong(value);
         forLength.position(0);
         channel.write(forLength);
     }
@@ -142,7 +130,14 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) {
-        return storage.get(key);
+        Entry<MemorySegment> entry = storage.get(key);
+        if (entry != null) {
+            return entry;
+        }
+        if (mapFile == null) {
+            return null;
+        }
+        return Utils.binarySearch(key, mapFile, mapIndex);
     }
 
     @Override
