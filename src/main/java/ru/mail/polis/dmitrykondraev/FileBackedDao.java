@@ -7,13 +7,20 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.LongStream;
@@ -115,19 +122,19 @@ public class FileBackedDao implements Dao<MemorySegment, BaseEntry<MemorySegment
         while (low <= high) {
             int mid = (low + high) >>> 1;
             MemorySegment midVal = mappedKey(mid);
-
-            if (lexicographically.compare(midVal, key) < 0)
+            if (lexicographically.compare(midVal, key) < 0) {
                 low = mid + 1;
-            else if (lexicographically.compare(midVal, key) > 0)
+            } else if (lexicographically.compare(midVal, key) > 0) {
                 high = mid - 1;
-            else
+            } else {
                 return new BaseEntry<>(midVal, mappedValue(mid)); // key found
+            }
         }
         return null; // key not found.
     }
 
     private long[] calculateOffsets() {
-        long[] offsets = LongStream.concat(
+        long[] result = LongStream.concat(
                 LongStream.of(0L),
                 map
                         .values()
@@ -135,8 +142,8 @@ public class FileBackedDao implements Dao<MemorySegment, BaseEntry<MemorySegment
                         // alternating key and value sizes
                         .flatMapToLong(entry -> LongStream.of(entry.key().byteSize(), entry.value().byteSize()))
         ).toArray();
-        Arrays.parallelPrefix(offsets, Long::sum);
-        return offsets;
+        Arrays.parallelPrefix(result, Long::sum);
+        return result;
     }
 
     private long[] readOffsets() throws IOException {
@@ -216,10 +223,9 @@ public class FileBackedDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     @Override
     public void flush() throws IOException {
         // write offsets array to index file in format:
-        // {
-        //   size: int
-        //   offsets: long[size]
-        // }
+        // ┌─────────┬───────────────────┐
+        // │size: int│offsets: long[size]│
+        // └─────────┴───────────────────┘
         try (DataOutputStream out = outputOf(indexFile())) {
             offsets = calculateOffsets();
             out.writeInt(offsets.length);
@@ -231,13 +237,9 @@ public class FileBackedDao implements Dao<MemorySegment, BaseEntry<MemorySegment
             mappedData = mappedFile(createFileIfNotExists(config.basePath().resolve(DATA_FILENAME)));
         }
         // write key-value pairs in format:
-        // {
-        //   data: {
-        //     // i-th entry:
-        //     key: byte[keySize(i)]
-        //     value: byte[valueSize(i)]
-        //   }[entriesMapped()]
-        // }
+        // ┌─────────────────────┬─────────────────────────┐
+        // │key: byte[keySize(i)]│value: byte[valueSize(i)]│ entriesMapped() times
+        // └─────────────────────┴─────────────────────────┘
         int i = 0;
         for (BaseEntry<MemorySegment> entry : map.values()) {
             mappedKey(i).copyFrom(entry.key());
