@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final int IN_MEMORY_SIZE = 100000;
     private static final int CHUNK_SIZE = 100;
-    private static final String FILE_EXTENSION = ".seg";
+    private static final String FILE_EXTENSION = ".anime";
     private final Config config;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory = new ConcurrentSkipListMap<>();
     private int currentFolder;
