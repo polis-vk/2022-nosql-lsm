@@ -4,13 +4,11 @@ import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ConcurrentSkipListMap;
 
 public class FileSeeker {
     private final Path dataFilename;
@@ -34,7 +32,6 @@ public class FileSeeker {
             value = MemorySegment.mapFile(dataFilename, offset + keyLength + Long.BYTES * 2, valueLength,
                     FileChannel.MapMode.READ_ONLY, ResourceScope.newSharedScope());
             return new BaseEntry<>(key, value);
-        } catch (FileNotFoundException ignored) {
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -53,7 +50,8 @@ public class FileSeeker {
                 readBytes = readBytes + Long.BYTES * 2 + keyLength;
                 map.put(key, value);
             }
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 }

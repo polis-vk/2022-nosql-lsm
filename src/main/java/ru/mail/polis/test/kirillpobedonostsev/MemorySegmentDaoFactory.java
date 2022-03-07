@@ -5,7 +5,6 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.kirillpobedonostsev.InMemoryDao;
 import ru.mail.polis.kirillpobedonostsev.PersistenceDao;
 import ru.mail.polis.test.DaoFactory;
 

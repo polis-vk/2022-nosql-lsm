@@ -14,12 +14,11 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
-    private final int MAX_ENTRIES = 1_000_000;
+    private static final int MAX_ENTRIES = 1_000_000;
     private static final String DATA_FILENAME = "data.txt";
     private static final String INDEX_FILENAME = "index.txt";
     private final Path dataPath;
-    private final Path indexPath;
-    private final MemorySegmentWriter writer;
+    private final FileWriter writer;
     private final FileSeeker seeker;
     private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> map =
             new ConcurrentSkipListMap<>(new MemorySegmentComparator());
@@ -28,7 +27,7 @@ public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegmen
 
     public PersistenceDao(Config config) {
         dataPath = config.basePath().resolve(DATA_FILENAME);
-        indexPath = config.basePath().resolve(INDEX_FILENAME);
+        Path indexPath = config.basePath().resolve(INDEX_FILENAME);
         try {
             if (!Files.exists(dataPath)) {
                 Files.createFile(dataPath);
@@ -38,7 +37,7 @@ public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegmen
             }
         } catch (IOException ignored) {
         }
-        writer = new MemorySegmentWriter(dataPath, indexPath);
+        writer = new FileWriter(dataPath, indexPath);
         seeker = new FileSeeker(dataPath, indexPath);
     }
 
