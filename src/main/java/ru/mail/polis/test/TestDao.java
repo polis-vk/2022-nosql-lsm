@@ -16,7 +16,7 @@ class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
     final Config config;
     final String name;
 
-    TestDao(DaoFactory.Factory<D, E> factory, Config config) {
+    TestDao(DaoFactory.Factory<D, E> factory, Config config) throws IOException {
         this.factory = factory;
         this.config = config;
         this.delegate = factory.createDao(config);
@@ -28,12 +28,12 @@ class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
         this.name = "TestDao<" + lastPackagePart + "." + delegateClass.getSimpleName() + ">";
     }
 
-    public Dao<String, Entry<String>> reopen() {
+    public Dao<String, Entry<String>> reopen() throws IOException {
         return new TestDao<>(factory, config);
     }
 
     @Override
-    public Entry<String> get(String key) {
+    public Entry<String> get(String key) throws IOException {
         E result = delegate.get(factory.fromString(key));
         if (result == null) {
             return null;
@@ -45,7 +45,7 @@ class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
     }
 
     @Override
-    public Iterator<Entry<String>> get(String from, String to) {
+    public Iterator<Entry<String>> get(String from, String to) throws IOException {
         Iterator<E> iterator = delegate.get(
                 factory.fromString(from),
                 factory.fromString(to)
