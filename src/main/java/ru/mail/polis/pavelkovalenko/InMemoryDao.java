@@ -96,7 +96,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private BaseEntry<ByteBuffer> findEntry(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> result = findEntryInMap(key);
-        return result != null ? result : findEntryInFiles(key);
+        return result == null ? findEntryInFiles(key) : result;
     }
 
     private BaseEntry<ByteBuffer> findEntryInMap(ByteBuffer key) {
@@ -105,8 +105,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private BaseEntry<ByteBuffer> findEntryInFiles(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> result = null;
-        for (int i = 0; i < dataFiles.size(); ++i) {
-            String newestDataFile = dataFiles.get(dataFiles.size() - i - 1);
+        for (int i = dataFiles.size() - 1; i >= 0; --i) {
+            String newestDataFile = dataFiles.get(i);
             data.clear();
             try (RandomAccessFile raf = new RandomAccessFile(newestDataFile, "rw")) {
                 do {
