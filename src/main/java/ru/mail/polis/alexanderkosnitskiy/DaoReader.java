@@ -126,25 +126,25 @@ public class DaoReader implements Closeable {
         int valLen = buffer.getInt();
         ByteBuffer keyBuffer = ByteBuffer.allocate(keyLen);
         ByteBuffer valBuffer = ByteBuffer.allocate(valLen);
-        reader.read(keyBuffer.array());
-        reader.read(valBuffer.array());
+        reader.getChannel().read(keyBuffer);
+        reader.getChannel().read(valBuffer);
         keyBuffer.rewind();
         valBuffer.rewind();
         reader.read(buffer.array(), 0, Integer.BYTES + Byte.BYTES);
-        return new BaseEntry<ByteBuffer>(keyBuffer, valBuffer);
+        return new BaseEntry<>(keyBuffer, valBuffer);
     }
 
     public ByteBuffer readElement() throws IOException {
         int elementSize = readInt();
         ByteBuffer buffer = ByteBuffer.allocate(elementSize);
-        reader.read(buffer.array());
+        reader.getChannel().read(buffer);
         buffer.rewind();
         return buffer;
     }
 
     public int readInt() throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
-        reader.read(buffer.array());
+        reader.getChannel().read(buffer);
         buffer.rewind();
         return buffer.getInt();
     }
@@ -155,7 +155,6 @@ public class DaoReader implements Closeable {
     }
 
     private static class FileEntry {
-        public int place;
         public long bytePosition;
         public int size;
         BaseEntry<ByteBuffer> entry;
