@@ -53,18 +53,4 @@ public class FileSeeker {
         }
         return value == null ? null : new BaseEntry<>(key, value);
     }
-
-//    public List<Long> getIndex() {
-//        List<Long> index = null;
-//        try (RandomAccessFile file = new RandomAccessFile(dataPath.toFile(), "r")) {
-//            int numberOfElements = (int) (file.length() / Long.BYTES);
-//            index = new ArrayList<>(numberOfElements);
-//            while (file.length() > file.getFilePointer()) {
-//                index.add(file.readLong());
-//            }
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
-//        return index;
-//    }
 }
