@@ -2,8 +2,8 @@ package ru.mail.polis.test.artyomscheredin;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
-import ru.mail.polis.Entry;
 import ru.mail.polis.Dao;
+import ru.mail.polis.Entry;
 import ru.mail.polis.artyomscheredin.PersistentDao;
 import ru.mail.polis.test.DaoFactory;
 

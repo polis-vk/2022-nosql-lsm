@@ -15,7 +15,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
 public class FileManager {
     private static final String DATA_UNIT_NAME = "table";
     private static final String EXTENSION = ".txt";

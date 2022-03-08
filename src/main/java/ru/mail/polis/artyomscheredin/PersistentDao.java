@@ -11,7 +11,6 @@ import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-
 public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private static final int MAX_CAPACITY = 100000;
