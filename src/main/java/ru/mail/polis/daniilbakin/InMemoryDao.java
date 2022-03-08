@@ -71,7 +71,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void flush() throws IOException {
         createFilesIfNeed();
-        MapSerializeStream writer = new MapSerializeStream(mapFile, indexesFile);
+        MapSerializeStream writer = new MapSerializeStream(mapFile.toPath(), indexesFile.toPath());
         writer.serializeMap(data);
         writer.close();
     }
