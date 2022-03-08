@@ -130,9 +130,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
         int bbSize = raf.readInt();
-        byte[] bytes = new byte[bbSize];
-        raf.read(bytes);
-        return ByteBuffer.wrap(bytes);
+        ByteBuffer bb = ByteBuffer.wrap(new byte[bbSize]);
+        raf.getChannel().read(bb);
+        bb.rewind();
+        return bb;
     }
 
     private void write() throws IOException {
@@ -150,7 +151,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 bb.putInt(entry.value().remaining());
                 bb.put(entry.value());
                 bb.putChar(Utils.PAIR_SEPARATOR);
-                raf.write(bb.array());
+                bb.rewind();
+                raf.getChannel().write(bb);
             }
         }
     }
