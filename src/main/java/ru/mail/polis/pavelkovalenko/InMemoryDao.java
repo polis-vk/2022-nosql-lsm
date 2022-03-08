@@ -7,6 +7,7 @@ import ru.mail.polis.Dao;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
@@ -19,7 +20,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final String pathToDataFile;
     private static final int DATA_SIZE_TRESHOLD = 20_000;
     private long lastWrittenPos;
-    private long lastReadPos;
     private boolean dataWasChanged;
 
     public InMemoryDao(Config config) {
@@ -59,13 +59,15 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         try {
+
+
+            data.put(entry.key(), entry);
+            dataWasChanged = true;
             if (data.size() >= DATA_SIZE_TRESHOLD) {
                 flush();
                 data.clear();
             }
 
-            data.put(entry.key(), entry);
-            dataWasChanged = true;
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -105,8 +107,9 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
 
             data.clear();
-            while (!reachedEOF(raf)) {
-                upsert(readEntry(raf));
+            while (!reachedEOF(raf) && data.size() < DATA_SIZE_TRESHOLD) {
+                BaseEntry<ByteBuffer> entry = readEntry(raf);
+                data.put(entry.key(), entry);
             }
         }
         return result;
@@ -119,15 +122,12 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private BaseEntry<ByteBuffer> readEntry(RandomAccessFile raf) throws IOException {
         ByteBuffer key = readByteBuffer(raf);
         ByteBuffer value = readByteBuffer(raf);
-        raf.readLine();
         return new BaseEntry<>(key, value);
     }
 
     private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
-        int numberOfBytes = raf.readInt();
-        byte[] bytes = new byte[numberOfBytes];
-        raf.read(bytes);
-        return ByteBuffer.wrap(bytes);
+        String str = raf.readLine();
+        return ByteBuffer.wrap(str.getBytes(StandardCharsets.UTF_8));
     }
 
     private void write() throws IOException {
@@ -146,13 +146,13 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private void writeEntry(RandomAccessFile raf, BaseEntry<ByteBuffer> entry) throws IOException {
         writeByteBuffer(raf, entry.key());
+        raf.write('\n');
         writeByteBuffer(raf, entry.value());
         raf.write('\n');
     }
 
     private void writeByteBuffer(RandomAccessFile raf, ByteBuffer bb) throws IOException {
-        raf.writeInt(bb.array().length);
-        raf.write(bb.array());
+        raf.getChannel().write(bb);
     }
 
 }
