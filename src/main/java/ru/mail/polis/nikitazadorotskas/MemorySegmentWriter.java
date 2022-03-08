@@ -1,5 +1,6 @@
 package ru.mail.polis.nikitazadorotskas;
 
+import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
@@ -7,19 +8,18 @@ import ru.mail.polis.BaseEntry;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
-import java.util.Arrays;
 
 class MemorySegmentWriter {
-    private final long[] indexes;
     private int arrayIndex;
+    private long lastSize;
+    private long lastIndex;
     private final MemorySegment mappedMemorySegmentForStorage;
     private final MemorySegment mappedMemorySegmentForIndexes;
 
     MemorySegmentWriter(int arraySize, long storageSize, Utils utils) throws IOException {
-        indexes = new long[arraySize * 2 + 1];
         mappedMemorySegmentForStorage = createMappedSegment(utils.getStoragePath(), storageSize);
         long longSize = 8;
-        mappedMemorySegmentForIndexes = createMappedSegment(utils.getIndexesPath(), longSize * indexes.length);
+        mappedMemorySegmentForIndexes = createMappedSegment(utils.getIndexesPath(), longSize * (arraySize * 2L + 1));
     }
 
     private MemorySegment createMappedSegment(Path path, long size) throws IOException {
@@ -42,20 +42,15 @@ class MemorySegmentWriter {
     }
 
     private void writeIndex(long size) {
-        indexes[arrayIndex + 1] = indexes[arrayIndex] + size;
+        lastIndex += size;
+        lastSize = size;
         arrayIndex++;
         long longSize = 8;
-        writeToMappedMemorySegment(mappedMemorySegmentForIndexes,
-                arrayIndex * longSize,
-                longSize,
-                MemorySegment.ofArray(Arrays.copyOfRange(indexes, arrayIndex, arrayIndex + 1))
-        );
+        MemoryAccess.setLong(mappedMemorySegmentForIndexes.asSlice(arrayIndex * longSize, longSize), lastIndex);
     }
 
     private void writeData(MemorySegment other) {
-        long byteOffset = indexes[arrayIndex - 1];
-        long size = indexes[arrayIndex] - byteOffset;
-        writeToMappedMemorySegment(mappedMemorySegmentForStorage, byteOffset, size, other);
+        writeToMappedMemorySegment(mappedMemorySegmentForStorage, lastIndex - lastSize, lastSize, other);
     }
 
     private void writeToMappedMemorySegment(MemorySegment mapped, long byteOffset, long byteSize, MemorySegment other) {

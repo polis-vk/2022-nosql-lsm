@@ -21,7 +21,7 @@ class MemorySegmentReader {
         filesExist = filesExists();
     }
 
-    BaseEntry<MemorySegment> getFromDisk(MemorySegment key) {
+    BaseEntry<MemorySegment> getFromDisk(MemorySegment key) throws IOException {
         if (!filesExist) {
             return null;
         }
@@ -30,13 +30,8 @@ class MemorySegmentReader {
             readIndexes();
         }
 
-        try {
-            if (mappedSegment == null) {
-                createdMapped();
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-            return null;
+        if (mappedSegment == null) {
+            createdMapped();
         }
 
         return binarySearch(key);

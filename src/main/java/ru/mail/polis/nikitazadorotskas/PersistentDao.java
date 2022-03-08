@@ -46,7 +46,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     }
 
     @Override
-    public BaseEntry<MemorySegment> get(MemorySegment key) {
+    public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
         BaseEntry<MemorySegment> result = memory.get(key);
 
         if (result != null) {
