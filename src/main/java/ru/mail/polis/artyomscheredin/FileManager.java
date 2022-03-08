@@ -1,8 +1,9 @@
 package ru.mail.polis.artyomscheredin;
 
-import java.io.BufferedOutputStream;
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -11,15 +12,12 @@ import java.nio.file.Path;
 import java.util.SortedMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
-
 public class FileManager {
     private static final String DATA_UNIT_NAME = "table";
     private static final String EXTENSION = ".txt";
     private static final int BUFFER_SIZE = 100;
 
-    private Path pathToWrite;
+    private final Path pathToWrite;
     Config config;
 
     public FileManager(Config config) throws IOException {
