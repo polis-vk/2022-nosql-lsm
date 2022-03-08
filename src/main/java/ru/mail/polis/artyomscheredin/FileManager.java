@@ -103,24 +103,6 @@ public class FileManager {
                 out.write(entry.array());
             }
         }
-        /*try (FileChannel channel = new RandomAccessFile(pathToWrite.toFile(), "rw").getChannel()) {
-            CopyOnWriteArrayList<ByteBuffer> entryBuffer = new CopyOnWriteArrayList<ByteBuffer>();
-            int size = 0;
-            for (BaseEntry<ByteBuffer> e : data.values()) {
-                ByteBuffer entry = getBufferFromEntry(e);
-                entryBuffer.add(entry);
-                size += entry.remaining();
-                if (entryBuffer.size() == BUFFER_SIZE) {
-                    channel.write(getBufferFromList(entryBuffer, size));
-                    entryBuffer.clear();
-                    size = 0;
-                }
-            }
-            if (!entryBuffer.isEmpty()) {
-                channel.write(getBufferFromList(entryBuffer, size));
-            }
-            channel.force(false);
-        }*/
         counter++;
     }
 
@@ -133,14 +115,5 @@ public class FileManager {
         buffer.put(e.value());
         buffer.rewind();
         return buffer;
-    }
-
-    private ByteBuffer getBufferFromList(CopyOnWriteArrayList<ByteBuffer> buffer, int size) {
-        ByteBuffer result = ByteBuffer.allocate(size);
-        for (ByteBuffer el : buffer) {
-            result.put(el);
-        }
-        result.rewind();
-        return result;
     }
 }
