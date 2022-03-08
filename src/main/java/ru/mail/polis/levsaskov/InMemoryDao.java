@@ -35,7 +35,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> localVal = entrys.get(key);
 
-        return localVal != null ? localVal : findEntryInFile(key, fileConfigPath);
+        return localVal == null ? findEntryInFile(key, fileConfigPath) : localVal;
     }
 
     @Override
