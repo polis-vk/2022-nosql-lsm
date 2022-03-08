@@ -13,7 +13,7 @@ import java.util.SortedMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class FileManager {
-    private static final String DATA_UNIT_NAME = "table";
+    private static final String DATA_UNIT_NAME = "storage";
     private static final String EXTENSION = ".txt";
     private static final int BUFFER_SIZE = 100;
 
