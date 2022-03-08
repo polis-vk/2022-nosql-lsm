@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String DATA_FILENAME = "data.txt";
+    private static final String INDEX_FILENAME = "index.txt";
     private final FileWriter writer;
     private final FileSeeker seeker;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map =
@@ -21,16 +22,22 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     public PersistenceDao(Config config) {
         Path dataPath = config.basePath().resolve(DATA_FILENAME);
+        Path indexPath = config.basePath().resolve(INDEX_FILENAME);
         try {
-            if (!Files.exists(dataPath)) {
+            if (!Files.exists(config.basePath())) {
                 Files.createDirectories(config.basePath());
+            }
+            if (!Files.exists(dataPath)) {
                 Files.createFile(dataPath);
+            }
+            if (!Files.exists(indexPath)) {
+                Files.createFile(indexPath);
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
-        writer = new FileWriter(dataPath);
-        seeker = new FileSeeker(dataPath);
+        writer = new FileWriter(dataPath, indexPath);
+        seeker = new FileSeeker(dataPath, indexPath);
     }
 
     @Override

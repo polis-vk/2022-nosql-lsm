@@ -6,34 +6,65 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 public class FileSeeker {
-    private final Path dataFilename;
+    private final Path dataPath;
+    private final Path indexPath;
 
-    public FileSeeker(Path filename) {
-        this.dataFilename = filename;
+    public FileSeeker(Path dataPath, Path indexPath) {
+        this.dataPath = dataPath;
+        this.indexPath = indexPath;
     }
 
     public BaseEntry<ByteBuffer> tryFind(ByteBuffer key) throws IOException {
         ByteBuffer value = null;
-        try (RandomAccessFile file = new RandomAccessFile(dataFilename.toFile(), "r");
-             FileChannel channel = file.getChannel()) {
-            while (channel.position() < channel.size()) {
-                int keyLength = file.readInt();
+        if (Files.size(dataPath) == 0) {
+            return null;
+        }
+        try (RandomAccessFile dataFile = new RandomAccessFile(dataPath.toFile(), "r");
+             RandomAccessFile indexFile = new RandomAccessFile(indexPath.toFile(), "r");
+             FileChannel channel = dataFile.getChannel()) {
+            long low = 0;
+            long high = indexFile.length() / Long.BYTES;
+            while (low <= high) {
+                long mid = (high + low) / 2;
+                indexFile.seek(mid * Long.BYTES);
+                long offset = indexFile.readLong();
+                dataFile.seek(offset);
+                int keyLength = dataFile.readInt();
                 ByteBuffer readKey = ByteBuffer.allocate(keyLength);
                 channel.read(readKey);
                 readKey.rewind();
-                int valueLength = file.readInt();
-                if (readKey.compareTo(key) == 0) {
+                int compareResult = readKey.compareTo(key);
+                if (compareResult > 0) {
+                    high = mid - 1;
+                } else if (compareResult < 0) {
+                    low = mid + 1;
+                } else {
+                    int valueLength = dataFile.readInt();
                     value = ByteBuffer.allocate(valueLength);
                     channel.read(value);
                     value.rewind();
-                } else {
-                    file.skipBytes(valueLength);
+                    break;
                 }
             }
         }
         return value == null ? null : new BaseEntry<>(key, value);
     }
+
+//    public List<Long> getIndex() {
+//        List<Long> index = null;
+//        try (RandomAccessFile file = new RandomAccessFile(dataPath.toFile(), "r")) {
+//            int numberOfElements = (int) (file.length() / Long.BYTES);
+//            index = new ArrayList<>(numberOfElements);
+//            while (file.length() > file.getFilePointer()) {
+//                index.add(file.readLong());
+//            }
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//        return index;
+//    }
 }

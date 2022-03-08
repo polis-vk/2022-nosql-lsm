@@ -10,24 +10,34 @@ import java.nio.file.Path;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public class FileWriter {
-    private final Path filePath;
+    private final Path dataPath;
+    private final Path indexPath;
 
-    public FileWriter(Path filePath) {
-        this.filePath = filePath;
+    public FileWriter(Path dataPath, Path indexPath) {
+        this.dataPath = dataPath;
+        this.indexPath = indexPath;
     }
 
     public void write(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map) throws IOException {
-        try (FileChannel channel = new RandomAccessFile(filePath.toFile(), "rw").getChannel()) {
+        long offset = 0;
+        ByteBuffer indexResult = ByteBuffer.allocate(map.size() * Long.BYTES);
+        try (FileChannel channel = new RandomAccessFile(dataPath.toFile(), "rw").getChannel()) {
             for (BaseEntry<ByteBuffer> entry : map.values()) {
-                ByteBuffer result =
-                        ByteBuffer.allocate(entry.key().remaining() + entry.value().remaining() + Integer.BYTES * 2);
+                int entryLength = entry.key().remaining() + entry.value().remaining() + Integer.BYTES * 2;
+                ByteBuffer result = ByteBuffer.allocate(entryLength);
                 result.putInt(entry.key().remaining());
                 result.put(entry.key());
                 result.putInt(entry.value().remaining());
                 result.put(entry.value());
                 result.rewind();
                 channel.write(result);
+                indexResult.putLong(offset);
+                offset += entryLength;
             }
+        }
+        indexResult.rewind();
+        try (FileChannel channel = new RandomAccessFile(indexPath.toFile(), "rw").getChannel()) {
+            channel.write(indexResult);
         }
     }
 }
