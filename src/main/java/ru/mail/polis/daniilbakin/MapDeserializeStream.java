@@ -36,7 +36,6 @@ public class MapDeserializeStream {
             Field theUnsafeField = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe");
             theUnsafeField.setAccessible(true);
             fieldValue = theUnsafeField.get(null);
-
         } catch (Exception e) {
             throw new IOException(e);
         }
