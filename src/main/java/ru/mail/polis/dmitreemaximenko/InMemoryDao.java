@@ -6,41 +6,62 @@ import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.NavigableSet;
+import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
+    private static final String LOG_NAME = "log";
     private final NavigableSet<BaseEntry<byte[]>> data =
             new ConcurrentSkipListSet<>(new RecordNaturalOrderComparator());
     private final EntryWriter diskWriter;
+    private final EntryReader diskReader;
 
     public InMemoryDao() throws IOException {
         this(null);
     }
 
     public InMemoryDao(Config config) throws IOException {
-        if (config != null) {
-            diskWriter = new EntryWriter(new FileWriter(String.valueOf(config.basePath())));
+        if (config != null && Files.isDirectory(config.basePath())) {
+            Path logPath = Path.of(config.basePath() + System.getProperty("file.separator") + LOG_NAME);
+
+            if (Files.notExists(logPath)) {
+                Files.createFile(logPath);
+            } else {
+                Scanner scanner = new Scanner(logPath, StandardCharsets.UTF_8);
+                while (scanner.hasNextLine()) {
+                    String key = scanner.nextLine();
+                    String value = scanner.nextLine();
+
+                    upsert(new BaseEntry<>(key.getBytes(StandardCharsets.UTF_8),
+                            value.getBytes(StandardCharsets.UTF_8)));
+                }
+            }
+            diskWriter = new EntryWriter(new FileWriter(String.valueOf(logPath), StandardCharsets.UTF_8));
+            diskReader = new EntryReader(new FileInputStream(String.valueOf(logPath)));
         } else {
             diskWriter = null;
+            diskReader = null;
         }
     }
 
     @Override
-    public BaseEntry<byte[]> get(byte[] key) {
+    public BaseEntry<byte[]> get(byte[] key) throws IOException {
         Iterator<BaseEntry<byte[]>> iterator = get(key, null);
-        if (!iterator.hasNext()) {
-            return null;
+        if (iterator.hasNext()) {
+            BaseEntry<byte[]> next = iterator.next();
+            if (Arrays.equals(next.key(), key)) {
+                return next;
+            }
         }
-        BaseEntry<byte[]> next = iterator.next();
-        if (Arrays.equals(next.key(), key)) {
-            return next;
+
+        if (diskReader != null) {
+            return diskReader.getByKey(key);
         }
+
         return null;
     }
 
@@ -53,11 +74,18 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public void upsert(BaseEntry<byte[]> entry) throws IOException {
+    public void upsert(BaseEntry<byte[]> entry) {
         data.remove(entry);
         data.add(entry);
 
-        diskWriter.write(entry);
+        if (diskWriter != null) {
+            try {
+                diskWriter.write(entry);
+            } catch (IOException e) {
+                System.err.println("The entry is not recorded to disk due to exception!");
+            }
+
+        }
     }
 
     static class BorderedIterator implements Iterator<BaseEntry<byte[]>> {
@@ -104,15 +132,44 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         }
 
         void write(BaseEntry<byte[]> e) throws IOException {
-            super.write(String.valueOf(e.key()));
+            super.write(new String(e.key(), StandardCharsets.UTF_8));
             super.write(System.getProperty("line.separator"));
-            super.write(String.valueOf(e.value()));
+            super.write(new String(e.value(), StandardCharsets.UTF_8));
             super.write(System.getProperty("line.separator"));
         }
     }
 
+    static class EntryReader {
+        private final FileInputStream fileInputStream;
+
+        public EntryReader(FileInputStream fileInputStream) {
+            this.fileInputStream = fileInputStream;
+        }
+
+        public BaseEntry<byte[]> getByKey(byte[] targetKey) throws IOException {
+            fileInputStream.getChannel().position(0);
+            String targetKeyString = Arrays.toString(targetKey);
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(fileInputStream,
+                    StandardCharsets.UTF_8));
+            while (true) {
+                String key = bufferedReader.readLine();
+                String value = bufferedReader.readLine();
+
+                if (key == null || value == null) {
+                    return null;
+                }
+
+                if (key.equals(targetKeyString)) {
+                    return new BaseEntry<>(key.getBytes(StandardCharsets.UTF_8),
+                            value.getBytes(StandardCharsets.UTF_8));
+                }
+            }
+        }
+    }
     @Override
     public void close() throws IOException {
-        diskWriter.close();
+        if (diskWriter != null) {
+            diskWriter.close();
+        }
     }
 }
