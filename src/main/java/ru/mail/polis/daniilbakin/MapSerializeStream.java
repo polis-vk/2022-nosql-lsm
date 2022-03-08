@@ -27,6 +27,7 @@ public class MapSerializeStream {
             buffer.putInt(i);
         }
         indexesWriter.write(buffer.array());
+        indexesWriter.close();
     }
 
     public void close() throws IOException {
