@@ -1,6 +1,8 @@
 package ru.mail.polis.artyomscheredin;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -95,7 +97,13 @@ public class FileManager {
             throw new IllegalArgumentException();
         }
         createDataFileIfNotExists();
-        try (FileChannel channel = new RandomAccessFile(pathToWrite.toFile(), "rw").getChannel()) {
+        try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(pathToWrite.toFile()))) {
+            for (BaseEntry<ByteBuffer> e : data.values()) {
+                ByteBuffer entry = getBufferFromEntry(e);
+                out.write(entry.array());
+            }
+        }
+        /*try (FileChannel channel = new RandomAccessFile(pathToWrite.toFile(), "rw").getChannel()) {
             CopyOnWriteArrayList<ByteBuffer> entryBuffer = new CopyOnWriteArrayList<ByteBuffer>();
             int size = 0;
             for (BaseEntry<ByteBuffer> e : data.values()) {
@@ -112,7 +120,7 @@ public class FileManager {
                 channel.write(getBufferFromList(entryBuffer, size));
             }
             channel.force(false);
-        }
+        }*/
         counter++;
     }
 
