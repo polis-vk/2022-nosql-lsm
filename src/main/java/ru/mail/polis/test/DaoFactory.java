@@ -4,6 +4,7 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
+import java.io.IOException;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -16,29 +17,31 @@ public @interface DaoFactory {
     int stage() default 1;
     int week() default 1;
 
-    interface Factory<Data, E extends Entry<Data>> {
+    interface Factory<D, E extends Entry<D>> {
 
-        default Dao<Data, E> createDao() {
+        default Dao<D, E> createDao() throws IOException {
             throw new UnsupportedOperationException("Need to override one of createDao methods");
         }
 
-        default Dao<Data, E> createDao(Config config) {
+        default Dao<D, E> createDao(Config config) throws IOException {
             return createDao();
         }
 
-        String toString(Data data);
-        Data fromString(String data);
-        E fromBaseEntry(Entry<Data> baseEntry);
+        String toString(D data);
+
+        D fromString(String data);
+
+        E fromBaseEntry(Entry<D> baseEntry);
 
         static Config extractConfig(Dao<String, Entry<String>> dao) {
             return ((TestDao<?,?>)dao).config;
         }
 
-        static Dao<String, Entry<String>> reopen(Dao<String, Entry<String>> dao) {
+        static Dao<String, Entry<String>> reopen(Dao<String, Entry<String>> dao) throws IOException {
             return ((TestDao<?,?>)dao).reopen();
         }
 
-        default Dao<String, Entry<String>> createStringDao(Config config) {
+        default Dao<String, Entry<String>> createStringDao(Config config) throws IOException {
             return new TestDao<>(this, config);
         }
     }
