@@ -86,13 +86,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         return raf.getFilePointer() == raf.length() || raf.getFilePointer() <= 0;
     }
 
-    private BaseEntry<ByteBuffer> readEntry(RandomAccessFile raf) throws IOException {
-        ByteBuffer key = readByteBuffer(raf);
-        ByteBuffer value = readByteBuffer(raf);
-        raf.readLine();
-        return new BaseEntry<>(key, value);
-    }
-
     private BaseEntry<ByteBuffer> binarySearchInFile(RandomAccessFile raf, ByteBuffer key) throws IOException {
         if (raf.length() == 0) {
             return null;
