@@ -10,7 +10,6 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.SortedMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,6 +29,7 @@ public class FileManager {
             throw new IllegalArgumentException();
         }
         this.config = config;
+        pathToWrite = config.basePath().resolve(DATA_UNIT_NAME + EXTENSION);
         File sourceDirectory = config.basePath().toFile();
         if (!sourceDirectory.exists() || !sourceDirectory.isDirectory()) {
             boolean isDirCreated = config.basePath().toFile().mkdir();
@@ -50,7 +50,8 @@ public class FileManager {
     }
 
     public BaseEntry<ByteBuffer> getByKey(ByteBuffer key) throws IOException {
-        Pattern filePattern = Pattern.compile(DATA_UNIT_NAME + "[0-9]+" + EXTENSION);
+        return searchFile(pathToWrite.toFile(), key);
+        /*Pattern filePattern = Pattern.compile(DATA_UNIT_NAME + "[0-9]+" + EXTENSION);
         BaseEntry<ByteBuffer> result;
 
         File[] files = config.basePath().toFile().listFiles();
@@ -63,7 +64,7 @@ public class FileManager {
                 }
             }
         }
-        return null;
+        return null;*/
     }
 
     private BaseEntry<ByteBuffer> searchFile(File file, ByteBuffer key) throws IOException {
@@ -96,8 +97,8 @@ public class FileManager {
         if (data == null) {
             throw new IllegalArgumentException();
         }
-        createDataFileIfNotExists();
-        try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(pathToWrite.toFile()))) {
+        //createDataFileIfNotExists();
+        try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(pathToWrite.toFile(), true))) {
             for (BaseEntry<ByteBuffer> e : data.values()) {
                 ByteBuffer entry = getBufferFromEntry(e);
                 out.write(entry.array());
