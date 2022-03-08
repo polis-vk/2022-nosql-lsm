@@ -23,25 +23,15 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final Config config;
 
-    public InMemoryDao(Config config) {
+    private final Path path;
+
+    public InMemoryDao(Config config) throws IOException {
         this.config = config;
-        Path path = config.basePath().resolve(DATA_FILE_NAME);
-        if (Files.exists(path)) {
-            try (InputStream in = Files.newInputStream(path)) {
-                int size;
-                while ((size = in.read()) > -1) {
-                    BaseEntry<ByteBuffer> entry = new BaseEntry(ByteBuffer.wrap(in.readNBytes(size)),
-                            ByteBuffer.wrap(in.readNBytes(in.read())));
-                    collection.put(entry.key(), entry);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e); // зато сигнатура целая
-            }
-        }
+        this.path = config.basePath().resolve(DATA_FILE_NAME);
     }
 
     @Override
-    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
+    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
         if (collection.isEmpty()) {
             return Collections.emptyIterator();
         }
@@ -63,13 +53,47 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) {
-        return collection.get(key);
+    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
+
+        BaseEntry<ByteBuffer> value = collection.get(key);
+        if (value != null) {
+            return value;
+        }
+        if (!Files.exists(path)) {
+            return null;
+        }
+        return searchFile(key);
+    }
+
+    private BaseEntry<ByteBuffer> searchFile(ByteBuffer key) throws IOException {
+        try (InputStream in = Files.newInputStream(path)) {
+            while (in.available() > Integer.BYTES) {
+                ByteBuffer value = read(in, key);
+                if (value != null) {
+                    return new BaseEntry<>(key, value);
+                }
+
+            }
+        }
+        return null;
+    }
+
+    private ByteBuffer read(InputStream in, ByteBuffer key) throws IOException {
+        int keySize = in.read();
+        if (!key.equals(wrap(in.readNBytes(keySize)))) {
+            return null;
+        }
+        int valSize = in.read();
+        return ByteBuffer.wrap(in.readNBytes(valSize));
+    }
+
+    //non-heap?
+    private ByteBuffer wrap(byte[] bytes) {
+        return ByteBuffer.allocateDirect(bytes.length).put(bytes).flip();
     }
 
     @Override
     public void flush() throws IOException {
-        Path path = config.basePath().resolve(DATA_FILE_NAME);
         if (collection.isEmpty()) {
             return;
         }
