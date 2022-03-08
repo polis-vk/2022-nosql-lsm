@@ -20,9 +20,9 @@ public class DaoReader implements Closeable {
     }
 
     public BaseEntry<ByteBuffer> retrieveElement(ByteBuffer key) throws IOException {
-        int size = readInt();
+        int mapSize = readInt();
         BaseEntry<ByteBuffer> elem;
-        for (int i = 0; i < size; i++) {
+        for (int i = 0; i < mapSize; i++) {
             elem = readElementPair();
             if (elem.key().compareTo(key) == 0) {
                 return elem;
@@ -86,17 +86,17 @@ public class DaoReader implements Closeable {
     }
 
     public int checkForKey(ByteBuffer key) throws IOException {
-        int size = readInt();
+        int mapSize = readInt();
         ByteBuffer prevElem = null;
         ByteBuffer elem;
-        for (int i = 0; i < size; i++) {
+        for (int i = 0; i < mapSize; i++) {
             elem = readElementPair().key();
 
             if (i == 0 && elem.compareTo(key) > 0) {
                 return -1;
             } else if (prevElem != null && prevElem.compareTo(key) < 0 && elem.compareTo(key) > 0) {
                 return 404;
-            } else if (elem.compareTo(key) < 0 && i + 1 == size) {
+            } else if (elem.compareTo(key) < 0 && i + 1 == mapSize) {
                 return 1;
             } else if (elem.compareTo(key) == 0) {
                 return 0;
@@ -108,10 +108,10 @@ public class DaoReader implements Closeable {
     }
 
     public ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> readMap() throws IOException {
-        int size = readInt();
+        int mapSize = readInt();
         ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
         BaseEntry<ByteBuffer> entry;
-        for (int i = 0; i < size; i++) {
+        for (int i = 0; i < mapSize; i++) {
             entry = readElementPair();
             map.put(entry.key(), entry);
         }
@@ -135,8 +135,8 @@ public class DaoReader implements Closeable {
     }
 
     public ByteBuffer readElement() throws IOException {
-        int size = readInt();
-        ByteBuffer buffer = ByteBuffer.allocate(size);
+        int elementSize = readInt();
+        ByteBuffer buffer = ByteBuffer.allocate(elementSize);
         reader.read(buffer.array());
         buffer.rewind();
         return buffer;

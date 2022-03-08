@@ -20,14 +20,12 @@ public class DaoWriter implements Closeable {
 
     public void writeMap(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map) throws IOException {
         writeInt(map.size());
-        int counter = 0;
         for (BaseEntry<ByteBuffer> entry : map.values()) {
-            writeElementPair(entry, counter);
-            counter++;
+            writeElementPair(entry);
         }
     }
 
-    public void writeElementPair(BaseEntry<ByteBuffer> entry, int place) throws IOException {
+    public void writeElementPair(BaseEntry<ByteBuffer> entry) throws IOException {
         int keyLen = entry.key().array().length;
         int valLen = entry.value().array().length;
         ByteBuffer buffer = ByteBuffer.wrap(new byte[3 * Integer.BYTES + keyLen + valLen + Byte.BYTES]);
