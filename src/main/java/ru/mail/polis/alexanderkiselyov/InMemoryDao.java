@@ -53,7 +53,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (value != null && Arrays.equals(value.key(), key)) {
             return value;
         }
-        return findInFiles(key);
+        BaseEntry<byte[]> entryFound = findInFiles(key);
+        if (entryFound != null) {
+            upsert(entryFound);
+        }
+        return entryFound;
     }
 
     @Override
