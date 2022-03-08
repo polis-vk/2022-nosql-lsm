@@ -17,6 +17,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final String pathToDataFile;
+    private static final char PAIR_SEPARATOR = '\n';
+    private static int minSizeOfElem = Integer.MAX_VALUE;
 
     public InMemoryDao(Config config) {
         pathToDataFile = config.basePath().resolve("data.txt").toString();
@@ -55,6 +57,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         data.put(entry.key(), entry);
+        minSizeOfElem = Math.min(entry.key().remaining(), entry.value().remaining());
     }
 
     @Override
@@ -93,7 +96,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
         long a = 0;
         long b = raf.length();
-        while (b - a > 20) {
+        while (b - a > minSizeOfElem) {
             long c = (b + a) / 2;
             raf.seek(c);
             rollbackToPairStart(raf);
@@ -123,7 +126,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private boolean isPairSeparator(char ch) {
-        return ch == '\n';
+        return ch == PAIR_SEPARATOR;
     }
 
     private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
@@ -138,18 +141,18 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return;
         }
 
-        ByteBuffer bb;
-        int bbSize = (Integer.BYTES + 11 + Integer.BYTES + 11 + Character.BYTES) * data.size();
         try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "rw")) {
-            bb = ByteBuffer.wrap(new byte[bbSize]);
             for (BaseEntry<ByteBuffer> entry: data.values()) {
+                int bbSize = Integer.BYTES + entry.key().remaining()
+                           + Integer.BYTES + entry.value().remaining() + Character.BYTES;
+                ByteBuffer bb = ByteBuffer.wrap(new byte[bbSize]);
                 bb.putInt(entry.key().remaining());
                 bb.put(entry.key());
                 bb.putInt(entry.value().remaining());
                 bb.put(entry.value());
-                bb.putChar('\n');
+                bb.putChar(PAIR_SEPARATOR);
+                raf.write(bb.array());
             }
-            raf.write(bb.array());
         }
     }
 
