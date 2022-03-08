@@ -17,8 +17,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final String pathToDataFile;
-    private static final char PAIR_SEPARATOR = '\n';
-    private static int minSizeOfElem = Integer.MAX_VALUE;
 
     public InMemoryDao(Config config) {
         pathToDataFile = config.basePath().resolve("data.txt").toString();
@@ -57,7 +55,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         data.put(entry.key(), entry);
-        InMemoryDao.minSizeOfElem = Math.min(entry.key().remaining(), entry.value().remaining());
+        Utils.minSizeOfElem = Math.min(entry.key().remaining(), entry.value().remaining());
     }
 
     @Override
@@ -96,7 +94,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
         long a = 0;
         long b = raf.length();
-        while (b - a > InMemoryDao.minSizeOfElem) {
+        while (b - a > Utils.minSizeOfElem) {
             long c = (b + a) / 2;
             raf.seek(c);
             rollbackToPairStart(raf);
@@ -126,7 +124,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private boolean isPairSeparator(char ch) {
-        return ch == InMemoryDao.PAIR_SEPARATOR;
+        return ch == Utils.PAIR_SEPARATOR;
     }
 
     private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
@@ -150,7 +148,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 bb.put(entry.key());
                 bb.putInt(entry.value().remaining());
                 bb.put(entry.value());
-                bb.putChar(InMemoryDao.PAIR_SEPARATOR);
+                bb.putChar(Utils.PAIR_SEPARATOR);
                 raf.write(bb.array());
             }
         }
