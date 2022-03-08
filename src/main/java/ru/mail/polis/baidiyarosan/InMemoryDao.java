@@ -20,13 +20,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String DATA_FILE_NAME = "data.log";
 
     private final NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection = new ConcurrentSkipListMap<>();
-    //codeclimate why
-    //private final Config config;
 
     private final Path path;
 
     public InMemoryDao(Config config) throws IOException {
-        //this.config = config;
         this.path = config.basePath().resolve(DATA_FILE_NAME);
     }
 
