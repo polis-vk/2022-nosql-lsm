@@ -20,7 +20,6 @@ import ru.mail.polis.Config;
 public class FileManager {
     private static final String DATA_UNIT_NAME = "table";
     private static final String EXTENSION = ".txt";
-    private static final int BUFFER_SIZE = 60;
 
     private Path pathToWrite;
     private int counter;
@@ -78,11 +77,12 @@ public class FileManager {
                 int keySize = fileToRead.readInt();
                 ByteBuffer keyBuffer = ByteBuffer.allocate(keySize);
                 ch.read(keyBuffer);
-                keyBuffer.flip();
+                keyBuffer.rewind();
                 int valueSize = fileToRead.readInt();
                 if (keyBuffer.equals(key)) {
                     ByteBuffer valueBuffer = ByteBuffer.allocate(valueSize);
                     ch.read(valueBuffer);
+                    valueBuffer.rewind();
                     result = new BaseEntry<ByteBuffer>(keyBuffer, valueBuffer);
                 } else {
                     fileToRead.skipBytes(valueSize);
