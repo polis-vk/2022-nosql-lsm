@@ -1,15 +1,9 @@
 package ru.mail.polis.artyomscheredin;
 
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
-
-import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.channels.Channel;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,10 +12,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+
 public class FileManager {
     private static final String DATA_UNIT_NAME = "table";
     private static final String EXTENSION = ".txt";
-    private static final int BUFFER_SIZE = 50;
+    private static final int BUFFER_SIZE = 60;
 
     private Path pathToWrite;
     private int counter;
@@ -98,10 +95,23 @@ public class FileManager {
             throw new IllegalArgumentException();
         }
         createDataFileIfNotExists();
-        try (FileChannel channel = new FileOutputStream(pathToWrite.toFile(), false).getChannel()) {
+        try (FileChannel channel = new RandomAccessFile(pathToWrite.toFile(), "rw").getChannel()) {
+            CopyOnWriteArrayList<ByteBuffer> entryBuffer = new CopyOnWriteArrayList<ByteBuffer>();
+            int size = 0;
             for (BaseEntry<ByteBuffer> e : data.values()) {
-                channel.write(getBufferFromEntry(e));
+                ByteBuffer entry = getBufferFromEntry(e);
+                entryBuffer.add(entry);
+                size += entry.remaining();
+                if (entryBuffer.size() == BUFFER_SIZE) {
+                    channel.write(getBufferFromList(entryBuffer, size));
+                    entryBuffer.clear();
+                    size = 0;
+                }
             }
+            if (!entryBuffer.isEmpty()) {
+                channel.write(getBufferFromList(entryBuffer, size));
+            }
+            channel.force(false);
         }
         counter++;
     }
@@ -115,5 +125,14 @@ public class FileManager {
         buffer.put(e.value());
         buffer.rewind();
         return buffer;
+    }
+
+    private ByteBuffer getBufferFromList(CopyOnWriteArrayList<ByteBuffer> buffer, int size) {
+        ByteBuffer result = ByteBuffer.allocate(size);
+        for (ByteBuffer el : buffer) {
+            result.put(el);
+        }
+        result.rewind();
+        return result;
     }
 }
