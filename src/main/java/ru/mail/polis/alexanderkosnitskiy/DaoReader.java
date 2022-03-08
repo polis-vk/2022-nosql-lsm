@@ -3,7 +3,6 @@ package ru.mail.polis.alexanderkosnitskiy;
 import ru.mail.polis.BaseEntry;
 
 import java.io.Closeable;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -32,7 +31,7 @@ public class DaoReader implements Closeable {
     }
 
     public BaseEntry<ByteBuffer> binarySearch(ByteBuffer key) throws IOException {
-        int size = readInt();
+        readInt();
         long lowerBond = 0;
         long higherBond = this.size;
         long middle = higherBond / 2;
@@ -62,21 +61,20 @@ public class DaoReader implements Closeable {
         while (position != size) {
             reader.read(buffer.array());
             bytes = buffer.array();
-            for(int i = 0; i < bytes.length; i++) {
-                if(bytes[i] == '\n') {
+            for (int i = 0; i < bytes.length; i++) {
+                if (bytes[i] == '\n') {
                     position += i;
                     entry.bytePosition = position;
                     result = '\n';
                     break;
                 }
             }
-            if(result == '\n') {
+            if (result == '\n') {
                 break;
             }
             position += bufSize;
         }
-        reader.seek(position - 2 * Integer.BYTES);
-        entry.place = readInt();
+        reader.seek(position - Integer.BYTES);
         entry.size = readInt();
 
         reader.seek(position - entry.size);
@@ -120,8 +118,8 @@ public class DaoReader implements Closeable {
     }
 
     public BaseEntry<ByteBuffer> readElementPair() throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES * 2 + Byte.BYTES);
-        reader.read(buffer.array(), 0, Integer.BYTES * 2);
+        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES * 2);
+        reader.read(buffer.array());
         buffer.rewind();
         int keyLen = buffer.getInt();
         int valLen = buffer.getInt();
@@ -131,7 +129,7 @@ public class DaoReader implements Closeable {
         reader.read(valBuffer.array());
         keyBuffer.rewind();
         valBuffer.rewind();
-        reader.read(buffer.array());
+        reader.read(buffer.array(), 0, Integer.BYTES + Byte.BYTES);
         return new BaseEntry<ByteBuffer>(keyBuffer, valBuffer);
     }
 

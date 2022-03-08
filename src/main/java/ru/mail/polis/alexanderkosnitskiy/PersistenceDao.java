@@ -55,13 +55,13 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         memory.clear();
     }
 
-    private synchronized void store() throws IOException {
+    private void store() throws IOException {
         try (DaoWriter out = new DaoWriter(config.basePath() + File.separator + FILE)) {
             out.writeMap(memory);
         }
     }
 
-    private synchronized BaseEntry<ByteBuffer> findInFile(ByteBuffer key) throws IOException {
+    private BaseEntry<ByteBuffer> findInFile(ByteBuffer key) throws IOException {
         try (DaoReader finder = new DaoReader(config.basePath() + File.separator + FILE)) {
             return finder.binarySearch(key);
         } catch (FileNotFoundException e) {

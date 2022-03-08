@@ -28,13 +28,12 @@ public class DaoWriter implements Closeable {
     public void writeElementPair(BaseEntry<ByteBuffer> entry, int place) throws IOException {
         int keyLen = entry.key().array().length;
         int valLen = entry.value().array().length;
-        ByteBuffer buffer = ByteBuffer.wrap(new byte[4 * Integer.BYTES + keyLen + valLen + Byte.BYTES]);
+        ByteBuffer buffer = ByteBuffer.wrap(new byte[3 * Integer.BYTES + keyLen + valLen + Byte.BYTES]);
         buffer.putInt(keyLen);
         buffer.putInt(valLen);
         buffer.put(entry.key().array());
         buffer.put(entry.value().array());
-        buffer.putInt(place);
-        buffer.putInt(4 * Integer.BYTES + keyLen + valLen);
+        buffer.putInt(3 * Integer.BYTES + keyLen + valLen);
         buffer.put((byte) '\n');
         writer.write(buffer.array());
     }
