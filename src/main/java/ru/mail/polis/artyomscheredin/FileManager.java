@@ -50,12 +50,12 @@ public class FileManager {
     }
 
     public BaseEntry<ByteBuffer> getByKey(ByteBuffer key) throws IOException {
-        Pattern pattern = Pattern.compile(DATA_UNIT_NAME + "[0-9]+" + EXTENSION);
+        Pattern filePattern = Pattern.compile(DATA_UNIT_NAME + "[0-9]+" + EXTENSION);
         BaseEntry<ByteBuffer> result;
 
         File[] files = config.basePath().toFile().listFiles();
         for (int i = files.length - 1; i >= 0; i--) {
-            Matcher matcher = pattern.matcher(files[i].getName());
+            Matcher matcher = filePattern.matcher(files[i].getName());
             if (matcher.matches()) {
                 result = searchFile(files[i], key);
                 if (result != null) {
