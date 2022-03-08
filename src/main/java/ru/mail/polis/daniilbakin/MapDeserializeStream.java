@@ -3,6 +3,7 @@ package ru.mail.polis.daniilbakin;
 import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -17,18 +18,8 @@ public class MapDeserializeStream {
 
     private final MappedByteBuffer mapBuffer;
     private final MappedByteBuffer indexesBuffer;
-
-    private static final Method CLEAN;
-
-    static {
-        try {
-            Class<?> aClass = Class.forName("sun.nio.ch.FileChannelImpl");
-            CLEAN = aClass.getDeclaredMethod("unmap", MappedByteBuffer.class);
-            CLEAN.setAccessible(true);
-        } catch (ClassNotFoundException | NoSuchMethodException e) {
-            throw new IllegalStateException();
-        }
-    }
+    private final Method unmap;
+    private final Object unsafe;
 
     public MapDeserializeStream(Path map, Path indexes) throws IOException {
         FileChannel mapChannel = (FileChannel) Files.newByteChannel(map, Set.of(StandardOpenOption.READ));
@@ -39,11 +30,27 @@ public class MapDeserializeStream {
 
         mapChannel.close();
         indexesChannel.close();
+
+        try {
+            Class unsafeClass = Class.forName("sun.misc.Unsafe");
+            unmap = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
+            unmap.setAccessible(true);
+            Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
+            theUnsafeField.setAccessible(true);
+            unsafe = theUnsafeField.get(null);
+
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
     }
 
     public void close() throws IOException {
-        unmap(mapBuffer);
-        unmap(indexesBuffer);
+        try {
+            unmap.invoke(unsafe, mapBuffer);
+            unmap.invoke(unsafe, indexesBuffer);
+        } catch (ReflectiveOperationException e) {
+            throw new IOException(e);
+        }
     }
 
     public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) {
@@ -99,17 +106,6 @@ public class MapDeserializeStream {
 
     private int getIndexByOrder(int order) {
         return indexesBuffer.getInt(order * Integer.BYTES);
-    }
-
-    private void unmap(MappedByteBuffer nmap) throws IOException {
-        if (nmap == null) {
-            return;
-        }
-        try {
-            CLEAN.invoke(null, nmap);
-        } catch (InvocationTargetException | IllegalAccessException e) {
-            throw new IOException();
-        }
     }
 
 }
