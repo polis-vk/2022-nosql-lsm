@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.util.SortedMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
@@ -16,6 +17,7 @@ import ru.mail.polis.Config;
 public class FileManager {
     private static final String DATA_UNIT_NAME = "table";
     private static final String EXTENSION = ".txt";
+    private static final int BUFFER_SIZE = 100;
 
     private Path pathToWrite;
     Config config;
@@ -69,11 +71,23 @@ public class FileManager {
         if (data == null) {
             throw new IllegalArgumentException();
         }
-        try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(pathToWrite.toFile(), true))) {
+        try (FileChannel channel = new RandomAccessFile(pathToWrite.toFile(), "rw").getChannel()) {
+            CopyOnWriteArrayList<ByteBuffer> entryBuffer = new CopyOnWriteArrayList<ByteBuffer>();
+            int size = 0;
             for (BaseEntry<ByteBuffer> e : data.values()) {
                 ByteBuffer entry = getBufferFromEntry(e);
-                out.write(entry.array());
+                entryBuffer.add(entry);
+                size += entry.remaining();
+                if (entryBuffer.size() == BUFFER_SIZE) {
+                    channel.write(getBufferFromList(entryBuffer, size));
+                    entryBuffer.clear();
+                    size = 0;
+                }
             }
+            if (!entryBuffer.isEmpty()) {
+                channel.write(getBufferFromList(entryBuffer, size));
+            }
+            channel.force(false);
         }
     }
 
@@ -86,5 +100,14 @@ public class FileManager {
         buffer.put(e.value());
         buffer.rewind();
         return buffer;
+    }
+
+    private ByteBuffer getBufferFromList(CopyOnWriteArrayList<ByteBuffer> buffer, int size) {
+        ByteBuffer result = ByteBuffer.allocate(size);
+        for (ByteBuffer el : buffer) {
+            result.put(el);
+        }
+        result.rewind();
+        return result;
     }
 }
