@@ -4,20 +4,18 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Writer;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
+import java.util.Arrays;
 import java.util.NavigableSet;
+import java.util.Scanner;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
@@ -39,8 +37,9 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
                 Files.createFile(logPath);
             }
 
-            diskWriter = new EntryWriter(new FileWriter(String.valueOf(logPath), StandardCharsets.UTF_8));
-            diskReader = new EntryReader(new FileInputStream(String.valueOf(logPath)));
+            diskWriter = new EntryWriter(new FileWriter(String.valueOf(logPath),
+                    StandardCharsets.UTF_8, true));
+            diskReader = new EntryReader(logPath);
         } else {
             diskWriter = null;
             diskReader = null;
@@ -139,30 +138,29 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     static class EntryReader {
-        private final FileInputStream fileInputStream;
+        private final Path logPath;
 
-        public EntryReader(FileInputStream fileInputStream) {
-            this.fileInputStream = fileInputStream;
+        public EntryReader(Path logPath) {
+            this.logPath = logPath;
         }
 
         public BaseEntry<byte[]> getByKey(byte[] targetKey) throws IOException {
-            fileInputStream.getChannel().position(0);
-            String targetKeyString = Arrays.toString(targetKey);
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(fileInputStream,
-                    StandardCharsets.UTF_8));
-            while (true) {
-                String key = bufferedReader.readLine();
-                String value = bufferedReader.readLine();
+            Scanner scanner = new Scanner(logPath, StandardCharsets.UTF_8);
+            String targetKeyString = new String(targetKey, StandardCharsets.UTF_8);
+            String resultValue = null;
 
-                if (key == null || value == null) {
-                    return null;
-                }
+            while (scanner.hasNextLine()) {
+                String key = scanner.nextLine();
+                String value = scanner.nextLine();
 
                 if (key.equals(targetKeyString)) {
-                    return new BaseEntry<>(key.getBytes(StandardCharsets.UTF_8),
-                            value.getBytes(StandardCharsets.UTF_8));
+                    resultValue = value;
                 }
             }
+
+            return resultValue == null ? null :
+                    new BaseEntry<>(targetKeyString.getBytes(StandardCharsets.UTF_8),
+                    resultValue.getBytes(StandardCharsets.UTF_8));
         }
     }
 
