@@ -3,14 +3,21 @@ package ru.mail.polis.dmitreemaximenko;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
-import ru.mail.polis.Entry;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.Writer;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.NavigableSet;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
@@ -30,16 +37,8 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
             if (Files.notExists(logPath)) {
                 Files.createFile(logPath);
-            } else {
-                Scanner scanner = new Scanner(logPath, StandardCharsets.UTF_8);
-                while (scanner.hasNextLine()) {
-                    String key = scanner.nextLine();
-                    String value = scanner.nextLine();
-
-                    upsert(new BaseEntry<>(key.getBytes(StandardCharsets.UTF_8),
-                            value.getBytes(StandardCharsets.UTF_8)));
-                }
             }
+
             diskWriter = new EntryWriter(new FileWriter(String.valueOf(logPath), StandardCharsets.UTF_8));
             diskReader = new EntryReader(new FileInputStream(String.valueOf(logPath)));
         } else {
@@ -166,6 +165,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             }
         }
     }
+
     @Override
     public void close() throws IOException {
         if (diskWriter != null) {
