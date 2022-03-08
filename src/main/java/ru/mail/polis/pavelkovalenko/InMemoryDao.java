@@ -82,13 +82,28 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
     }
 
+    private boolean reachedEOF(RandomAccessFile raf) throws IOException {
+        return raf.getFilePointer() == raf.length() || raf.getFilePointer() <= 0;
+    }
+
+    private BaseEntry<ByteBuffer> readEntry(RandomAccessFile raf) throws IOException {
+        ByteBuffer key = readByteBuffer(raf);
+        ByteBuffer value = readByteBuffer(raf);
+        raf.readLine();
+        return new BaseEntry<>(key, value);
+    }
+
     private BaseEntry<ByteBuffer> binarySearchInFile(RandomAccessFile raf, ByteBuffer key) throws IOException {
+        if (raf.length() == 0) {
+            return null;
+        }
+
         long a = 0;
         long b = raf.length();
         while (b - a > 20) {
             long c = (b + a) / 2;
             raf.seek(c);
-            raf.readLine();
+            rollbackToPairStart(raf);
             ByteBuffer curKey = readByteBuffer(raf);
             int compare = curKey.compareTo(key);
             if (compare < 0) {
@@ -100,8 +115,22 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
         }
 
-        raf.seek(a);
-        return new BaseEntry<>(readByteBuffer(raf), readByteBuffer(raf));
+        return null;
+    }
+
+    private void rollbackToPairStart(RandomAccessFile raf) throws IOException {
+        long curPos = raf.getFilePointer();
+        if (curPos % 2 == 1) {
+            --curPos;
+        }
+        while (!reachedEOF(raf) && !isPairSeparator(raf.readChar())) {
+            curPos -= Character.BYTES;
+            raf.seek(Math.max(curPos, 0));
+        }
+    }
+
+    private boolean isPairSeparator(char ch) {
+        return ch == '\n';
     }
 
     private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
