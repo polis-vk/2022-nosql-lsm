@@ -17,7 +17,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final String pathToDataFile;
-    private long lastWrittenPos;
 
     public InMemoryDao(Config config) {
         pathToDataFile = config.basePath().resolve("data.txt").toString();
@@ -47,7 +46,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) {
         try {
-            return findEntry(key);
+            return findKey(key);
         } catch (IOException e) {
             return null;
         }
@@ -68,38 +67,41 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         flush();
     }
 
-    private BaseEntry<ByteBuffer> findEntry(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> result = findEntryInMap(key);
-        return result == null ? findEntryInFile(key) : result;
+    private BaseEntry<ByteBuffer> findKey(ByteBuffer key) throws IOException {
+        BaseEntry<ByteBuffer> result = findKeyInMap(key);
+        return result == null ? findKeyInFile(key) : result;
     }
 
-    private BaseEntry<ByteBuffer> findEntryInMap(ByteBuffer key) {
+    private BaseEntry<ByteBuffer> findKeyInMap(ByteBuffer key) {
         return data.get(key);
     }
 
-    private BaseEntry<ByteBuffer> findEntryInFile(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> result;
+    private BaseEntry<ByteBuffer> findKeyInFile(ByteBuffer key) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "r")) {
-            do {
-                result = readEntry(raf);
-            } while (!result.key().equals(key) && !reachedEOF(raf));
+            return binarySearchInFile(raf, key);
+        }
+    }
 
-            if (reachedEOF(raf) && !result.key().equals(key)) {
-                return null;
+    private BaseEntry<ByteBuffer> binarySearchInFile(RandomAccessFile raf, ByteBuffer key) throws IOException {
+        long a = 0;
+        long b = raf.length();
+        while (b - a > 20) {
+            long c = (b + a)/2;
+            raf.seek(c);
+            raf.readLine();
+            ByteBuffer curKey = readByteBuffer(raf);
+            int compare = curKey.compareTo(key);
+            if (compare < 0) {
+                a = c;
+            } else if (compare == 0) {
+                return new BaseEntry<>(curKey, readByteBuffer(raf));
+            } else {
+                b = c;
             }
         }
-        return result;
-    }
 
-    private boolean reachedEOF(RandomAccessFile raf) throws IOException {
-        return raf.getFilePointer() == raf.length();
-    }
-
-    private BaseEntry<ByteBuffer> readEntry(RandomAccessFile raf) throws IOException {
-        ByteBuffer key = readByteBuffer(raf);
-        ByteBuffer value = readByteBuffer(raf);
-        raf.readLine();
-        return new BaseEntry<>(key, value);
+        raf.seek(a);
+        return new BaseEntry<>(readByteBuffer(raf), readByteBuffer(raf));
     }
 
     private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
@@ -118,7 +120,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         int bbSize = (Integer.BYTES + 11 + Integer.BYTES + 11 + Character.BYTES) * data.size();
         try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "rw")) {
             bb = ByteBuffer.wrap(new byte[bbSize]);
-            raf.seek(lastWrittenPos);
             for (BaseEntry<ByteBuffer> entry: data.values()) {
                 bb.putInt(entry.key().remaining());
                 bb.put(entry.key());
@@ -127,7 +128,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 bb.putChar('\n');
             }
             raf.write(bb.array());
-            lastWrittenPos = raf.getFilePointer();
         }
     }
 
