@@ -4,8 +4,18 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.*;
-import java.nio.file.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.EOFException;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.nio.file.Files;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -14,7 +24,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.logging.*;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -141,7 +155,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             keyRangesMap.put(subList.get(0).key(), path.toString());
             countDownLatch.countDown();
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "Writing to file " + path.getFileName() + " with index " + fileIndex + " failed: ", e);
+            logger.log(Level.SEVERE,
+                    "Writing to file " + path.getFileName() + " with index " + fileIndex + " failed: ", e);
         }
     }
 
@@ -186,7 +201,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private Path getPathOfDataFile(String key) {
         Map.Entry<String, String> keyPathEntry = keyRangesMap.floorEntry(key);
-        return keyPathEntry != null ? Path.of(keyPathEntry.getValue()) : null;
+        return keyPathEntry == null ? null : Path.of(keyPathEntry.getValue());
     }
 
     private static void writeObjectToFile(Object object, Path path) {
