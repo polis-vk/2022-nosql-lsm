@@ -6,6 +6,7 @@ import ru.mail.polis.Dao;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.file.Paths;
 import java.util.Iterator;
@@ -62,7 +63,9 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void close() throws IOException {
-        if (deserialize != null) deserialize.close();
+        if (deserialize != null) {
+            deserialize.close();
+        }
         flush();
     }
 

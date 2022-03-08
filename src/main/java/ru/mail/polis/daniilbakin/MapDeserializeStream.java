@@ -1,7 +1,8 @@
 package ru.mail.polis.daniilbakin;
 
+import ru.mail.polis.BaseEntry;
+
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -12,12 +13,22 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Set;
 
-import ru.mail.polis.BaseEntry;
-
 public class MapDeserializeStream {
 
     private final MappedByteBuffer mapBuffer;
     private final MappedByteBuffer indexesBuffer;
+
+    private static final Method CLEAN;
+
+    static {
+        try {
+            Class<?> aClass = Class.forName("sun.nio.ch.FileChannelImpl");
+            CLEAN = aClass.getDeclaredMethod("unmap", MappedByteBuffer.class);
+            CLEAN.setAccessible(true);
+        } catch (ClassNotFoundException | NoSuchMethodException e) {
+            throw new IllegalStateException();
+        }
+    }
 
     public MapDeserializeStream(Path map, Path indexes) throws IOException {
         FileChannel mapChannel = (FileChannel) Files.newByteChannel(map, Set.of(StandardOpenOption.READ));
@@ -31,12 +42,8 @@ public class MapDeserializeStream {
     }
 
     public void close() throws IOException {
-        try {
-            closeDirectBuffer(mapBuffer);
-            closeDirectBuffer(indexesBuffer);
-        } catch (ReflectiveOperationException e) {
-            throw new IOException(e);
-        }
+        unmap(mapBuffer);
+        unmap(indexesBuffer);
     }
 
     public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) {
@@ -94,19 +101,15 @@ public class MapDeserializeStream {
         return indexesBuffer.getInt(order * Integer.BYTES);
     }
 
-    private void closeDirectBuffer(ByteBuffer cb) throws ReflectiveOperationException {
-        if (cb == null || !cb.isDirect()) return;
-        Class unsafeClass;
-        try {
-            unsafeClass = Class.forName("sun.misc.Unsafe");
-        } catch (Exception ex) {
-            unsafeClass = Class.forName("jdk.internal.misc.Unsafe");
+    private void unmap(MappedByteBuffer nmap) throws IOException {
+        if (nmap == null) {
+            return;
         }
-        Method clean = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
-        clean.setAccessible(true);
-        Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
-        theUnsafeField.setAccessible(true);
-        Object theUnsafe = theUnsafeField.get(null);
-        clean.invoke(theUnsafe, cb);
+        try {
+            CLEAN.invoke(null, nmap);
+        } catch (InvocationTargetException | IllegalAccessException e) {
+            throw new IOException();
+        }
     }
+
 }
