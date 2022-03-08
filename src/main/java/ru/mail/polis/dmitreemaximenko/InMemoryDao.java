@@ -1,8 +1,13 @@
 package ru.mail.polis.dmitreemaximenko;
 
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
+import ru.mail.polis.Entry;
 
+import java.io.*;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -12,6 +17,19 @@ import java.util.concurrent.ConcurrentSkipListSet;
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableSet<BaseEntry<byte[]>> data =
             new ConcurrentSkipListSet<>(new RecordNaturalOrderComparator());
+    private final EntryWriter diskWriter;
+
+    public InMemoryDao() throws IOException {
+        this(null);
+    }
+
+    public InMemoryDao(Config config) throws IOException {
+        if (config != null) {
+            diskWriter = new EntryWriter(new FileWriter(String.valueOf(config.basePath())));
+        } else {
+            diskWriter = null;
+        }
+    }
 
     @Override
     public BaseEntry<byte[]> get(byte[] key) {
@@ -35,9 +53,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public void upsert(BaseEntry<byte[]> entry) {
+    public void upsert(BaseEntry<byte[]> entry) throws IOException {
         data.remove(entry);
         data.add(entry);
+
+        diskWriter.write(entry);
     }
 
     static class BorderedIterator implements Iterator<BaseEntry<byte[]>> {
@@ -76,5 +96,23 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             }
             return key1.length - key2.length;
         }
+    }
+
+    static class EntryWriter extends BufferedWriter {
+        public EntryWriter(Writer out) {
+            super(out);
+        }
+
+        void write(BaseEntry<byte[]> e) throws IOException {
+            super.write(String.valueOf(e.key()));
+            super.write(System.getProperty("line.separator"));
+            super.write(String.valueOf(e.value()));
+            super.write(System.getProperty("line.separator"));
+        }
+    }
+
+    @Override
+    public void close() throws IOException {
+        diskWriter.close();
     }
 }
