@@ -17,8 +17,7 @@ public class FileWriter {
     }
 
     public void write(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map) throws IOException {
-        try (RandomAccessFile file = new RandomAccessFile(filePath.toFile(), "rw");
-             FileChannel channel = file.getChannel()) {
+        try (FileChannel channel = new RandomAccessFile(filePath.toFile(), "rw").getChannel()) {
             for (BaseEntry<ByteBuffer> entry : map.values()) {
                 ByteBuffer result =
                         ByteBuffer.allocate(entry.key().remaining() + entry.value().remaining() + Integer.BYTES * 2);

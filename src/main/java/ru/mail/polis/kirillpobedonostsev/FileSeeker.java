@@ -2,6 +2,7 @@ package ru.mail.polis.kirillpobedonostsev;
 
 import ru.mail.polis.BaseEntry;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -15,7 +16,7 @@ public class FileSeeker {
         this.dataFilename = filename;
     }
 
-    public BaseEntry<ByteBuffer> tryFind(ByteBuffer key) {
+    public BaseEntry<ByteBuffer> tryFind(ByteBuffer key) throws IOException {
         ByteBuffer value = null;
         try (RandomAccessFile file = new RandomAccessFile(dataFilename.toFile(), "r");
              FileChannel channel = file.getChannel()) {
@@ -33,8 +34,6 @@ public class FileSeeker {
                     file.skipBytes(valueLength);
                 }
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
         return value == null ? null : new BaseEntry<>(key, value);
     }
