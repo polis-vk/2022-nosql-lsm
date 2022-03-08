@@ -115,7 +115,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
 
         ByteBuffer bb;
-        int bbSize = (Integer.BYTES + 11 + Integer.BYTES + 11 + Character.BYTES)*data.size();
+        int bbSize = (Integer.BYTES + 11 + Integer.BYTES + 11 + Character.BYTES) * data.size();
         try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "rw")) {
             bb = ByteBuffer.wrap(new byte[bbSize]);
             raf.seek(lastWrittenPos);
