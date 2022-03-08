@@ -4,7 +4,6 @@ import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
@@ -32,10 +31,9 @@ public class MapDeserializeStream {
         indexesChannel.close();
 
         try {
-            Class unsafeClass = Class.forName("sun.misc.Unsafe");
-            unmap = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
+            unmap = Class.forName("sun.misc.Unsafe").getMethod("invokeCleaner", ByteBuffer.class);
             unmap.setAccessible(true);
-            Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
+            Field theUnsafeField = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe");
             theUnsafeField.setAccessible(true);
             unsafe = theUnsafeField.get(null);
 
