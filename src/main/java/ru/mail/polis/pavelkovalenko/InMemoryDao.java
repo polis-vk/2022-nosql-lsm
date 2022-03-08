@@ -7,7 +7,6 @@ import ru.mail.polis.Dao;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
@@ -18,9 +17,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final String pathToDataFile;
-    private static final int DATA_SIZE_TRESHOLD = 100_000;
     private long lastWrittenPos;
-    private boolean dataWasChanged;
 
     public InMemoryDao(Config config) {
         pathToDataFile = config.basePath().resolve("data.txt").toString();
@@ -58,42 +55,29 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
-        try {
-            if (data.size() >= DATA_SIZE_TRESHOLD) {
-                flush();
-                data.clear();
-            }
-
-            data.put(entry.key(), entry);
-            dataWasChanged = true;
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        data.put(entry.key(), entry);
     }
 
     @Override
     public void flush() throws IOException {
-        if (dataWasChanged) {
-            write();
-            dataWasChanged = false;
-        }
+        write();
     }
 
     @Override
     public void close() throws IOException {
-        write();
+        flush();
     }
 
     private BaseEntry<ByteBuffer> findEntry(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> result = findEntryInMap(key);
-        return result == null ? findEntryInFiles(key) : result;
+        return result == null ? findEntryInFile(key) : result;
     }
 
     private BaseEntry<ByteBuffer> findEntryInMap(ByteBuffer key) {
         return data.get(key);
     }
 
-    private BaseEntry<ByteBuffer> findEntryInFiles(ByteBuffer key) throws IOException {
+    private BaseEntry<ByteBuffer> findEntryInFile(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> result;
         try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "r")) {
             do {
@@ -102,12 +86,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
             if (reachedEOF(raf) && !result.key().equals(key)) {
                 return null;
-            }
-
-            data.clear();
-            while (!reachedEOF(raf) && data.size() < DATA_SIZE_TRESHOLD) {
-                BaseEntry<ByteBuffer> entry = readEntry(raf);
-                data.put(entry.key(), entry);
             }
         }
         return result;
@@ -120,12 +98,15 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private BaseEntry<ByteBuffer> readEntry(RandomAccessFile raf) throws IOException {
         ByteBuffer key = readByteBuffer(raf);
         ByteBuffer value = readByteBuffer(raf);
+        raf.readLine();
         return new BaseEntry<>(key, value);
     }
 
     private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
-        String str = raf.readLine();
-        return ByteBuffer.wrap(str.getBytes(StandardCharsets.UTF_8));
+        int bbSize = raf.readInt();
+        byte[] bytes = new byte[bbSize];
+        raf.read(bytes);
+        return ByteBuffer.wrap(bytes);
     }
 
     private void write() throws IOException {
@@ -133,24 +114,21 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return;
         }
 
+        ByteBuffer bb;
+        int bbSize = (Integer.BYTES + 11 + Integer.BYTES + 11 + Character.BYTES)*data.size();
         try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "rw")) {
+            bb = ByteBuffer.wrap(new byte[bbSize]);
             raf.seek(lastWrittenPos);
             for (BaseEntry<ByteBuffer> entry: data.values()) {
-                writeEntry(raf, entry);
+                bb.putInt(entry.key().remaining());
+                bb.put(entry.key());
+                bb.putInt(entry.value().remaining());
+                bb.put(entry.value());
+                bb.putChar('\n');
             }
+            raf.write(bb.array());
             lastWrittenPos = raf.getFilePointer();
         }
-    }
-
-    private void writeEntry(RandomAccessFile raf, BaseEntry<ByteBuffer> entry) throws IOException {
-        writeByteBuffer(raf, entry.key());
-        raf.write('\n');
-        writeByteBuffer(raf, entry.value());
-        raf.write('\n');
-    }
-
-    private void writeByteBuffer(RandomAccessFile raf, ByteBuffer bb) throws IOException {
-        raf.getChannel().write(bb);
     }
 
 }
