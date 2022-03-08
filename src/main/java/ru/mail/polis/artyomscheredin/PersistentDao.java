@@ -1,5 +1,9 @@
 package ru.mail.polis.artyomscheredin;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+import ru.mail.polis.Dao;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -7,18 +11,14 @@ import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
-import ru.mail.polis.Dao;
 
 public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private static final int MAX_CAPACITY = 100000;
 
-    private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data =
+    private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> inMemoryData =
             new ConcurrentSkipListMap<>(ByteBuffer::compareTo);
-    private FileManager fileManager;
-    private Config config;
+    private final FileManager fileManager;
 
     public PersistentDao(Config config) throws IOException {
         if (config == null) {
@@ -29,18 +29,18 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        if (data.isEmpty()) {
+        if (inMemoryData.isEmpty()) {
             return Collections.emptyIterator();
         }
 
         if ((from == null) && (to == null)) {
-            return data.values().iterator();
+            return inMemoryData.values().iterator();
         } else if (from == null) {
-            return data.headMap(to).values().iterator();
+            return inMemoryData.headMap(to).values().iterator();
         } else if (to == null) {
-            return data.tailMap(from).values().iterator();
+            return inMemoryData.tailMap(from).values().iterator();
         }
-        return data.subMap(from, to).values().iterator();
+        return inMemoryData.subMap(from, to).values().iterator();
     }
 
     @Override
@@ -48,7 +48,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (key == null) {
             throw new IllegalArgumentException();
         }
-        BaseEntry<ByteBuffer> value = data.get(key);
+        BaseEntry<ByteBuffer> value = inMemoryData.get(key);
         if (value == null) {
             value = fileManager.getByKey(key);
         }
@@ -60,20 +60,20 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (entry == null) {
             throw new IllegalArgumentException();
         }
-        if (data.size() == MAX_CAPACITY) {
+        if (inMemoryData.size() == MAX_CAPACITY) {
             try {
                 flush();
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
-        data.put(entry.key(), entry);
+        inMemoryData.put(entry.key(), entry);
     }
 
     @Override
     public void flush() throws IOException {
-        fileManager.store(data);
-        data.clear();
+        fileManager.store(inMemoryData);
+        inMemoryData.clear();
     }
 
     @Override

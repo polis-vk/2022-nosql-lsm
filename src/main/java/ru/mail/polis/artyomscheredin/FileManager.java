@@ -1,5 +1,8 @@
 package ru.mail.polis.artyomscheredin;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -12,8 +15,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
 
 public class FileManager {
     private static final String DATA_UNIT_NAME = "table";
@@ -31,13 +32,13 @@ public class FileManager {
         this.config = config;
         File sourceDirectory = config.basePath().toFile();
         if (!sourceDirectory.exists() || !sourceDirectory.isDirectory()) {
-            if (!config.basePath().toFile().mkdir()) {
+            boolean isDirCreated = config.basePath().toFile().mkdir();
+            if (!isDirCreated) {
                 throw new IOException();
             }
         }
         counter = 0;
     }
-
 
     private void createDataFileIfNotExists() throws IOException {
         pathToWrite = config.basePath().resolve(DATA_UNIT_NAME + counter + EXTENSION);
@@ -47,7 +48,6 @@ public class FileManager {
         }
         Files.createFile(pathToWrite);
     }
-
 
     public BaseEntry<ByteBuffer> getByKey(ByteBuffer key) throws IOException {
         Pattern pattern = Pattern.compile(DATA_UNIT_NAME + "[0-9]+" + EXTENSION);
@@ -114,7 +114,6 @@ public class FileManager {
         }
         counter++;
     }
-
 
     private ByteBuffer getBufferFromEntry(BaseEntry<ByteBuffer> e) {
         final int sizeToAllocate = e.key().remaining() + e.value().remaining() + 2 * Integer.BYTES;
