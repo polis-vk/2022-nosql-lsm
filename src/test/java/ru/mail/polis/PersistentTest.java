@@ -1,12 +1,11 @@
 package ru.mail.polis;
 
+import org.junit.jupiter.api.Assertions;
+import ru.mail.polis.test.DaoFactory;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-
-import org.junit.jupiter.api.Assertions;
-
-import ru.mail.polis.test.DaoFactory;
 
 public class PersistentTest extends BaseTest {
 
@@ -37,20 +36,13 @@ public class PersistentTest extends BaseTest {
 
         // Fill
         List<Entry<String>> entries = entries(keys);
-        long start = System.nanoTime();
         entries.forEach(dao::upsert);
-        long end = System.nanoTime();
-        long dur = end - start;
-        System.out.println("Upsert time: " + (double) dur / 1000000000);
         dao.close();
 
         // Materialize to consume heap
-       List<Entry<String>> tmp = new ArrayList<>(entries);
-        long start1 = System.nanoTime();
+        List<Entry<String>> tmp = new ArrayList<>(entries);
+
         assertValueAt(DaoFactory.Factory.reopen(dao), entityIndex);
-        long end1 = System.nanoTime();
-        long dur1 = end1 - start1;
-        System.out.println("Search time: " + (double) dur1 / 1000000000);
 
         assertSame(
                 tmp.get(entityIndex),
