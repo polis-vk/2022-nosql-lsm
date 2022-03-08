@@ -18,7 +18,7 @@ public class MapDeserializeStream {
     private final MappedByteBuffer mapBuffer;
     private final MappedByteBuffer indexesBuffer;
     private final Method unmap;
-    private final Object unsafe;
+    private final Object fieldValue;
 
     public MapDeserializeStream(Path map, Path indexes) throws IOException {
         FileChannel mapChannel = (FileChannel) Files.newByteChannel(map, Set.of(StandardOpenOption.READ));
@@ -35,7 +35,7 @@ public class MapDeserializeStream {
             unmap.setAccessible(true);
             Field theUnsafeField = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe");
             theUnsafeField.setAccessible(true);
-            unsafe = theUnsafeField.get(null);
+            fieldValue = theUnsafeField.get(null);
 
         } catch (Exception e) {
             throw new IOException(e);
@@ -44,8 +44,8 @@ public class MapDeserializeStream {
 
     public void close() throws IOException {
         try {
-            unmap.invoke(unsafe, mapBuffer);
-            unmap.invoke(unsafe, indexesBuffer);
+            unmap.invoke(fieldValue, mapBuffer);
+            unmap.invoke(fieldValue, indexesBuffer);
         } catch (ReflectiveOperationException e) {
             throw new IOException(e);
         }
