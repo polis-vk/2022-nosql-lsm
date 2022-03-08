@@ -14,6 +14,19 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             new ConcurrentSkipListSet<>(new RecordNaturalOrderComparator());
 
     @Override
+    public BaseEntry<byte[]> get(byte[] key) {
+        Iterator<BaseEntry<byte[]>> iterator = get(key, null);
+        if (!iterator.hasNext()) {
+            return null;
+        }
+        BaseEntry<byte[]> next = iterator.next();
+        if (Arrays.equals(next.key(), key)) {
+            return next;
+        }
+        return null;
+    }
+
+    @Override
     public Iterator<BaseEntry<byte[]>> get(byte[] from, byte[] to) {
         if (from == null) {
             return new BorderedIterator(data.iterator(), to);
