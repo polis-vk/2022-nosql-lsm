@@ -57,7 +57,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         data.put(entry.key(), entry);
-        minSizeOfElem = Math.min(entry.key().remaining(), entry.value().remaining());
+        InMemoryDao.minSizeOfElem = Math.min(entry.key().remaining(), entry.value().remaining());
     }
 
     @Override
@@ -96,7 +96,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
         long a = 0;
         long b = raf.length();
-        while (b - a > minSizeOfElem) {
+        while (b - a > InMemoryDao.minSizeOfElem) {
             long c = (b + a) / 2;
             raf.seek(c);
             rollbackToPairStart(raf);
@@ -126,7 +126,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private boolean isPairSeparator(char ch) {
-        return ch == PAIR_SEPARATOR;
+        return ch == InMemoryDao.PAIR_SEPARATOR;
     }
 
     private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
@@ -150,7 +150,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 bb.put(entry.key());
                 bb.putInt(entry.value().remaining());
                 bb.put(entry.value());
-                bb.putChar(PAIR_SEPARATOR);
+                bb.putChar(InMemoryDao.PAIR_SEPARATOR);
                 raf.write(bb.array());
             }
         }
