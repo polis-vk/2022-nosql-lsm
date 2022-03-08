@@ -3,10 +3,13 @@ package ru.mail.polis.artyomscheredin;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channel;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -95,21 +98,10 @@ public class FileManager {
             throw new IllegalArgumentException();
         }
         createDataFileIfNotExists();
-        try (RandomAccessFile file = new RandomAccessFile(pathToWrite.toFile(), "rw");
-             FileChannel channel = file.getChannel()) {
-            CopyOnWriteArrayList<ByteBuffer> entryBuffer = new CopyOnWriteArrayList<ByteBuffer>();
-            int size = 0;
+        try (FileChannel channel = new FileOutputStream(pathToWrite.toFile(), false).getChannel()) {
             for (BaseEntry<ByteBuffer> e : data.values()) {
-                ByteBuffer entry = getBufferFromEntry(e);
-                entryBuffer.add(entry);
-                size += entry.remaining();
-                if (entryBuffer.size() == BUFFER_SIZE) {
-                    channel.write(getBufferFromList(entryBuffer, size));
-                    entryBuffer.clear();
-                    size = 0;
-                }
+                channel.write(getBufferFromEntry(e));
             }
-            channel.write(getBufferFromList(entryBuffer, size));
         }
         counter++;
     }
@@ -123,14 +115,5 @@ public class FileManager {
         buffer.put(e.value());
         buffer.rewind();
         return buffer;
-    }
-
-    private ByteBuffer getBufferFromList(CopyOnWriteArrayList<ByteBuffer> buffer, int size) {
-        ByteBuffer result = ByteBuffer.allocate(size);
-        for (ByteBuffer el : buffer) {
-            result.put(el);
-        }
-        result.rewind();
-        return result;
     }
 }

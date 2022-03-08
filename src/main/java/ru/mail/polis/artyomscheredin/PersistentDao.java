@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    private static final int MAX_CAPACITY = 100000;
+    private static final int MAX_CAPACITY = 100_000;
 
     private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> inMemoryData =
             new ConcurrentSkipListMap<>(ByteBuffer::compareTo);
