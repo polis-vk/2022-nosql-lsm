@@ -86,7 +86,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         long a = 0;
         long b = raf.length();
         while (b - a > 20) {
-            long c = (b + a)/2;
+            long c = (b + a) / 2;
             raf.seek(c);
             raf.readLine();
             ByteBuffer curKey = readByteBuffer(raf);
