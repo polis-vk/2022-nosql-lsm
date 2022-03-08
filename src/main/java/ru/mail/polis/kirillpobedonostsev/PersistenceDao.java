@@ -23,6 +23,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         Path dataPath = config.basePath().resolve(DATA_FILENAME);
         try {
             if (!Files.exists(dataPath)) {
+                Files.createDirectories(config.basePath());
                 Files.createFile(dataPath);
             }
         } catch (IOException e) {
