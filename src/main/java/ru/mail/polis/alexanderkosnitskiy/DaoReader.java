@@ -3,18 +3,20 @@ package ru.mail.polis.alexanderkosnitskiy;
 import ru.mail.polis.BaseEntry;
 
 import java.io.Closeable;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class DaoReader implements Closeable {
-    private final FileInputStream reader;
+    private final RandomAccessFile reader;
+    private final long size;
 
-    public DaoReader(String name) throws FileNotFoundException {
-        reader = new FileInputStream(name);
+    public DaoReader(String name) throws IOException {
+        reader = new RandomAccessFile(name, "r");
+        size = reader.length();
     }
 
     public BaseEntry<ByteBuffer> retrieveElement(ByteBuffer key) throws IOException {
@@ -27,6 +29,61 @@ public class DaoReader implements Closeable {
             }
         }
         return null;
+    }
+
+    public BaseEntry<ByteBuffer> binarySearch(ByteBuffer key) throws IOException {
+        int size = readInt();
+        long lowerBond = 0;
+        long higherBond = this.size;
+        long middle = higherBond / 2;
+
+        while (lowerBond <= higherBond) {
+            FileEntry result = nextEntry(middle);
+            if (key.compareTo(result.entry.key()) > 0) {
+                lowerBond = middle + 1;
+            } else if (key.compareTo(result.entry.key()) < 0) {
+                higherBond = middle - 1;
+            } else if (key.compareTo(result.entry.key()) == 0) {
+                return result.entry;
+            }
+            middle = (lowerBond + higherBond) / 2;
+        }
+        return null;
+    }
+
+    private FileEntry nextEntry(long startingPosition) throws IOException {
+        int bufSize = 128;
+        FileEntry entry = new FileEntry();
+        ByteBuffer buffer = ByteBuffer.allocate(bufSize);
+        reader.seek(startingPosition);
+        byte[] bytes;
+        byte result = 'n';
+        long position = startingPosition;
+        while (position != size) {
+            reader.read(buffer.array());
+            bytes = buffer.array();
+            for(int i = 0; i < bytes.length; i++) {
+                if(bytes[i] == '\n') {
+                    position += i;
+                    entry.bytePosition = position;
+                    result = '\n';
+                    break;
+                }
+            }
+            if(result == '\n') {
+                break;
+            }
+            position += bufSize;
+        }
+        reader.seek(position - 2 * Integer.BYTES);
+        entry.place = readInt();
+        entry.size = readInt();
+
+        reader.seek(position - entry.size);
+
+        entry.entry = readElementPair();
+
+        return entry;
     }
 
     public int checkForKey(ByteBuffer key) throws IOException {
@@ -63,8 +120,8 @@ public class DaoReader implements Closeable {
     }
 
     public BaseEntry<ByteBuffer> readElementPair() throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES * 2);
-        reader.read(buffer.array());
+        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES * 2 + Byte.BYTES);
+        reader.read(buffer.array(), 0, Integer.BYTES * 2);
         buffer.rewind();
         int keyLen = buffer.getInt();
         int valLen = buffer.getInt();
@@ -74,6 +131,7 @@ public class DaoReader implements Closeable {
         reader.read(valBuffer.array());
         keyBuffer.rewind();
         valBuffer.rewind();
+        reader.read(buffer.array());
         return new BaseEntry<ByteBuffer>(keyBuffer, valBuffer);
     }
 
@@ -95,5 +153,12 @@ public class DaoReader implements Closeable {
     @Override
     public void close() throws IOException {
         reader.close();
+    }
+
+    private static class FileEntry {
+        public int place;
+        public long bytePosition;
+        public int size;
+        BaseEntry<ByteBuffer> entry;
     }
 }
