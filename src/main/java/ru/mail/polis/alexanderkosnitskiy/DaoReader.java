@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class DaoReader implements Closeable {
+    private static final char DELIMITER = '\n';
     private final RandomAccessFile reader;
     private final long size;
 
@@ -62,14 +63,14 @@ public class DaoReader implements Closeable {
             reader.read(buffer.array());
             bytes = buffer.array();
             for (int i = 0; i < bytes.length; i++) {
-                if (bytes[i] == '\n') {
+                if (bytes[i] == DELIMITER) {
                     position += i;
                     entry.bytePosition = position;
-                    result = '\n';
+                    result = DELIMITER;
                     break;
                 }
             }
-            if (result == '\n') {
+            if (result == DELIMITER) {
                 break;
             }
             position += bufSize;

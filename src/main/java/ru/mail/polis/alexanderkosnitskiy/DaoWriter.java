@@ -10,6 +10,8 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public class DaoWriter implements Closeable {
+    private static final char DELIMITER = '\n';
+
     private final FileOutputStream writer;
 
     public DaoWriter(String name) throws FileNotFoundException {
@@ -34,7 +36,7 @@ public class DaoWriter implements Closeable {
         buffer.put(entry.key().array());
         buffer.put(entry.value().array());
         buffer.putInt(3 * Integer.BYTES + keyLen + valLen);
-        buffer.put((byte) '\n');
+        buffer.put((byte) DELIMITER);
         writer.write(buffer.array());
     }
 
