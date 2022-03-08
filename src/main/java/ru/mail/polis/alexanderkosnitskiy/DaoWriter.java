@@ -10,7 +10,7 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public class DaoWriter implements Closeable {
-    private static final char DELIMITER = '\n';
+    private static final char DELIMITER = 0x1e;
 
     private final FileOutputStream writer;
 
