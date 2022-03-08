@@ -1,48 +1,41 @@
 package ru.mail.polis.kirillpobedonostsev;
 
-import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.Iterator;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
-    private static final int MAX_ENTRIES = 50_000;
+public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
+    private static final int MAX_ENTRIES = 1_000;
     private static final String DATA_FILENAME = "data.txt";
-    private static final String INDEX_FILENAME = "index.txt";
     private final FileWriter writer;
     private final FileSeeker seeker;
-    private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> map =
-            new ConcurrentSkipListMap<>(new MemorySegmentComparator());
-    private final ConcurrentMap<MemorySegment, Long> index =
-            new ConcurrentSkipListMap<>(new MemorySegmentComparator());
+    private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map =
+            new ConcurrentSkipListMap<>(ByteBuffer::compareTo);
 
     public PersistenceDao(Config config) {
         Path dataPath = config.basePath().resolve(DATA_FILENAME);
-        Path indexPath = config.basePath().resolve(INDEX_FILENAME);
         try {
             if (!Files.exists(dataPath)) {
                 Files.createFile(dataPath);
             }
-            if (!Files.exists(indexPath)) {
-                Files.createFile(indexPath);
-            }
         } catch (IOException e) {
             e.printStackTrace();
         }
-        writer = new FileWriter(dataPath, indexPath);
-        seeker = new FileSeeker(dataPath, indexPath);
+        writer = new FileWriter(dataPath);
+        seeker = new FileSeeker(dataPath);
     }
 
     @Override
-    public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
+    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
         if (from == null && to == null) {
             return map.values().iterator();
         } else if (from == null) {
@@ -54,17 +47,13 @@ public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegmen
     }
 
     @Override
-    public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
-        if (index.isEmpty()) {
-            seeker.fill(index);
-        }
-        BaseEntry<MemorySegment> result = map.get(key);
-        return result == null ? seeker.get(key, index.get(key)) : result;
+    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
+        BaseEntry<ByteBuffer> result = map.get(key);
+        return result == null ? seeker.tryFind(key) : result;
     }
 
     @Override
-    public void upsert(BaseEntry<MemorySegment> entry) {
-        map.put(entry.key(), entry);
+    public void upsert(BaseEntry<ByteBuffer> entry) {
         if (map.size() == MAX_ENTRIES) {
             try {
                 flush();
@@ -72,12 +61,12 @@ public class PersistenceDao implements Dao<MemorySegment, BaseEntry<MemorySegmen
                 e.printStackTrace();
             }
         }
+        map.put(entry.key(), entry);
     }
 
     @Override
     public void flush() throws IOException {
-        writer.write(map, index);
-        writer.write(index);
+        writer.write(map);
         map.clear();
     }
 }
