@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 @DaoFactory(stage = 2)
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    final CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder();
+    private final CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder();
 
     @Override
     public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) {
@@ -30,6 +30,10 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
     @Override
     public String toString(ByteBuffer data) {
         if (data == null) return null;
+        if (data.hasArray()) {
+            data.position(data.arrayOffset());
+            return new String(data.array(), StandardCharsets.UTF_8);
+        }
         try {
             return decoder.decode(data).toString();
         } catch (CharacterCodingException e) {
