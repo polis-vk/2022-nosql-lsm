@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Assertions;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
-import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,22 +36,13 @@ public class PersistentTest extends BaseTest {
 
         // Fill
         List<Entry<String>> entries = entries(keys);
-        Clock clock = Clock.systemDefaultZone();
-        long startTime = clock.millis();
         entries.forEach(dao::upsert);
-        long endTime = clock.millis();
-        System.out.println("ELAPSED FOR UPSERT: " +(double) (endTime - startTime)/1000);
-        startTime = clock.millis();
         dao.close();
-        endTime = clock.millis();
-        System.out.println("ELAPSED FOR FLUSH: " +(double) (endTime - startTime)/1000);
 
         // Materialize to consume heap
         List<Entry<String>> tmp = new ArrayList<>(entries);
-        startTime = clock.millis();
+
         assertValueAt(DaoFactory.Factory.reopen(dao), entityIndex);
-        endTime = clock.millis();
-        System.out.println("ELAPSED FOR FIND: " +(double) (endTime - startTime)/1000);
 
         assertSame(
                 tmp.get(entityIndex),

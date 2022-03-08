@@ -19,15 +19,16 @@ public class FileSeeker {
         ByteBuffer value = null;
         try (RandomAccessFile file = new RandomAccessFile(dataFilename.toFile(), "r");
              FileChannel channel = file.getChannel()) {
-            while (channel.position() < channel.size()){
+            while (channel.position() < channel.size()) {
                 int keyLength = file.readInt();
                 ByteBuffer readKey = ByteBuffer.allocate(keyLength);
                 channel.read(readKey);
-                readKey.flip();
+                readKey.rewind();
                 int valueLength = file.readInt();
                 if (readKey.compareTo(key) == 0) {
                     value = ByteBuffer.allocate(valueLength);
                     channel.read(value);
+                    value.rewind();
                 } else {
                     file.skipBytes(valueLength);
                 }

@@ -8,13 +8,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Clock;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private static final int MAX_ENTRIES = 100_000;
     private static final String DATA_FILENAME = "data.txt";
     private final FileWriter writer;
     private final FileSeeker seeker;
@@ -54,13 +52,6 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
-        if (map.size() == MAX_ENTRIES) {
-            try {
-                flush();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
         map.put(entry.key(), entry);
     }
 
