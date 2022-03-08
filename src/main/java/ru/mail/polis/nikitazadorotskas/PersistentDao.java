@@ -70,8 +70,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
         }
 
         memory.clear();
-        segmentWriter.saveIndexes();
-        segmentWriter.saveMemorySegments();
+        segmentWriter.save();
     }
 
     @Override
