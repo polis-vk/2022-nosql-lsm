@@ -1,26 +1,34 @@
-package ru.mail.polis.test.alexanderkosnitskiy;
+package ru.mail.polis.test.alexandratkachenko;
 
 import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.alexanderkosnitskiy.InMemoryDao;
+import ru.mail.polis.alexandratkachenko.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
+@DaoFactory
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
-    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) {
+    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao() {
         return new InMemoryDao();
     }
 
     @Override
     public String toString(ByteBuffer data) {
-        return data == null ? null : new String(data.array(), data.arrayOffset() + data.position(),
-                data.remaining(), StandardCharsets.UTF_8);
+        if (data == null) {
+            return null;
+        }
+        if (data.hasArray()) {
+            return new String(data.array(), data.position() + data.arrayOffset(), data.remaining(),
+                    StandardCharsets.UTF_8);
+        }
+        final byte[] bytes = new byte[data.remaining()];
+        data.duplicate().get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     @Override
@@ -33,3 +41,4 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
         return new BaseEntry<>(baseEntry.key(), baseEntry.value());
     }
 }
+
