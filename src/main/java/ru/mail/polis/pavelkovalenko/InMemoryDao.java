@@ -18,7 +18,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final String pathToDataFile;
-    private static final int DATA_SIZE_TRESHOLD = 20_000;
+    private static final int DATA_SIZE_TRESHOLD = 100_000;
     private long lastWrittenPos;
     private boolean dataWasChanged;
 
@@ -59,15 +59,13 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         try {
-
-
-            data.put(entry.key(), entry);
-            dataWasChanged = true;
             if (data.size() >= DATA_SIZE_TRESHOLD) {
                 flush();
                 data.clear();
             }
 
+            data.put(entry.key(), entry);
+            dataWasChanged = true;
         } catch (IOException e) {
             e.printStackTrace();
         }
