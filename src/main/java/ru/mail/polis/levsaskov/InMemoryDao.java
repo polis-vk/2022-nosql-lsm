@@ -17,7 +17,6 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final int ALLOC_SIZE = 2048;
-    private static final int ENTRYS_PORTION = 100;
     private static final int BYTES_IN_INT = 4;
     private static final String MEM_FILENAME = "daoMem.bin";
 
@@ -30,31 +29,13 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     public InMemoryDao(Config config) {
         this.fileConfigPath = config.basePath().resolve(MEM_FILENAME);
-        if (!fileConfigPath.toFile().exists()) {
-            return;
-        }
-
-        try (
-                BufferedInputStream bs =
-                        new BufferedInputStream(new FileInputStream(fileConfigPath.toFile()), ALLOC_SIZE);
-                DataInputStream stream = new DataInputStream(bs)
-        ) {
-            for (int i = 0; i < ENTRYS_PORTION && stream.available() >= BYTES_IN_INT; i++) {
-                BaseEntry<ByteBuffer> entry = readEntry(stream);
-                entrys.put(entry.key(), entry);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) {
-        if (entrys.containsKey(key)) {
-            return entrys.get(key);
-        }
+    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
+        BaseEntry<ByteBuffer> localVal = entrys.get(key);
 
-        return findEntryInFile(key, fileConfigPath);
+        return localVal != null ? localVal : findEntryInFile(key, fileConfigPath);
     }
 
     @Override
@@ -80,7 +61,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void flush() {
+    public void flush() throws IOException {
         try (
                 RandomAccessFile daoMemfile = new RandomAccessFile(fileConfigPath.toFile(), "rw");
                 FileChannel channel = daoMemfile.getChannel();
@@ -91,8 +72,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 channel.write(bufferToWrite);
                 bufferToWrite.clear();
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 
@@ -124,8 +103,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
      * @param key  - key for entry to find
      * @return entry with the same key or null if there is no entry with the same key
      */
-    private static BaseEntry<ByteBuffer> findEntryInFile(ByteBuffer key, Path file) {
-        if (file == null) {
+    private static BaseEntry<ByteBuffer> findEntryInFile(ByteBuffer key, Path file) throws IOException {
+        if (file == null || !file.toFile().exists()) {
             return null;
         }
 
@@ -139,10 +118,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                     return entry;
                 }
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
-
         return null;
     }
 }
