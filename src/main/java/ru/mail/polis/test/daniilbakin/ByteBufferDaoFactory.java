@@ -8,10 +8,14 @@ import ru.mail.polis.daniilbakin.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
 import java.nio.charset.StandardCharsets;
 
 @DaoFactory(stage = 2)
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
+
+    final CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder();
 
     @Override
     public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) {
@@ -26,8 +30,11 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
     @Override
     public String toString(ByteBuffer data) {
         if (data == null) return null;
-        data.position(data.arrayOffset());
-        return new String(data.array(), StandardCharsets.UTF_8);
+        try {
+            return decoder.decode(data).toString();
+        } catch (CharacterCodingException e) {
+            return null;
+        }
     }
 
     @Override

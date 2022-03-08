@@ -20,6 +20,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final Config config;
     private File mapFile;
     private File indexesFile;
+    private MapDeserializeStream deserialize;
 
     public InMemoryDao() {
         config = new Config(Paths.get("tmp/" + System.currentTimeMillis()));
@@ -61,6 +62,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void close() throws IOException {
+        if (deserialize != null) deserialize.close();
         flush();
     }
 
@@ -74,10 +76,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private BaseEntry<ByteBuffer> getFromLog(ByteBuffer key) throws IOException {
         createFilesIfNeed();
-        MapDeserializeStream reader = new MapDeserializeStream(mapFile, indexesFile);
-        BaseEntry<ByteBuffer> value = reader.readByKey(key);
-        reader.close();
-        return value;
+        if (deserialize == null) {
+            deserialize = new MapDeserializeStream(mapFile.toPath(), indexesFile.toPath());
+        }
+        return deserialize.readByKey(key);
     }
 
     private void createFilesIfNeed() throws IOException {
