@@ -40,7 +40,7 @@ public class MapSerializeStream {
     /**
      * Return: array of indexes objects location.
      */
-    protected int[] writeMap(Map<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
+    private int[] writeMap(Map<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
         int[] indexes = new int[data.size()];
         int i = 0;
         int indexObjPosition = 0;
