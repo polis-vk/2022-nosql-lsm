@@ -98,6 +98,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             long c = (b + a) / 2;
             raf.seek(c);
             rollbackToPairStart(raf);
+
             ByteBuffer curKey = readByteBuffer(raf);
             int compare = curKey.compareTo(key);
             if (compare < 0) {
