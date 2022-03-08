@@ -83,7 +83,7 @@ public class FileManager {
                     ByteBuffer valueBuffer = ByteBuffer.allocate(valueSize);
                     ch.read(valueBuffer);
                     valueBuffer.rewind();
-                    result = new BaseEntry<ByteBuffer>(keyBuffer, valueBuffer);
+                    result = new BaseEntry<ByteBuffer>(key, valueBuffer);
                 } else {
                     fileToRead.skipBytes(valueSize);
                 }
