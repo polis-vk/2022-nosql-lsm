@@ -61,7 +61,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     line = reader.readLine();
                 }
             } catch (IOException de) {
-                throw new IOException(de.getMessage());
+                throw new IOException(de);
             }
         }
         return null;
@@ -86,7 +86,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 writer.write(builder);
             }
         } catch (Exception de) {
-            throw new IOException(de.getMessage());
+            throw new IOException(de);
         }
     }
 }
