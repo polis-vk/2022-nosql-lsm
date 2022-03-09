@@ -1,24 +1,28 @@
 package ru.mail.polis.glebkomissarov;
 
-import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<>(
-            (i, j) -> {
-                long result = i.mismatch(j);
-                return result == -1 ? 0 : Byte.compare(
-                        MemoryAccess.getByteAtOffset(i, result), MemoryAccess.getByteAtOffset(j, result)
-                );
-            }
+            new SegmentsComparator()
     );
+    private final Path basePath;
+    private final AtomicLong finalSize = new AtomicLong(0L);
+
+    public MyMemoryDao(Config config) {
+        basePath = config.basePath();
+    }
 
     @Override
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
@@ -34,13 +38,28 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public BaseEntry<MemorySegment> get(MemorySegment key) {
-        return data.get(key);
+    public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
+        BaseEntry<MemorySegment> result = data.get(key);
+
+        if (result == null) {
+            result = Converter.searchEntry(basePath, key);
+        }
+        return result;
     }
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
+        finalSize.addAndGet(entry.key().byteSize() + entry.value().byteSize());
         data.put(entry.key(), entry);
+    }
+
+    @Override
+    public void flush() throws IOException {
+        Converter.startSerializeEntries(data.values(), finalSize.get(), basePath);
+        for (BaseEntry<MemorySegment> entry : data.values()) {
+            Converter.writeEntries(entry, entry.key().byteSize(), entry.value().byteSize());
+        }
+        Converter.writeOffsets();
     }
 
     private Iterator<BaseEntry<MemorySegment>> shell(Map<MemorySegment, BaseEntry<MemorySegment>> sub) {
