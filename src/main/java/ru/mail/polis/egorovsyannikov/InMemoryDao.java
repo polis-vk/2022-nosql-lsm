@@ -18,13 +18,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             new ConcurrentSkipListMap<>(String::compareTo);
 
     private final Path path;
-    private static final String fileName = "cache";
+    private static final String FILE_NAME = "cache";
+    private static final String SEPARATOR = ":";
+    private static final String ENTRY_STRING_START_SYMBOL = "{";
+    private static final String ENTRY_STRING_END_SYMBOL = "}";
+    private static final String EMPTY_STRING = "";
 
     public InMemoryDao(Config config) throws IOException {
-        path = config.basePath().resolve(fileName);
-        if(!Files.exists(path)) {
-            Files.createFile(path);
-        }
+        path = config.basePath().resolve(FILE_NAME);
     }
 
     public InMemoryDao() {
@@ -33,18 +34,25 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public BaseEntry<String> get(String key) throws IOException {
-        if(stringConcurrentSkipListMap.containsKey(key)) {
+        if (stringConcurrentSkipListMap.containsKey(key)) {
             return stringConcurrentSkipListMap.get(key);
         }
 
+        if (!Files.exists(path)) {
+            return null;
+        }
+
         try (BufferedReader reader = Files.newBufferedReader(path)) {
-            for (;;) {
+            for (; ; ) {
                 String line = reader.readLine();
-                if(line == null) {
+                if (line == null) {
                     return null;
                 }
-                String[] stringEntry = line.replace("{", "").replace("}", "").split(":");
-                if(stringEntry[0].equals(key)) {
+                String[] stringEntry = line
+                        .replace(ENTRY_STRING_START_SYMBOL, EMPTY_STRING)
+                        .replace(ENTRY_STRING_END_SYMBOL, EMPTY_STRING)
+                        .split(SEPARATOR);
+                if (stringEntry[0].equals(key)) {
                     return new BaseEntry<>(stringEntry[0], stringEntry[1]);
                 }
             }
@@ -76,6 +84,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void flush() throws IOException {
+        if (!Files.exists(path)) {
+            Files.createFile(path);
+        }
+
         List<String> lines = stringConcurrentSkipListMap.values().stream().map(BaseEntry::toString).toList();
         try {
             Files.write(path, lines);
