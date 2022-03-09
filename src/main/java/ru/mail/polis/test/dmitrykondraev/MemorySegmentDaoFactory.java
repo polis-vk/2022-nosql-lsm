@@ -18,13 +18,13 @@ import java.nio.charset.StandardCharsets;
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
 
     @Override
-    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao() {
-        return new FileBackedDao();
+    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) {
+        return new FileBackedDao(config);
     }
 
     @Override
-    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) {
-        return new FileBackedDao(config);
+    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao() {
+        return new FileBackedDao();
     }
 
     @Override
