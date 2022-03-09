@@ -24,7 +24,7 @@ final class LongArrayOutput implements Closeable {
     // ┌─────────┬─────────────────┐
     // │size: int│array: long[size]│
     // └─────────┴─────────────────┘
-    public void write(long[] array) throws IOException {
+    public void write(long... array) throws IOException {
         out.writeInt(array.length);
         for (long offset : array) {
             out.writeLong(offset);
