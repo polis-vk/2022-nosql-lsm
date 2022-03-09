@@ -1,34 +1,45 @@
-package ru.mail.polis.alexandratkachenko;
+package ru.mail.polis.test.alexandratkachenko;
 
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
+import ru.mail.polis.Entry;
+import ru.mail.polis.alexandratkachenko.InMemoryDao;
+import ru.mail.polis.test.DaoFactory;
 
 import java.nio.ByteBuffer;
-import java.util.Iterator;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.nio.charset.StandardCharsets;
 
-public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private final ConcurrentSkipListMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
+@DaoFactory(stage = 2, week = 1)
+public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
-    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        ConcurrentMap<ByteBuffer, BaseEntry<ByteBuffer>> result;
-        if (from == null && to == null) {
-            result = map;
-        } else if (from == null) {
-            result = map.headMap(to);
-        } else if (to == null) {
-            result = map.tailMap(from);
-        } else {
-            result = map.subMap(from, to);
-        }
-        return result.values().iterator();
+    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) {
+        return new InMemoryDao(config);
     }
 
     @Override
-    public void upsert(BaseEntry<ByteBuffer> entry) {
-        map.put(entry.key(), entry);
+    public String toString(ByteBuffer data) {
+        if (data == null) {
+            return null;
+        }
+        if (data.hasArray()) {
+            return new String(data.array(), data.position() + data.arrayOffset(), data.remaining(),
+                    StandardCharsets.UTF_8);
+        }
+        final byte[] bytes = new byte[data.remaining()];
+        data.duplicate().get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    @Override
+    public ByteBuffer fromString(String data) {
+        return data == null ? null : ByteBuffer.wrap(data.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Override
+    public BaseEntry<ByteBuffer> fromBaseEntry(Entry<ByteBuffer> baseEntry) {
+        return new BaseEntry<>(baseEntry.key(), baseEntry.value());
     }
 }
 
