@@ -4,7 +4,8 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
@@ -128,7 +129,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     /**
-     * Count byte size of entry, that we want to write in file
+     * Count byte size of entry, that we want to write in file.
      *
      * @param entry that we want to save
      * @return count of bytes
@@ -141,6 +142,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     /**
+     * Saves entry to byteBuffer.
+     *
      * @param entry         that we want to save in bufferToWrite
      * @param bufferToWrite buffer where we want to persist entry
      */
@@ -152,7 +155,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         bufferToWrite.put(entry.value().array());
         bufferToWrite.flip();
     }
-
 
     private static BaseEntry<ByteBuffer> convertToEntry(ByteBuffer byteBuffer) {
         int keyLen = byteBuffer.getInt();
@@ -173,7 +175,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
      * @param key      - key for entry to find
      * @return entry with the same key or null if there is no entry with the same key
      */
-    private static BaseEntry<ByteBuffer> findEntryInFileSystem(ByteBuffer key, Path memFileP, Path indexFileP) throws IOException {
+    private static BaseEntry<ByteBuffer> findEntryInFileSystem(ByteBuffer key, Path memFileP,
+                                                               Path indexFileP) throws IOException {
         if (memFileP == null || !memFileP.toFile().exists()
                 || indexFileP == null || !indexFileP.toFile().exists()) {
             return null;
@@ -187,14 +190,16 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
         ) {
             int entrysC = bufferForIndexes.capacity() / BYTES_IN_LONG;
-            res = binarySearch(bufferForIndexes, memChannel, 0, entrysC, key);
+            res = binarySearch(bufferForIndexes, memChannel, entrysC, key);
         }
 
         return res;
     }
 
     private static BaseEntry<ByteBuffer> binarySearch(ByteBuffer bufferForIndexes, FileChannel memChannel,
-                                                      int first, int last, ByteBuffer key) throws IOException {
+                                                      int inLast, ByteBuffer key) throws IOException {
+        int first = 0;
+        int last = inLast;
         int position = (first + last) / 2;
         BaseEntry<ByteBuffer> curEntry = getEntry(bufferForIndexes, memChannel, position);
 
