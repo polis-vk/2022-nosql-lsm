@@ -13,19 +13,19 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class FileDBReader implements Closeable {
 
-    private final int size;
-    private final int[] positions;
-    private final int mapBeginPos;
+    private int size;
+    private int[] positions;
     private final FileChannel channel;
-    private final RandomAccessFile reader;
     ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
 
     public FileDBReader(String name) throws IOException {
-        reader = new RandomAccessFile(name, "r");
+        RandomAccessFile reader = new RandomAccessFile(name, "r");
         channel = reader.getChannel();
+    }
 
+    public void readArrayLinks() throws IOException {
         size = readInt();
-        mapBeginPos = (size + 1) * Integer.BYTES;
+        int mapBeginPos = (size + 1) * Integer.BYTES;
         positions = new int[size];
         for (int i = 0; i < size; i++) {
             positions[i] = mapBeginPos + readInt();
@@ -77,7 +77,7 @@ public class FileDBReader implements Closeable {
                 low = mid + 1;
             } else if (result > 0) {
                 high = mid - 1;
-            } else if (result == 0) {
+            } else {
                 return getByPos(mid);
             }
         }

@@ -11,7 +11,6 @@ import java.util.concurrent.ConcurrentNavigableMap;
 public class FileDBWriter extends FileOutputStream {
 
     private final byte[] writeBuffer = new byte[4];
-    protected int written;
 
     public FileDBWriter(String name) throws FileNotFoundException {
         super(name);
@@ -23,7 +22,6 @@ public class FileDBWriter extends FileOutputStream {
         writeBuffer[2] = (byte) (v >>> 8);
         writeBuffer[3] = (byte) (v);
         super.write(writeBuffer, 0, 4);
-        incCount(Integer.BYTES);
     }
 
     protected final void writeEntry(BaseEntry<ByteBuffer> baseEntry) throws IOException {
@@ -34,7 +32,6 @@ public class FileDBWriter extends FileOutputStream {
         buff.put(baseEntry.key().array());
         buff.put(baseEntry.value().array());
         super.write(buff.array());
-        incCount(totalSize);
     }
 
     public void writeMap(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map) throws IOException {
@@ -47,14 +44,6 @@ public class FileDBWriter extends FileOutputStream {
         for (BaseEntry<ByteBuffer> entry : map.values()) {
             writeEntry(entry);
         }
-    }
-
-    private void incCount(int value) {
-        int temp = written + value;
-        if (temp < 0) {
-            temp = Integer.MAX_VALUE;
-        }
-        written = temp;
     }
 }
 

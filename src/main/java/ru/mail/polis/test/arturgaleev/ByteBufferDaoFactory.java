@@ -16,9 +16,6 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
 
     @Override
     public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
-//        System.out.println();
-//        System.out.println("Create:  " + config.basePath());
-//        System.out.println("Is 1.txt created " + Files.exists(config.basePath().resolve("1.txt")));
         return new InMemoryDao(config);
     }
 
