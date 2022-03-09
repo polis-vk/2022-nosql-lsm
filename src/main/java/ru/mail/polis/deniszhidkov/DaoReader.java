@@ -1,10 +1,11 @@
 package ru.mail.polis.deniszhidkov;
 
+import ru.mail.polis.BaseEntry;
+
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Path;
-import ru.mail.polis.BaseEntry;
 
 public class DaoReader {
 
