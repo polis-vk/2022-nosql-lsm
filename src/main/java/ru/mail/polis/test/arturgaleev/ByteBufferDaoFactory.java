@@ -7,15 +7,19 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.arturgaleev.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory
+@DaoFactory(stage = 2, week = 1)
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
-    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) {
-        return new InMemoryDao();
+    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
+//        System.out.println();
+//        System.out.println("Create:  " + config.basePath());
+//        System.out.println("Is 1.txt created " + Files.exists(config.basePath().resolve("1.txt")));
+        return new InMemoryDao(config);
     }
 
     @Override
