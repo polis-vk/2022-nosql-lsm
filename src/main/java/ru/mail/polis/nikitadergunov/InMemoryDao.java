@@ -13,6 +13,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
+    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage =
+            new ConcurrentSkipListMap<>(InMemoryDao::comparator);
+    private final Config config;
+    private final ReadFromNonVolatileMemory readFromNonVolatileMemory;
+
     public static int comparator(MemorySegment firstSegment, MemorySegment secondSegment)
     {
         long offsetMismatch = firstSegment.mismatch(secondSegment);
@@ -22,11 +27,6 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return Byte.compare(MemoryAccess.getByteAtOffset(firstSegment, offsetMismatch),
                 MemoryAccess.getByteAtOffset(secondSegment, offsetMismatch));
     }
-
-    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage =
-            new ConcurrentSkipListMap<>(InMemoryDao::comparator);
-    private final Config config;
-    private final ReadFromNonVolatileMemory readFromNonVolatileMemory;
 
     public InMemoryDao(Config config) {
         this.config = config;
