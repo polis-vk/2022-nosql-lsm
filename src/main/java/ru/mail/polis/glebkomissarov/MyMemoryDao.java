@@ -55,7 +55,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     @Override
     public void flush() throws IOException {
-        Converter.startSerializeEntries(data.values(), finalSize.get(), basePath);
+        Converter.startSerializeEntries(data.size(), finalSize.get(), basePath);
         for (BaseEntry<MemorySegment> entry : data.values()) {
             Converter.writeEntries(entry, entry.key().byteSize(), entry.value().byteSize());
         }

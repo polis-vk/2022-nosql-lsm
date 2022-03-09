@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
 
 public final class Converter {
 
@@ -24,9 +23,8 @@ public final class Converter {
 
     }
 
-    public static void startSerializeEntries(Collection<BaseEntry<MemorySegment>> data,
-                                        long fileSize, Path path) throws IOException {
-        if (data.isEmpty()) {
+    public static void startSerializeEntries(long dataCount, long fileSize, Path path) throws IOException {
+        if (dataCount == 0) {
             return;
         }
 
@@ -36,11 +34,11 @@ public final class Converter {
             Files.createFile(pathToOffsets);
         }
 
-        offsets = new long[data.size() * 2 + 1];
+        offsets = new long[(int) (dataCount * 2 + 1)];
         offsets[0] = 0;
 
         mappedSegmentEntries = newMapped(pathToEntries, fileSize);
-        mappedSegmentOffsets = newMapped(pathToOffsets, (long) Long.SIZE * data.size());
+        mappedSegmentOffsets = newMapped(pathToOffsets,  Long.SIZE * dataCount);
     }
 
     @Nullable
