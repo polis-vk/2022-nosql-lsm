@@ -96,18 +96,6 @@ final class SortedStringTable {
         dataSegment = null;
     }
 
-    private static long[] calculateOffsets(Collection<BaseEntry<MemorySegment>> entries) {
-        long[] result = LongStream.concat(
-                LongStream.of(0L),
-                entries
-                        .stream()
-                        // alternating key and value sizes
-                        .flatMapToLong(entry -> LongStream.of(entry.key().byteSize(), entry.value().byteSize()))
-        ).toArray();
-        Arrays.parallelPrefix(result, Long::sum);
-        return result;
-    }
-
     private void loadFromFiles() throws IOException {
         try (LongArrayInput in = LongArrayInput.of(indexFile)) {
             offsets = in.readLongArray();
@@ -149,5 +137,17 @@ final class SortedStringTable {
         } catch (FileAlreadyExistsException ignored) {
             return path;
         }
+    }
+
+    private static long[] calculateOffsets(Collection<BaseEntry<MemorySegment>> entries) {
+        long[] result = LongStream.concat(
+                LongStream.of(0L),
+                entries
+                        .stream()
+                        // alternating key and value sizes
+                        .flatMapToLong(entry -> LongStream.of(entry.key().byteSize(), entry.value().byteSize()))
+        ).toArray();
+        Arrays.parallelPrefix(result, Long::sum);
+        return result;
     }
 }
