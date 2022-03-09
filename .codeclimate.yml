@@ -1,5 +1,7 @@
 version: "2"
 plugins:
+  duplication:
+    enabled: false
   checkstyle:
     enabled: true
     config:
@@ -41,12 +43,16 @@ plugins:
         enabled: false
       PrematureDeclaration:
         enabled: false
+      SingularField:
+        enabled: false
   sonar-java:
     enabled: true
     config:
       sonar.java.source: "11"
     checks:
       squid:S00112:
+        enabled: false
+      squid:UnusedPrivateMethod:
         enabled: false
 checks:
   argument-count:
@@ -60,7 +66,7 @@ checks:
       threshold: 15 # We are Russian hackers!
   similar-code:
     config:
-      threshold: 90 # Sometimes it is not so similar
+      threshold: 200 # Sometimes it is not so similar
   identical-code:
     config:
       threshold: 60 # Nope, not a duplicate

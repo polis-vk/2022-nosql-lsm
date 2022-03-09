@@ -3,6 +3,7 @@ package ru.mail.polis.pavelkovalenko;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -27,22 +28,22 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) {
+    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         return Dao.super.get(key);
     }
 
     @Override
-    public Iterator<BaseEntry<ByteBuffer>> allFrom(ByteBuffer from) {
+    public Iterator<BaseEntry<ByteBuffer>> allFrom(ByteBuffer from) throws IOException {
         return Dao.super.allFrom(from);
     }
 
     @Override
-    public Iterator<BaseEntry<ByteBuffer>> allTo(ByteBuffer to) {
+    public Iterator<BaseEntry<ByteBuffer>> allTo(ByteBuffer to) throws IOException {
         return Dao.super.allTo(to);
     }
 
     @Override
-    public Iterator<BaseEntry<ByteBuffer>> all() {
+    public Iterator<BaseEntry<ByteBuffer>> all() throws IOException {
         return Dao.super.all();
     }
 
