@@ -14,7 +14,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.stream.LongStream;
 
-class SortedStringTable {
+final class SortedStringTable {
     public static final String INDEX_FILENAME = "index";
     public static final String DATA_FILENAME = "data";
     private static final Comparator<MemorySegment> lexicographically = new LexicographicMemorySegmentComparator();

@@ -8,7 +8,7 @@ import java.util.Comparator;
 /**
  * lexicographic comparison of UTF-8 strings can be done by byte, according to RFC 3239
  * (https://www.rfc-editor.org/rfc/rfc3629.txt, page 2)
- * <p>
+ *
  * this string comparison likely won't work with collation different from ASCII
  */
 public class LexicographicMemorySegmentComparator implements Comparator<MemorySegment> {

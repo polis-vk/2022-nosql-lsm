@@ -8,7 +8,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-class LongArrayInput implements Closeable {
+final class LongArrayInput implements Closeable {
     private final DataInputStream in;
 
     private LongArrayInput(InputStream in) {

@@ -30,7 +30,7 @@ public class FileBackedDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     private final ResourceScope dataScope = ResourceScope.newConfinedScope();
 
     public FileBackedDao(Config config) {
-        basePath = config != null ? config.basePath() : null;
+        basePath = config == null ? null : config.basePath();
     }
 
     public FileBackedDao() {
