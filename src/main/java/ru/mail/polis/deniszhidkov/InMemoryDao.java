@@ -19,17 +19,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final DaoReader reader;
     private final DaoWriter writer;
 
-    public InMemoryDao(Config config) {
+    public InMemoryDao(Config config) throws IOException{
         Path pathToFile = config.basePath().resolve(FILE_NAME);
-        try {
-            if (!Files.exists(config.basePath())) {
-                Files.createDirectories(config.basePath());
-            }
-            if (!Files.exists(pathToFile)) {
-                Files.createFile(pathToFile);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (!Files.exists(config.basePath())) {
+            Files.createDirectories(config.basePath());
+        }
+        if (!Files.exists(pathToFile)) {
+            Files.createFile(pathToFile);
         }
         this.reader = new DaoReader(pathToFile);
         this.writer = new DaoWriter(pathToFile);
