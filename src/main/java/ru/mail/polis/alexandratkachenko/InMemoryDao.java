@@ -4,10 +4,10 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.*;
+
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.channels.ReadableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -27,15 +27,15 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final ConcurrentSkipListMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
 
     public InMemoryDao(Config config) {
-        Objects.requireNonNull(config, "Invalid argument.\n");
+        Objects.requireNonNull(config, "Invalid argument in constructor.\n");
         dataPath = config.basePath().resolve(DATA_FILENAME);
     }
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        Objects.requireNonNull(key, "Invalid argument.\n");
+        Objects.requireNonNull(key, "Invalid argument in get().\n");
         BaseEntry<ByteBuffer> value = map.get(key);
-        return value != null ? value : search(key);
+        return (value != null) ? value : search(key);
     }
 
     private BaseEntry<ByteBuffer> search(ByteBuffer keySearch) throws IOException {
@@ -81,7 +81,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private void write() throws IOException {
-        try (FileChannel fileChannel = FileChannel.open(dataPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+        try (FileChannel fileChannel = FileChannel.open(dataPath, StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE)) {
             ByteBuffer size = ByteBuffer.allocate(Integer.BYTES);
             for (BaseEntry<ByteBuffer> iterator : map.values()) {
                 writeComponent(iterator.key(), fileChannel, size);
@@ -118,7 +119,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
-        Objects.requireNonNull(entry, "Invalid argument.\n");
+        Objects.requireNonNull(entry, "Invalid argument in upsert().\n");
         map.put(entry.key(), entry);
     }
 }
