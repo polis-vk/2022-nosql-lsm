@@ -38,7 +38,7 @@ public final class Converter {
         offsets[0] = 0;
 
         mappedSegmentEntries = newMapped(pathToEntries, fileSize);
-        mappedSegmentOffsets = newMapped(pathToOffsets,  Long.SIZE * dataCount);
+        mappedSegmentOffsets = newMapped(pathToOffsets, Long.SIZE * dataCount);
     }
 
     @Nullable
