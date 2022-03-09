@@ -4,7 +4,9 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,11 +19,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private final ConcurrentNavigableMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
-    private String path = "data.txt";
+    private final String path;
     private static final String SEPARATOR = " ";
 
     public InMemoryDao(Config config) throws IOException {
-        path = config.basePath().resolve(path).toString();
+        path = config.basePath().resolve("data.txt").toString();
     }
 
     @Override
@@ -59,7 +61,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     line = reader.readLine();
                 }
             } catch (IOException de) {
-                throw new IOException("Get" + de.getMessage());
+                throw new IOException(de.getMessage());
             }
         }
         return null;
@@ -77,14 +79,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 Files.createFile(Path.of(path));
             }
             for (Map.Entry<String, BaseEntry<String>> entry : data.entrySet()) {
-                String builder = entry.getKey() +
-                        SEPARATOR +
-                        entry.getValue().value() +
-                        "\n";
+                String builder = entry.getKey()
+                        + SEPARATOR
+                        + entry.getValue().value()
+                        + "\n";
                 writer.write(builder);
             }
         } catch (Exception de) {
-            throw new IOException("Flush" + de.getMessage());
+            throw new IOException(de.getMessage());
         }
     }
 }
