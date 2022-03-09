@@ -18,8 +18,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private final Config config;
     private final ReadFromNonVolatileMemory readFromNonVolatileMemory;
 
-    public static int comparator(MemorySegment firstSegment, MemorySegment secondSegment)
-    {
+    public static int comparator(MemorySegment firstSegment, MemorySegment secondSegment) {
         long offsetMismatch = firstSegment.mismatch(secondSegment);
         if (offsetMismatch == -1) {
             return 0;

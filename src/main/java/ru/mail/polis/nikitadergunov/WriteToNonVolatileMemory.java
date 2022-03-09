@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ConcurrentNavigableMap;
 
-public class WriteToNonVolatileMemory  {
+public class WriteToNonVolatileMemory {
 
     private final FileChannel writeChannel;
 
@@ -38,7 +38,7 @@ public class WriteToNonVolatileMemory  {
 
     private void writeMemorySegment(MemorySegment memorySegment) throws IOException {
         if (memorySegment == null) {
-            writeLong( -1);
+            writeLong(-1);
             return;
         }
         writeLong(memorySegment.byteSize());
