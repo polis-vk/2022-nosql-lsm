@@ -11,22 +11,26 @@ import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private static final int MAX_SIZE = 100_000;
-    private static final String FILE_NAME = "data";
+    private static final String DATA_FILE = "data";
+    private static final String OFFSETS_FILE = "offset";
 
     private final ConcurrentNavigableMap<String, BaseEntry<String>> dataMap = new ConcurrentSkipListMap<>();
     private final Path pathToDirectory;
     private int fileToWrite;
+    private int lastReadFile = -1;
+    private List<String> offsetsOfLastFile;
 
     public InMemoryDao(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
         File[] files = pathToDirectory.toFile().listFiles();
-        fileToWrite = files == null ? 0 : files.length;
+        fileToWrite = files == null ? 0 : files.length / 2;
     }
 
     public InMemoryDao() {
@@ -82,13 +86,18 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private void savaData() throws IOException {
-        Path path = pathToDirectory.resolve(FILE_NAME + fileToWrite + ".txt");
-        if (!Files.exists(path)) {
-            Files.createFile(path);
-        }
-        try (BufferedWriter writer = Files.newBufferedWriter(path)) {
+        Path pathToData = pathToDirectory.resolve(DATA_FILE + fileToWrite + ".txt");
+        Path pathToOffsets = pathToDirectory.resolve(OFFSETS_FILE + fileToWrite + ".txt");
+        createFileIfNeeded(pathToData);
+        createFileIfNeeded(pathToOffsets);
+        try (BufferedWriter writer = Files.newBufferedWriter(pathToData);
+             BufferedWriter writer2 = Files.newBufferedWriter(pathToOffsets)) {
+            long currentOffset = 0;
             for (BaseEntry<String> entry : dataMap.values()) {
-                writer.write(entry.key() + " " + entry.value() + "\n");
+                String line = entry.key() + " " + entry.value() + "\n";
+                writer.write(line);
+                writer2.write(currentOffset + "\n");
+                currentOffset += line.getBytes().length;
             }
             fileToWrite++;
         }
@@ -97,24 +106,28 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private BaseEntry<String> getFromFile(String key) throws IOException {
         BaseEntry<String> res = null;
         for (int i = fileToWrite - 1; i >= 0; i--) {
-            Path path = pathToDirectory.resolve(FILE_NAME + i + ".txt");
-            try (RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r")) {
-                long entrySize = reader.readLine().getBytes().length + 1;
-                long left = 0;
-                long middle;
-                long right = reader.length();
-                while (left < right) {
-                    middle = left + ((right - left) / entrySize) / 2 * entrySize;
-                    reader.seek(middle);
+            Path pathToData = pathToDirectory.resolve(DATA_FILE + i + ".txt");
+            Path pathToOffsets = pathToDirectory.resolve(OFFSETS_FILE + i + ".txt");
+            try (RandomAccessFile reader = new RandomAccessFile(pathToData.toFile(), "r")) {
+                if (lastReadFile != i) {
+                    offsetsOfLastFile = Files.readAllLines(pathToOffsets);
+                    lastReadFile = i;
+                }
+                int left = 0;
+                int middle;
+                int right = offsetsOfLastFile.size() - 1;
+                while (left <= right) {
+                    middle = (right - left) / 2 + left;
+                    reader.seek(Long.parseLong(offsetsOfLastFile.get(middle)));
                     String[] entry = reader.readLine().split(" ");
                     int comparison = key.compareTo(entry[0]);
                     if (comparison == 0) {
                         res = new BaseEntry<>(entry[0], entry[1].trim());
                         break;
                     } else if (comparison > 0) {
-                        left = middle;
+                        left = middle + 1;
                     } else {
-                        right = middle;
+                        right = middle - 1;
                     }
                 }
             }
@@ -124,4 +137,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         return res;
     }
+
+    private void createFileIfNeeded(Path path) throws IOException {
+        if (!Files.exists(path)) {
+            Files.createFile(path);
+        }
+    }
+
 }
