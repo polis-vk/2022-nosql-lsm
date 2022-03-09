@@ -11,19 +11,23 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.Arrays;
 import java.util.NavigableSet;
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private static final String LOG_NAME = "log";
+    private static final int BUFFER_SIZE = 1024 * 1024 * 8; //8 MB
     private final NavigableSet<BaseEntry<byte[]>> data =
             new ConcurrentSkipListSet<>(new RecordNaturalOrderComparator());
     private final EntryWriter diskWriter;
     private final EntryReader diskReader;
+    private final Logger logger = Logger.getLogger(this.getClass().getSimpleName());
 
     public InMemoryDao() throws IOException {
         this(null);
@@ -80,7 +84,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             try {
                 diskWriter.write(entry);
             } catch (IOException e) {
-                System.err.println("The entry is not recorded to disk due to exception!");
+                logger.log(Level.SEVERE, "The entry is not recorded to disk due to exception!");
             }
 
         }
@@ -126,7 +130,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     static class EntryWriter extends BufferedWriter {
         public EntryWriter(Writer out) {
-            super(out);
+            super(out, BUFFER_SIZE);
         }
 
         void write(BaseEntry<byte[]> e) throws IOException {
@@ -145,16 +149,17 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         }
 
         public BaseEntry<byte[]> getByKey(byte[] targetKey) throws IOException {
-            Scanner scanner = new Scanner(logPath, StandardCharsets.UTF_8);
             String targetKeyString = new String(targetKey, StandardCharsets.UTF_8);
             String resultValue = null;
 
-            while (scanner.hasNextLine()) {
-                String key = scanner.nextLine();
-                String value = scanner.nextLine();
+            try (Scanner scanner = new Scanner(logPath, StandardCharsets.UTF_8)) {
+                while (scanner.hasNextLine()) {
+                    String key = scanner.nextLine();
+                    String value = scanner.nextLine();
 
-                if (key.equals(targetKeyString)) {
-                    resultValue = value;
+                    if (key.equals(targetKeyString)) {
+                        resultValue = value;
+                    }
                 }
             }
 
