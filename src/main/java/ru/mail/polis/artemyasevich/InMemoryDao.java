@@ -20,6 +20,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private static final int MAX_SIZE = 100_000;
     private static final String DATA_FILE = "data";
     private static final String OFFSETS_FILE = "offset";
+    private static final String FILE_EXTENSION = ".txt";
 
     private final ConcurrentNavigableMap<String, BaseEntry<String>> dataMap = new ConcurrentSkipListMap<>();
     private final Path pathToDirectory;
@@ -86,8 +87,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private void savaData() throws IOException {
-        Path pathToData = pathToDirectory.resolve(DATA_FILE + fileToWrite + ".txt");
-        Path pathToOffsets = pathToDirectory.resolve(OFFSETS_FILE + fileToWrite + ".txt");
+        Path pathToData = pathToDirectory.resolve(DATA_FILE + fileToWrite + FILE_EXTENSION);
+        Path pathToOffsets = pathToDirectory.resolve(OFFSETS_FILE + fileToWrite + FILE_EXTENSION);
         createFileIfNeeded(pathToData);
         createFileIfNeeded(pathToOffsets);
         try (BufferedWriter writer = Files.newBufferedWriter(pathToData);
@@ -106,8 +107,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private BaseEntry<String> getFromFile(String key) throws IOException {
         BaseEntry<String> res = null;
         for (int i = fileToWrite - 1; i >= 0; i--) {
-            Path pathToData = pathToDirectory.resolve(DATA_FILE + i + ".txt");
-            Path pathToOffsets = pathToDirectory.resolve(OFFSETS_FILE + i + ".txt");
+            Path pathToData = pathToDirectory.resolve(DATA_FILE + i + FILE_EXTENSION);
+            Path pathToOffsets = pathToDirectory.resolve(OFFSETS_FILE + i + FILE_EXTENSION);
             try (RandomAccessFile reader = new RandomAccessFile(pathToData.toFile(), "r")) {
                 if (lastReadFile != i) {
                     offsetsOfLastFile = Files.readAllLines(pathToOffsets);
