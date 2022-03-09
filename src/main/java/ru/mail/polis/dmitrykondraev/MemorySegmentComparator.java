@@ -10,7 +10,7 @@ import java.util.Comparator;
  * (https://www.rfc-editor.org/rfc/rfc3629.txt, page 2)
  * this string comparison likely won't work with collation different from ASCII
  */
-public class LexicographicMemorySegmentComparator implements Comparator<MemorySegment> {
+public class MemorySegmentComparator implements Comparator<MemorySegment> {
     @Override
     public int compare(MemorySegment lhs, MemorySegment rhs) {
         long offset = lhs.mismatch(rhs);

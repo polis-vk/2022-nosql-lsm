@@ -17,7 +17,7 @@ import java.util.stream.LongStream;
 final class SortedStringTable {
     public static final String INDEX_FILENAME = "index";
     public static final String DATA_FILENAME = "data";
-    private static final Comparator<MemorySegment> lexicographically = new LexicographicMemorySegmentComparator();
+    private static final Comparator<MemorySegment> lexicographically = new MemorySegmentComparator();
 
     private final Path indexFile; // unload
     private final MemorySegmentAllocator segmentLazy;
