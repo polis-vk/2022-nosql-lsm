@@ -66,45 +66,35 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (!Files.exists(newFilePath)) {
             Files.createFile(newFilePath);
         }
-        FileOutputStream fos = new FileOutputStream(String.valueOf(newFilePath));
-        BufferedOutputStream writer = new BufferedOutputStream(fos, bufferSize);
-        for (var pair : pairs.entrySet()) {
-            writer.write(pair.getKey().length);
-            writer.write(pair.getKey());
-            writer.write(pair.getValue().value().length);
-            writer.write(pair.getValue().value());
+        try (FileOutputStream fos = new FileOutputStream(String.valueOf(newFilePath));
+        BufferedOutputStream writer = new BufferedOutputStream(fos, bufferSize)) {
+            for (var pair : pairs.entrySet()) {
+                writer.write(pair.getKey().length);
+                writer.write(pair.getKey());
+                writer.write(pair.getValue().value().length);
+                writer.write(pair.getValue().value());
+            }
         }
-        writer.close();
-        fos.close();
         filesCount++;
     }
 
     private BaseEntry<byte[]> findInFiles(byte[] key) throws IOException {
-        FileInputStream fis = null;
-        BufferedInputStream reader = null;
         for (int i = filesCount - 1; i >= 0; i--) {
             Path currentFile = config.basePath().resolve(FILE_NAME + i + ".txt");
-            fis = new FileInputStream(String.valueOf(currentFile));
-            reader = new BufferedInputStream(fis, bufferSize);
-            while (reader.available() != 0) {
-                int keyLength = reader.read();
-                byte[] currentKey = reader.readNBytes(keyLength);
-                int valueLength = reader.read();
-                byte[] currentValue = reader.readNBytes(valueLength);
-                if (Arrays.equals(currentKey, key)) {
-                    reader.close();
-                    fis.close();
-                    return new BaseEntry<>(currentKey, currentValue);
+            try (FileInputStream fis = new FileInputStream(String.valueOf(currentFile));
+            BufferedInputStream reader = new BufferedInputStream(fis, bufferSize)) {
+                while (reader.available() != 0) {
+                    int keyLength = reader.read();
+                    byte[] currentKey = reader.readNBytes(keyLength);
+                    int valueLength = reader.read();
+                    byte[] currentValue = reader.readNBytes(valueLength);
+                    if (Arrays.equals(currentKey, key)) {
+                        reader.close();
+                        fis.close();
+                        return new BaseEntry<>(currentKey, currentValue);
+                    }
                 }
             }
-            reader.close();
-            fis.close();
-        }
-        if (reader != null) {
-            reader.close();
-        }
-        if (fis != null) {
-            fis.close();
         }
         return null;
     }
