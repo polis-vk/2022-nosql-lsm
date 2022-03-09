@@ -15,8 +15,6 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
@@ -24,15 +22,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final int bufferSize = 100 * Character.BYTES;
     private static final String FILE_NAME = "myData";
     private int filesCount;
-    private final Logger log;
-    private static final String CLASS_NAME = "class: InMemoryDao";
 
     public InMemoryDao(Config config) {
         this.config = config;
         pairs = new ConcurrentSkipListMap<>(Arrays::compare);
         File[] files = config.basePath().toFile().listFiles();
         filesCount = files == null ? 0 : files.length;
-        log = Logger.getLogger(InMemoryDao.class.getName());
     }
 
     @Override
@@ -48,7 +43,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public BaseEntry<byte[]> get(byte[] key) {
+    public BaseEntry<byte[]> get(byte[] key) throws IOException {
         BaseEntry<byte[]> value = pairs.get(key);
         if (value != null && Arrays.equals(value.key(), key)) {
             return value;
@@ -66,48 +61,42 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public void flush() {
+    public void flush() throws IOException {
         Path newFilePath = config.basePath().resolve(FILE_NAME + filesCount + ".txt");
         if (!Files.exists(newFilePath)) {
-            try {
-                Files.createFile(newFilePath);
-            } catch (IOException e) {
-                log.logp(Level.WARNING, CLASS_NAME, "method: flush", e.getMessage());
-            }
+            Files.createFile(newFilePath);
         }
-        try (FileOutputStream fos = new FileOutputStream(String.valueOf(newFilePath));
-             BufferedOutputStream writer = new BufferedOutputStream(fos, bufferSize)) {
-            for (var pair : pairs.entrySet()) {
-                writer.write(pair.getKey().length);
-                writer.write(pair.getKey());
-                writer.write(pair.getValue().value().length);
-                writer.write(pair.getValue().value());
-            }
-        } catch (IOException e) {
-            log.logp(Level.WARNING, CLASS_NAME, "method: flush", e.getMessage());
+        FileOutputStream fos = new FileOutputStream(String.valueOf(newFilePath));
+        BufferedOutputStream writer = new BufferedOutputStream(fos, bufferSize);
+        for (var pair : pairs.entrySet()) {
+            writer.write(pair.getKey().length);
+            writer.write(pair.getKey());
+            writer.write(pair.getValue().value().length);
+            writer.write(pair.getValue().value());
         }
+        writer.close();
+        fos.close();
         filesCount++;
     }
 
-    private BaseEntry<byte[]> findInFiles(byte[] key) {
+    private BaseEntry<byte[]> findInFiles(byte[] key) throws IOException {
         for (int i = filesCount - 1; i >= 0; i--) {
             Path currentFile = config.basePath().resolve(FILE_NAME + i + ".txt");
-            try (FileInputStream fis = new FileInputStream(String.valueOf(currentFile));
-                 BufferedInputStream reader = new BufferedInputStream(fis, bufferSize)) {
-                while (reader.available() != 0) {
-                    int keyLength = reader.read();
-                    byte[] currentKey = reader.readNBytes(keyLength);
-                    int valueLength = reader.read();
-                    byte[] currentValue = reader.readNBytes(valueLength);
-                    if (Arrays.equals(currentKey, key)) {
-                        reader.close();
-                        fis.close();
-                        return new BaseEntry<>(currentKey, currentValue);
-                    }
+            FileInputStream fis = new FileInputStream(String.valueOf(currentFile));
+            BufferedInputStream reader = new BufferedInputStream(fis, bufferSize);
+            while (reader.available() != 0) {
+                int keyLength = reader.read();
+                byte[] currentKey = reader.readNBytes(keyLength);
+                int valueLength = reader.read();
+                byte[] currentValue = reader.readNBytes(valueLength);
+                if (Arrays.equals(currentKey, key)) {
+                    reader.close();
+                    fis.close();
+                    return new BaseEntry<>(currentKey, currentValue);
                 }
-            } catch (IOException e) {
-                log.logp(Level.WARNING, CLASS_NAME, "method: findInFiles", e.getMessage());
             }
+            reader.close();
+            fis.close();
         }
         return null;
     }
