@@ -5,7 +5,6 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -17,14 +16,10 @@ public class WriteToNonVolatileMemory  {
 
     private final FileChannel writeChannel;
 
-    public WriteToNonVolatileMemory(Config config) {
+    public WriteToNonVolatileMemory(Config config) throws IOException {
         Path pathToTable = config.basePath().resolve("table");
-        try {
-            Files.deleteIfExists(pathToTable);
-            writeChannel = FileChannel.open(pathToTable, StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        Files.deleteIfExists(pathToTable);
+        writeChannel = FileChannel.open(pathToTable, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
     }
 
     public void write(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage) throws IOException {

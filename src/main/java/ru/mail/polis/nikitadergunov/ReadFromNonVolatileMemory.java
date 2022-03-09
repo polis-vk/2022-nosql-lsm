@@ -11,7 +11,6 @@ import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 
 public class ReadFromNonVolatileMemory {
 
@@ -25,7 +24,7 @@ public class ReadFromNonVolatileMemory {
             isExist = false;
             return;
         }
-        try (FileChannel readChannel = FileChannel.open(pathToTable, StandardOpenOption.READ)) {
+        try (FileChannel readChannel = FileChannel.open(pathToTable)) {
             readMemorySegment = MemorySegment.mapFile(pathToTable, 0,
                     readChannel.size(), FileChannel.MapMode.READ_ONLY, ResourceScope.globalScope());
             isExist = true;
