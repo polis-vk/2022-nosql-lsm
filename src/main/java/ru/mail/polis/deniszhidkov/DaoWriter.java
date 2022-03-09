@@ -1,11 +1,10 @@
 package ru.mail.polis.deniszhidkov;
 
-import java.io.DataOutputStream;
-import java.io.FileOutputStream;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.util.Map;
 import java.nio.file.Path;
-
+import java.util.Map;
 import ru.mail.polis.BaseEntry;
 
 public class DaoWriter {
@@ -17,10 +16,11 @@ public class DaoWriter {
     }
 
     public void writeDAO(Map<String, BaseEntry<String>> map) throws IOException {
-        try (DataOutputStream writer = new DataOutputStream(new FileOutputStream(pathToFile.toString()))) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(pathToFile.toString()))) {
             for (Map.Entry<String, BaseEntry<String>> entry : map.entrySet()) {
                 String line = entry.getKey() + ": " + entry.getValue().value();
-                writer.writeUTF(line);
+                writer.write(line);
+                writer.newLine();
             }
         }
     }

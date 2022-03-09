@@ -1,10 +1,10 @@
 package ru.mail.polis.deniszhidkov;
 
 import java.io.IOException;
-import java.util.Collection;
-import java.util.Iterator;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
+import java.util.Iterator;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -14,13 +14,12 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private static final String FILE_NAME = "storage.txt";
-    private final Path pathToFile;
     private final ConcurrentNavigableMap<String, BaseEntry<String>> storage = new ConcurrentSkipListMap<>();
     private final DaoReader reader;
     private final DaoWriter writer;
 
     public InMemoryDao(Config config) {
-        this.pathToFile = config.basePath().resolve(FILE_NAME);
+        Path pathToFile = config.basePath().resolve(FILE_NAME);
         try {
             if (!Files.exists(config.basePath())) {
                 Files.createDirectories(config.basePath());
