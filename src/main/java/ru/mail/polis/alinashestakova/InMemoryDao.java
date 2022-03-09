@@ -106,7 +106,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     @Override
     public void flush() {
         try (OutputStream output = Files.newOutputStream(this.files[this.files.length - 1].toPath());
-             BufferedOutputStream buffer= new BufferedOutputStream(output, 128)) {
+             BufferedOutputStream buffer = new BufferedOutputStream(output, 128)) {
             for (BaseEntry<MemorySegment> memorySegmentBaseEntry : storage.values()) {
                 buffer.write((int) memorySegmentBaseEntry.key().byteSize());
                 buffer.write(memorySegmentBaseEntry.key().toByteArray());
