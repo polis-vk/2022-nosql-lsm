@@ -50,6 +50,8 @@ plugins:
     checks:
       squid:S00112:
         enabled: false
+      squid:UnusedPrivateMethod:
+        enabled: false
 checks:
   argument-count:
     config:
