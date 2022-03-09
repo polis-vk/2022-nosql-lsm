@@ -4,7 +4,6 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -35,7 +34,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         Objects.requireNonNull(key, "Invalid argument in get().\n");
         BaseEntry<ByteBuffer> value = map.get(key);
-        return (value != null) ? value : search(key);
+        return (value == null) ? search(key) : value;
     }
 
     private BaseEntry<ByteBuffer> search(ByteBuffer keySearch) throws IOException {
