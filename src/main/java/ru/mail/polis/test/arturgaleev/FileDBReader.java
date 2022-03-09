@@ -13,13 +13,14 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class FileDBReader implements Closeable {
 
+    private final RandomAccessFile reader;
     private int size;
     private int[] positions;
     private final FileChannel channel;
     ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
 
     public FileDBReader(String name) throws IOException {
-        RandomAccessFile reader = new RandomAccessFile(name, "r");
+        reader = new RandomAccessFile(name, "r");
         channel = reader.getChannel();
     }
 
@@ -87,6 +88,7 @@ public class FileDBReader implements Closeable {
     @Override
     public void close() throws IOException {
         channel.close();
+        reader.close();
     }
 
     public String toString(ByteBuffer data) {

@@ -44,7 +44,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         return dataBase.subMap(from, to).values().iterator();
     }
 
-    private static long allTime = 0;
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
@@ -63,19 +62,13 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
-        long time = System.nanoTime();
         dataBase.put(entry.key(), entry);
-        allTime += (System.nanoTime() - time);
     }
 
     @Override
     public void flush() throws IOException {
-        System.out.println("uspsert time in DAO: " + allTime / 1000000 + "ms");
-
-        long time = System.nanoTime();
         try (FileDBWriter writer = new FileDBWriter(config.basePath() + "/1.txt")) {
             writer.writeMap(dataBase);
         }
-        System.out.println("Time for flush in DAO: " + (System.nanoTime() - time) / 1000000 + "ms");
     }
 }
