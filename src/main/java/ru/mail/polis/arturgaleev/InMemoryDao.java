@@ -44,7 +44,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         return dataBase.subMap(from, to).values().iterator();
     }
 
-
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> value = dataBase.get(key);
