@@ -1,16 +1,16 @@
 package ru.mail.polis.test;
 
-import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
+import java.io.IOException;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import java.util.Iterator;
 
-@Target({ ElementType.TYPE })
+@Target({ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface DaoFactory {
 
@@ -18,7 +18,14 @@ public @interface DaoFactory {
     int week() default 1;
 
     interface Factory<D, E extends Entry<D>> {
-        Dao<D, E> createDao();
+
+        default Dao<D, E> createDao() throws IOException {
+            throw new UnsupportedOperationException("Need to override one of createDao methods");
+        }
+
+        default Dao<D, E> createDao(Config config) throws IOException {
+            return createDao();
+        }
 
         String toString(D data);
 
@@ -26,42 +33,16 @@ public @interface DaoFactory {
 
         E fromBaseEntry(Entry<D> baseEntry);
 
-        default Dao<String, Entry<String>> createStringDao() {
-            Dao<D, E> delegate = createDao();
-            return new Dao<>() {
-                @Override
-                public Iterator<Entry<String>> get(String from, String to) {
-                    Iterator<E> iterator = delegate.get(fromString(from), fromString(to));
-                    return new Iterator<>() {
-                        @Override
-                        public boolean hasNext() {
-                            return iterator.hasNext();
-                        }
+        static Config extractConfig(Dao<String, Entry<String>> dao) {
+            return ((TestDao<?,?>)dao).config;
+        }
 
-                        @Override
-                        public Entry<String> next() {
-                            E next = iterator.next();
-                            String key = Factory.this.toString(next.key());
-                            String value = Factory.this.toString(next.value());
-                            return new BaseEntry<>(key, value);
-                        }
-                    };
-                }
+        static Dao<String, Entry<String>> reopen(Dao<String, Entry<String>> dao) throws IOException {
+            return ((TestDao<?,?>)dao).reopen();
+        }
 
-                @Override
-                public void upsert(Entry<String> entry) {
-                    BaseEntry<D> e = new BaseEntry<>(
-                            fromString(entry.key()),
-                            fromString(entry.value())
-                    );
-                    delegate.upsert(fromBaseEntry(e));
-                }
-
-                @Override
-                public String toString() {
-                    return "StringDaoFactory<" + delegate.getClass().getSimpleName() + ">";
-                }
-            };
+        default Dao<String, Entry<String>> createStringDao(Config config) throws IOException {
+            return new TestDao<>(this, config);
         }
     }
 
