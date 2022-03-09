@@ -23,19 +23,20 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final SortedMap<MemorySegment, BaseEntry<MemorySegment>> storage =
             new ConcurrentSkipListMap<>(new MemorySegmentComparator());
-    private File[] files;
+    private final File[] files;
 
     public InMemoryDao(Config config) {
         Path path = config.basePath();
-        this.files = path.toFile().listFiles();
+        File[] listFiles = path.toFile().listFiles();
 
-        int count = path.toFile().listFiles() == null ? 0 : this.files.length;
+        int count = listFiles == null ? 0 : listFiles.length;
         try {
             Files.createFile(path.resolve(Path.of("storage" + (++count) + ".txt")));
-            this.files = path.toFile().listFiles();
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        this.files = path.toFile().listFiles();
     }
 
     @Override
