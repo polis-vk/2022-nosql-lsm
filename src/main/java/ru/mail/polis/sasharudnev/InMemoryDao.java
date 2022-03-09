@@ -60,7 +60,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     }
                     line = reader.readLine();
                 }
-            } catch (IOException de) {
+            } catch (Exception de) {
                 throw new IOException(de);
             }
         }
