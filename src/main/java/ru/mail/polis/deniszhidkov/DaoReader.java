@@ -16,16 +16,16 @@ public class DaoReader {
     }
 
     public BaseEntry<String> findEntryByKey(String key) throws IOException {
-        DataInputStream reader = new DataInputStream(new FileInputStream(pathToFile.toString()));
-        String value = null;
-        while (reader.available() != 0) {
-            String[] entry = reader.readUTF().split(": ");
-            if (key.equals(entry[0])) {
-                value = entry[1];
-                break;
+        try (DataInputStream reader = new DataInputStream(new FileInputStream(pathToFile.toString()))) {
+            String value = null;
+            while (reader.available() != 0) {
+                String[] entry = reader.readUTF().split(": ");
+                if (key.equals(entry[0])) {
+                    value = entry[1];
+                    break;
+                }
             }
+            return value == null ? null : new BaseEntry<>(key, value);
         }
-        reader.close();
-        return value == null ? null : new BaseEntry<>(key, value);
     }
 }
