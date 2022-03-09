@@ -1,8 +1,8 @@
 package ru.mail.polis.glebkomissarov;
 
 public enum FileNames {
-    SAVED_DATA ("savedData"),
-    OFFSETS ("offsets");
+    SAVED_DATA("savedData"),
+    OFFSETS("offsets");
 
     private final String name;
 

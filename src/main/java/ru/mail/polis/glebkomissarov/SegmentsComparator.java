@@ -1,9 +1,9 @@
 package ru.mail.polis.glebkomissarov;
 
-import org.jetbrains.annotations.NotNull;
-
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
+import org.jetbrains.annotations.NotNull;
+
 import java.util.Comparator;
 
 public class SegmentsComparator implements Comparator<MemorySegment> {

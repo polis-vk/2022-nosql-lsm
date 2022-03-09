@@ -11,14 +11,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 
-public class Converter {
+public final class Converter {
 
-    private static Path pathToOffsets = null;
-    private static Path pathToEntries = null;
+    private static Path pathToOffsets;
+    private static Path pathToEntries;
     private static MemorySegment mappedSegmentEntries;
     private static MemorySegment mappedSegmentOffsets;
     private static long[] offsets;
-    private static int idx = 0;
+    private static int idx;
 
     private Converter() {
 
