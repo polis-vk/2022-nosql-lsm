@@ -80,10 +80,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     private BaseEntry<byte[]> findInFiles(byte[] key) throws IOException {
+        FileInputStream fis = null;
+        BufferedInputStream reader = null;
         for (int i = filesCount - 1; i >= 0; i--) {
             Path currentFile = config.basePath().resolve(FILE_NAME + i + ".txt");
-            FileInputStream fis = new FileInputStream(String.valueOf(currentFile));
-            BufferedInputStream reader = new BufferedInputStream(fis, bufferSize);
+            fis = new FileInputStream(String.valueOf(currentFile));
+            reader = new BufferedInputStream(fis, bufferSize);
             while (reader.available() != 0) {
                 int keyLength = reader.read();
                 byte[] currentKey = reader.readNBytes(keyLength);
@@ -96,6 +98,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
                 }
             }
             reader.close();
+            fis.close();
+        }
+        if (reader != null) {
+            reader.close();
+        }
+        if (fis != null) {
             fis.close();
         }
         return null;
