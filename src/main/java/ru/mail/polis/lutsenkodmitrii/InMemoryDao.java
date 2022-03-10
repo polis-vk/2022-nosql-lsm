@@ -8,7 +8,10 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.EOFException;
 import java.io.IOException;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -105,6 +108,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             writeKeyRangesMapToFile();
         } catch (InterruptedException e) {
             logger.log(Level.SEVERE, "Interrupted while flush", e);
+            e.printStackTrace();
+            Thread.currentThread().interrupt();
             throw new RuntimeException("Interrupted while flush");
             // Пробросить дальше тут не получиться не меняя сигнатуру метода в Dao
             // В следующей версии эту многопоточку уберу скорее всего поэтому и это уйдет
