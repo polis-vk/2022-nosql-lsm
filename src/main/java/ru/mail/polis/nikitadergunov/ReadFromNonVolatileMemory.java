@@ -6,10 +6,11 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 public class ReadFromNonVolatileMemory {
 
@@ -18,11 +19,11 @@ public class ReadFromNonVolatileMemory {
 
     public ReadFromNonVolatileMemory(Config config) throws IOException {
         Path pathToTable = config.basePath().resolve("table");
-        try (FileChannel readChannel = FileChannel.open(pathToTable)) {
+        try (FileChannel readChannel = FileChannel.open(pathToTable, StandardOpenOption.READ)) {
             readMemorySegment = MemorySegment.mapFile(pathToTable, 0,
                     readChannel.size(), FileChannel.MapMode.READ_ONLY, ResourceScope.globalScope());
             isExist = true;
-        } catch (FileNotFoundException e) {
+        } catch (NoSuchFileException e) {
             readMemorySegment = null;
             isExist = false;
         }
