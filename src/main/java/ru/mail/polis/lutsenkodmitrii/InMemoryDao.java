@@ -108,9 +108,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             writeKeyRangesMapToFile();
         } catch (InterruptedException e) {
             logger.log(Level.SEVERE, "Interrupted while flush", e);
-            e.printStackTrace();
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Interrupted while flush");
+            Thread.currentThread().interrupt(); // Для code climate
+            throw new RuntimeException("Interrupted while flush", e);
             // Пробросить дальше тут не получиться не меняя сигнатуру метода в Dao
             // В следующей версии эту многопоточку уберу скорее всего поэтому и это уйдет
         }
