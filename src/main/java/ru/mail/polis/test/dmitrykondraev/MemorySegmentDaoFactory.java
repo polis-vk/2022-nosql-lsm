@@ -8,8 +8,6 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.dmitrykondraev.FileBackedDao;
 import ru.mail.polis.test.DaoFactory;
 
-import java.util.Arrays;
-
 /**
  * Author: Dmitry Kondraev.
  */
