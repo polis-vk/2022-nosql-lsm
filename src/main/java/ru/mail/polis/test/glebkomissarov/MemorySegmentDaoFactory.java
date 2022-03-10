@@ -1,7 +1,6 @@
 package ru.mail.polis.test.glebkomissarov;
 
 import jdk.incubator.foreign.MemorySegment;
-
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
