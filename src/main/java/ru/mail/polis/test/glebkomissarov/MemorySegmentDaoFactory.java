@@ -27,7 +27,7 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
     }
 
     @Override
-    public BaseEntry<MemorySegment> fromBaseEntry(Entry<MemorySegment> entry) {
-        return new BaseEntry<>(entry.key(), entry.value());
+    public BaseEntry<MemorySegment> fromBaseEntry(Entry<MemorySegment> baseEntry) {
+        return new BaseEntry<>(baseEntry.key(), baseEntry.value());
     }
 }
