@@ -96,7 +96,8 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         try {
             readFromNonVolatileMemory.close();
             lock.writeLock().lock();
-            WriteToNonVolatileMemory writeToNonVolatileMemory = new WriteToNonVolatileMemory(config, storage, sizeInBytes.get());
+            WriteToNonVolatileMemory writeToNonVolatileMemory =
+                    new WriteToNonVolatileMemory(config, storage, sizeInBytes.get());
             writeToNonVolatileMemory.write();
             writeToNonVolatileMemory.close();
         } finally {

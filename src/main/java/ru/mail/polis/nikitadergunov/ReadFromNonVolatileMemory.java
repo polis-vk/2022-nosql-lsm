@@ -13,7 +13,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-public class ReadFromNonVolatileMemory implements AutoCloseable{
+public class ReadFromNonVolatileMemory implements AutoCloseable {
 
     private MemorySegment readMemorySegment;
     private boolean isExist;
