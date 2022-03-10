@@ -3,18 +3,21 @@ package ru.mail.polis.artyomdrozdov;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class InMemoryDao implements Dao<String, Entry<String>> {
+public class ByteBufferDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
-    private final ConcurrentNavigableMap<String, Entry<String>> storage = new ConcurrentSkipListMap<>();
+    private static final ByteBuffer VERY_FIRST_KEY = ByteBuffer.allocateDirect(0);  // ???
+
+    private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> storage = new ConcurrentSkipListMap<>();
 
     @Override
-    public Iterator<Entry<String>> get(String from, String to) {
+    public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
         if (from == null) {
-            from = "";
+            from = VERY_FIRST_KEY;
         }
 
         if (to == null) {
@@ -25,12 +28,12 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     }
 
     @Override
-    public Entry<String> get(String key) {
+    public Entry<ByteBuffer> get(ByteBuffer key) {
         return storage.get(key);
     }
 
     @Override
-    public void upsert(Entry<String> entry) {
+    public void upsert(Entry<ByteBuffer> entry) {
         storage.put(entry.key(), entry);
     }
 }
