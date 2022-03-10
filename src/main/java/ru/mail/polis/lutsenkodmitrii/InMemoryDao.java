@@ -7,15 +7,8 @@ import ru.mail.polis.Dao;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.EOFException;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.nio.file.Files;
-import java.nio.file.OpenOption;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -24,11 +17,8 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.logging.ConsoleHandler;
-import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.logging.SimpleFormatter;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -46,14 +36,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private ConcurrentSkipListMap<String, String> keyRangesMap = new ConcurrentSkipListMap<>();
     private int oneFileDataSize;
     private int leastFileDataSize;
-
-    static {
-        Handler consoleHandler = new ConsoleHandler();
-        SimpleFormatter formatter = new SimpleFormatter();
-        consoleHandler.setFormatter(formatter);
-        consoleHandler.setLevel(Level.ALL);
-        logger.addHandler(consoleHandler);
-    }
 
     public InMemoryDao() {
         keyRangesPath = null;
@@ -96,7 +78,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public void flush() {
+    public void flush() throws IOException {
         if (data.isEmpty()) {
             return;
         }
@@ -120,10 +102,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         try {
             countDownLatch.await();
-            writeObjectToFile(keyRangesMap, keyRangesPath);
+            writeKeyRangesMapToFile();
         } catch (InterruptedException e) {
             logger.log(Level.SEVERE, "Interrupted while flush", e);
-            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while flush");
+            // Пробросить дальше тут не получиться не меняя сигнатуру метода в Dao
+            // В следующей версии эту многопоточку уберу скорее всего поэтому и это уйдет
         }
     }
 
@@ -188,14 +172,23 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private void loadKeyRangesMap() {
-        if (!Files.exists(keyRangesPath)) {
-            throw new RuntimeException("There is no keyRanges file");
-        }
-        Object readObject = readObjectFromFile(keyRangesPath);
-        if (readObject instanceof ConcurrentSkipListMap) {
-            keyRangesMap = (ConcurrentSkipListMap) readObject;
-        } else {
-            throw new RuntimeException("Illegal object data in file by path: " + keyRangesPath);
+        try (BufferedReader bufferedReader = Files.newBufferedReader(keyRangesPath, UTF_8)) {
+            int keyLength;
+            int valueLength;
+            char[] keyChars;
+            char[] valueChars;
+            int size = readInt(bufferedReader);
+            for (int i = 0; i < size; i++) {
+                keyLength = readInt(bufferedReader);
+                valueLength = readInt(bufferedReader);
+                keyChars = new char[keyLength];
+                valueChars = new char[valueLength];
+                bufferedReader.read(keyChars);
+                bufferedReader.read(valueChars);
+                keyRangesMap.put(new String(keyChars), new String(valueChars));
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Load Key Ranges map fail", e);
         }
     }
 
@@ -204,23 +197,17 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return keyPathEntry == null ? null : Path.of(keyPathEntry.getValue());
     }
 
-    private static void writeObjectToFile(Object object, Path path) {
-        try (FileOutputStream fileOutputStream = new FileOutputStream(path.toString());
-             ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
-            objectOutputStream.writeObject(object);
-        } catch (IOException e) {
-            logger.log(Level.SEVERE, "Writing object failed", e);
+    private void writeKeyRangesMapToFile() throws IOException {
+        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(keyRangesPath, UTF_8, writeOptions)) {
+            bufferedFileWriter.write(intToCharArray(keyRangesMap.size()));
+            for (Map.Entry<String, String> entry : keyRangesMap.entrySet()) {
+                bufferedFileWriter.write(intToCharArray(entry.getKey().length()));
+                bufferedFileWriter.write(intToCharArray(entry.getValue().length()));
+                bufferedFileWriter.write(entry.getKey());
+                bufferedFileWriter.write(entry.getValue());
+            }
+            bufferedFileWriter.flush();
         }
-    }
-
-    private static Object readObjectFromFile(Path path) {
-        try (FileInputStream fileInputStream = new FileInputStream(path.toString());
-             ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream)) {
-            return objectInputStream.readObject();
-        } catch (ClassNotFoundException | IOException e) {
-            logger.log(Level.SEVERE, "Reading object failed", e);
-        }
-        return null;
     }
 
     private static char[] intToCharArray(int k) {
