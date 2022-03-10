@@ -3,6 +3,7 @@ package ru.mail.polis.dmitrykondraev;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -53,11 +54,11 @@ final class SortedStringTable {
     // ┌─────────────────────┬─────────────────────────┐
     // │key: byte[keySize(i)]│value: byte[valueSize(i)]│ entriesMapped() times
     // └─────────────────────┴─────────────────────────┘
-    public SortedStringTable write(Collection<BaseEntry<MemorySegment>> entries) throws IOException {
+    public SortedStringTable write(Collection<Entry<MemorySegment>> entries) throws IOException {
         offsets = calculateOffsets(entries);
         dataSegment = segmentLazy.allocate(offsets[offsets.length - 1]);
         int i = 0;
-        for (BaseEntry<MemorySegment> entry : entries) {
+        for (Entry<MemorySegment> entry : entries) {
             mappedKey(i).copyFrom(entry.key());
             mappedValue(i).copyFrom(entry.value());
             i++;

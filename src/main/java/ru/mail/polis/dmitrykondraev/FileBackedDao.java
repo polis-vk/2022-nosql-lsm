@@ -2,9 +2,9 @@ package ru.mail.polis.dmitrykondraev;
 
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
+import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -18,10 +18,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
  * Author: Dmitry Kondraev.
  */
 
-public class FileBackedDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
+public class FileBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     private static final Comparator<MemorySegment> lexicographically = new MemorySegmentComparator();
-    private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> map =
+
+    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map =
             new ConcurrentSkipListMap<>(lexicographically);
 
     private SortedStringTable sortedStringTable;
@@ -48,7 +49,7 @@ public class FileBackedDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     }
 
     @Override
-    public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
+    public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         if (from == null && to == null) {
             return iterator(map);
         }
@@ -62,14 +63,14 @@ public class FileBackedDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     }
 
     @Override
-    public void upsert(BaseEntry<MemorySegment> entry) {
+    public void upsert(Entry<MemorySegment> entry) {
         // implicit check for non-null entry and entry.key()
         map.put(entry.key(), entry);
     }
 
     @Override
-    public BaseEntry<MemorySegment> get(MemorySegment key) {
-        BaseEntry<MemorySegment> result = map.get(key);
+    public Entry<MemorySegment> get(MemorySegment key) {
+        Entry<MemorySegment> result = map.get(key);
         if (result != null) {
             return result;
         }
