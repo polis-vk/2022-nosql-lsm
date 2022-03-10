@@ -41,20 +41,16 @@ class MemorySegmentReader {
         return Files.exists(utils.getIndexesPath()) && Files.exists(utils.getStoragePath());
     }
 
-    private void readIndexes() {
-        try {
-            long fileSize = Files.size(utils.getIndexesPath());
-            MemorySegment ms = MemorySegment.mapFile(
-                    utils.getIndexesPath(),
-                    0,
-                    fileSize,
-                    READ_ONLY,
-                    ResourceScope.globalScope()
-            );
-            indexes = ms.toLongArray();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    private void readIndexes() throws IOException {
+        long fileSize = Files.size(utils.getIndexesPath());
+        MemorySegment ms = MemorySegment.mapFile(
+                utils.getIndexesPath(),
+                0,
+                fileSize,
+                READ_ONLY,
+                ResourceScope.globalScope()
+        );
+        indexes = ms.toLongArray();
     }
 
     private void createdMapped() throws IOException {
