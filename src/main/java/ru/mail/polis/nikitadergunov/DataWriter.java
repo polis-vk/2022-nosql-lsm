@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 public class WriteToNonVolatileMemory implements AutoCloseable {
 
     private MemorySegment writeMemorySegment;
+    private MemorySegment indexesMemorySegment;
     private final ResourceScope scope = ResourceScope.newConfinedScope();
     ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage;
 
@@ -24,27 +25,37 @@ public class WriteToNonVolatileMemory implements AutoCloseable {
                                     ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage,
                                     long sizeInBytes) throws IOException {
         Path pathToTable = config.basePath().resolve("table");
+        Path pathToIndexes = config.basePath().resolve("indexes");
         Files.deleteIfExists(pathToTable);
-        try (FileChannel ignored = FileChannel.open(pathToTable,
-                StandardOpenOption.WRITE,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING)) {
+        try (FileChannel ignored = openFile(pathToTable);
+             FileChannel ignored2 = openFile(pathToIndexes)) {
             this.storage = storage;
             writeMemorySegment = MemorySegment.mapFile(pathToTable, 0,
                     sizeInBytes + Long.BYTES * storage.size() * 2L,
                     FileChannel.MapMode.READ_WRITE, scope);
+            indexesMemorySegment = MemorySegment.mapFile(pathToIndexes, 0,
+                    (long) storage.size() * Long.BYTES, FileChannel.MapMode.READ_WRITE, scope);
         } catch (NoSuchFileException e) {
             writeMemorySegment = null;
         }
 
     }
 
+    private FileChannel openFile(Path path) throws IOException {
+        return FileChannel.open(path, StandardOpenOption.WRITE,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING);
+    }
+
     public void write() {
         long offset = 0;
+        long offsetIndexes = 0;
         boolean valueIsNull;
         long keySizeInBytes;
         long valueSizeInBytes;
         for (Entry<MemorySegment> entry : storage.values()) {
+            MemoryAccess.setLongAtOffset(indexesMemorySegment, offsetIndexes, offset);
+            offsetIndexes += Long.BYTES;
             keySizeInBytes = entry.key().byteSize();
             MemoryAccess.setLongAtOffset(writeMemorySegment, offset, keySizeInBytes);
             offset += Long.BYTES;
