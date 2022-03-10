@@ -1,5 +1,9 @@
 package ru.mail.polis.artyomscheredin;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+
+import java.util.List;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -9,9 +13,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.SortedMap;
 
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
-
 public class FileManager {
     private static final String DATA_UNIT_NAME = "storage";
     private static final String EXTENSION = ".txt";
@@ -20,7 +21,7 @@ public class FileManager {
     private final Path pathToWrite;
     Config config;
 
-    public FileManager(Config config) throws IOException {
+    public FileManager(Config config) {
         if (config == null) {
             throw new IllegalArgumentException();
         }
@@ -28,7 +29,7 @@ public class FileManager {
         pathToWrite = config.basePath().resolve(DATA_UNIT_NAME + EXTENSION);
     }
 
-    public BaseEntry<ByteBuffer> getByKey(ByteBuffer key) throws IOException {
+    public BaseEntry<ByteBuffer> getByKey(ByteBuffer key) {
         if (Files.notExists(pathToWrite)) {
             return null;
         }
@@ -89,7 +90,7 @@ public class FileManager {
         return buffer;
     }
 
-    private ByteBuffer getBufferFromList(ArrayList<ByteBuffer> buffer, int size) {
+    private ByteBuffer getBufferFromList(List<ByteBuffer> buffer, int size) {
         ByteBuffer result = ByteBuffer.allocate(size);
         for (ByteBuffer el : buffer) {
             result.put(el);
