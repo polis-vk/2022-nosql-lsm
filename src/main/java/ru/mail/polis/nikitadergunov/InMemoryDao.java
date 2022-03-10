@@ -33,7 +33,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
                 MemoryAccess.getByteAtOffset(secondSegment, offsetMismatch));
     }
 
-    public InMemoryDao(Config config) {
+    public InMemoryDao(Config config) throws IOException {
         this.config = config;
         readFromNonVolatileMemory = new ReadFromNonVolatileMemory(config);
     }
