@@ -19,7 +19,10 @@ public class WriteToNonVolatileMemory {
     public WriteToNonVolatileMemory(Config config) throws IOException {
         Path pathToTable = config.basePath().resolve("table");
         Files.deleteIfExists(pathToTable);
-        writeChannel = FileChannel.open(pathToTable, StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW);
+        writeChannel = FileChannel.open(pathToTable,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     public void write(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage) throws IOException {
