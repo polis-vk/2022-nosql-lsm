@@ -8,6 +8,7 @@ import ru.mail.polis.test.DaoFactory;
 
 import java.nio.charset.StandardCharsets;
 
+@DaoFactory
 public class ByteArrayDaoFactory implements DaoFactory.Factory<byte[], BaseEntry<byte[]>> {
     @Override
     public Dao<byte[], BaseEntry<byte[]>> createDao() {
