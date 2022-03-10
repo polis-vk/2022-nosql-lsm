@@ -140,7 +140,7 @@ final class SortedStringTable {
         }
     }
 
-    private static long[] calculateOffsets(Collection<BaseEntry<MemorySegment>> entries) {
+    private static long[] calculateOffsets(Collection<Entry<MemorySegment>> entries) {
         long[] result = LongStream.concat(
                 LongStream.of(0L),
                 entries
