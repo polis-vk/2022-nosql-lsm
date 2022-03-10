@@ -94,7 +94,7 @@ public class FileBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public void close() throws IOException {
-        Dao.super.close();
+        flush();
         dataScope.close();
     }
 }
