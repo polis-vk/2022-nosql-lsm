@@ -3,7 +3,6 @@ package ru.mail.polis.artyomscheredin;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 
-import java.util.List;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -11,6 +10,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.SortedMap;
 
 public class FileManager {
@@ -29,7 +29,7 @@ public class FileManager {
         pathToWrite = config.basePath().resolve(DATA_UNIT_NAME + EXTENSION);
     }
 
-    public BaseEntry<ByteBuffer> getByKey(ByteBuffer key) {
+    public BaseEntry<ByteBuffer> getByKey(ByteBuffer key) throws IOException {
         if (Files.notExists(pathToWrite)) {
             return null;
         }
