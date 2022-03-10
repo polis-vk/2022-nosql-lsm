@@ -1,16 +1,16 @@
 package ru.mail.polis.artyomscheredin;
 
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
-
-import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.SortedMap;
-import java.util.concurrent.CopyOnWriteArrayList;
+
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 
 public class FileManager {
     private static final String DATA_UNIT_NAME = "storage";
@@ -26,25 +26,14 @@ public class FileManager {
         }
         this.config = config;
         pathToWrite = config.basePath().resolve(DATA_UNIT_NAME + EXTENSION);
-        File sourceDirectory = config.basePath().toFile();
-        if (!sourceDirectory.exists() || !sourceDirectory.isDirectory()) {
-            boolean isDirCreated = config.basePath().toFile().mkdir();
-            if (!isDirCreated) {
-                throw new IOException();
-            }
-        }
     }
 
     public BaseEntry<ByteBuffer> getByKey(ByteBuffer key) throws IOException {
-        return searchFile(pathToWrite.toFile(), key);
-    }
-
-    private BaseEntry<ByteBuffer> searchFile(File file, ByteBuffer key) throws IOException {
-        if ((file == null) || (key == null)) {
-            throw new IllegalArgumentException();
+        if (Files.notExists(pathToWrite)) {
+            return null;
         }
         BaseEntry<ByteBuffer> result = null;
-        try (RandomAccessFile fileToRead = new RandomAccessFile(file, "rw");
+        try (RandomAccessFile fileToRead = new RandomAccessFile(pathToWrite.toFile(), "rw");
              FileChannel ch = fileToRead.getChannel()) {
             while (ch.position() < ch.size()) {
                 int keySize = fileToRead.readInt();
@@ -67,10 +56,10 @@ public class FileManager {
 
     public void store(SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
         if (data == null) {
-            throw new IllegalArgumentException();
+            return;
         }
         try (FileChannel channel = new RandomAccessFile(pathToWrite.toFile(), "rw").getChannel()) {
-            CopyOnWriteArrayList<ByteBuffer> entryBuffer = new CopyOnWriteArrayList<ByteBuffer>();
+            ArrayList<ByteBuffer> entryBuffer = new ArrayList<ByteBuffer>();
             int size = 0;
             for (BaseEntry<ByteBuffer> e : data.values()) {
                 ByteBuffer entry = getBufferFromEntry(e);
@@ -100,7 +89,7 @@ public class FileManager {
         return buffer;
     }
 
-    private ByteBuffer getBufferFromList(CopyOnWriteArrayList<ByteBuffer> buffer, int size) {
+    private ByteBuffer getBufferFromList(ArrayList<ByteBuffer> buffer, int size) {
         ByteBuffer result = ByteBuffer.allocate(size);
         for (ByteBuffer el : buffer) {
             result.put(el);
