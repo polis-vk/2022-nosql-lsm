@@ -28,11 +28,10 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         this.config = config;
         pairs = new ConcurrentSkipListMap<>(Arrays::compare);
         if (Files.exists(config.basePath())) {
-            try (Stream<Path> stream = Files.walk(config.basePath())) {
-                filesCount = stream.filter(Files::isRegularFile).count();
+            try (Stream<Path> stream = Files.list(config.basePath())) {
+                filesCount = stream.count();
             }
-        }
-        else {
+        } else {
             filesCount = 0;
         }
     }
