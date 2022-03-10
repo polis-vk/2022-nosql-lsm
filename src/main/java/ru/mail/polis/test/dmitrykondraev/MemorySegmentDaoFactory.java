@@ -27,7 +27,7 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
 
     @Override
     public String toString(MemorySegment data) {
-        return String.valueOf(data.toCharArray());
+        return new String(data.toCharArray());
     }
 
     @Override
