@@ -12,16 +12,17 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-public class ReadFromNonVolatileMemory {
+public class ReadFromNonVolatileMemory implements AutoCloseable{
 
     private MemorySegment readMemorySegment;
     private boolean isExist;
+    private final ResourceScope scope = ResourceScope.newConfinedScope();
 
     public ReadFromNonVolatileMemory(Config config) throws IOException {
         Path pathToTable = config.basePath().resolve("table");
         try (FileChannel readChannel = FileChannel.open(pathToTable, StandardOpenOption.READ)) {
             readMemorySegment = MemorySegment.mapFile(pathToTable, 0,
-                    readChannel.size(), FileChannel.MapMode.READ_ONLY, ResourceScope.globalScope());
+                    readChannel.size(), FileChannel.MapMode.READ_ONLY, scope);
             isExist = true;
         } catch (NoSuchFileException e) {
             readMemorySegment = null;
@@ -59,4 +60,8 @@ public class ReadFromNonVolatileMemory {
         return null;
     }
 
+    @Override
+    public void close() {
+        scope.close();
+    }
 }

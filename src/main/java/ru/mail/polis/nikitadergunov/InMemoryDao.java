@@ -75,4 +75,9 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         writeToNonVolatileMemory.write(storage);
     }
 
+    @Override
+    public void close() throws IOException {
+        flush();
+        readFromNonVolatileMemory.close();
+    }
 }
