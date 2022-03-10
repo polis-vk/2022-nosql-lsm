@@ -12,18 +12,23 @@ import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
+    private final ReadWriteLock rwlock = new ReentrantReadWriteLock();
     private final Path pathToDataFile;
+    private final Path pathToDataIndexes;
 
     public InMemoryDao(Config config) throws IOException {
-        pathToDataFile = config.basePath().resolve("data.txt");
-        if (!Files.exists(pathToDataFile)) {
-            Files.createDirectories(config.basePath());
-            Files.createFile(pathToDataFile);
-        }
+        Path pathToConfig = config.basePath();
+        pathToDataFile = pathToConfig.resolve("data.txt");
+        pathToDataIndexes = pathToConfig.resolve("indexes.txt");
+
+        createFileIfNotExist(pathToDataFile);
+        createFileIfNotExist(pathToDataIndexes);
     }
 
     @Override
@@ -42,18 +47,33 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> result = findKeyInMap(key);
-        return result == null ? findKeyInFile(key) : result;
+        try {
+            rwlock.readLock().lock();
+            BaseEntry<ByteBuffer> result = findKeyInMap(key);
+            return result == null ? findKeyInFile(key) : result;
+        } finally {
+            rwlock.readLock().unlock();
+        }
     }
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
-        data.put(entry.key(), entry);
+        try {
+            rwlock.readLock().lock();
+            data.put(entry.key(), entry);
+        } finally {
+            rwlock.readLock().unlock();
+        }
     }
 
     @Override
     public void flush() throws IOException {
-        write();
+        try {
+            rwlock.writeLock().lock();
+            write();
+        } finally {
+            rwlock.writeLock().unlock();
+        }
     }
 
     @Override
@@ -61,34 +81,40 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         flush();
     }
 
+    private void createFileIfNotExist(Path filename) throws IOException {
+        if (!Files.exists(filename)) {
+            Files.createDirectories(filename.getParent());
+            Files.createFile(filename);
+        }
+    }
+
     private BaseEntry<ByteBuffer> findKeyInMap(ByteBuffer key) {
         return data.get(key);
     }
 
     private BaseEntry<ByteBuffer> findKeyInFile(ByteBuffer key) throws IOException {
-        try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile.toString(), "r")) {
-            return binarySearchInFile(raf, key);
+        try (RandomAccessFile dataFile = new RandomAccessFile(pathToDataFile.toString(), "r");
+             RandomAccessFile indexesFile = new RandomAccessFile(pathToDataIndexes.toString(), "r")) {
+            return binarySearchInFile(key, dataFile, indexesFile);
         }
     }
 
-    private boolean reachedEOF(RandomAccessFile raf) throws IOException {
-        return raf.getFilePointer() <= 0 || raf.getFilePointer() == raf.length();
-    }
-
-    private BaseEntry<ByteBuffer> binarySearchInFile(RandomAccessFile raf, ByteBuffer key) throws IOException {
+    private BaseEntry<ByteBuffer> binarySearchInFile(ByteBuffer key, RandomAccessFile dataFile,
+                RandomAccessFile indexesFile) throws IOException {
         long a = 0;
-        long b = raf.length();
-        while (b - a > Utils.MIN_DISTANCE_BETWEEN_PAIRS) {
+        long b = indexesFile.length() / Utils.PAIR_DISTANCE;
+        while (b - a >= 1) {
             long c = (b + a) / 2;
-            raf.seek(c);
-            rollbackToPairStart(raf);
+            indexesFile.seek(c * Utils.PAIR_DISTANCE);
+            int dataFileOffset = indexesFile.readInt();
+            dataFile.seek(dataFileOffset);
 
-            ByteBuffer curKey = readByteBuffer(raf);
+            ByteBuffer curKey = readByteBuffer(dataFile);
             int compare = curKey.compareTo(key);
             if (compare < 0) {
                 a = c;
             } else if (compare == 0) {
-                return new BaseEntry<>(curKey, readByteBuffer(raf));
+                return new BaseEntry<>(curKey, readByteBuffer(dataFile));
             } else {
                 b = c;
             }
@@ -97,25 +123,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         return null;
     }
 
-    private void rollbackToPairStart(RandomAccessFile raf) throws IOException {
-        long curPos = raf.getFilePointer();
-        if (curPos % 2 == 1) {
-            --curPos;
-        }
-        while (!reachedEOF(raf) && !isPairSeparator(raf.readChar())) {
-            curPos -= Character.BYTES;
-            raf.seek(Math.max(curPos, 0));
-        }
-    }
-
-    private boolean isPairSeparator(char ch) {
-        return ch == Utils.PAIR_SEPARATOR;
-    }
-
-    private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
-        int bbSize = raf.readInt();
+    private ByteBuffer readByteBuffer(RandomAccessFile dataFile) throws IOException {
+        int bbSize = dataFile.readInt();
         ByteBuffer bb = ByteBuffer.allocate(bbSize);
-        raf.getChannel().read(bb);
+        dataFile.getChannel().read(bb);
         bb.rewind();
         return bb;
     }
@@ -125,22 +136,42 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return;
         }
 
-        try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile.toString(), "rw")) {
+        try (RandomAccessFile dataFile = new RandomAccessFile(pathToDataFile.toString(), "rw");
+             RandomAccessFile indexesFile = new RandomAccessFile(pathToDataIndexes.toString(), "rw")) {
+            int curOffset = 0;
+            int bbSize = 0;
+            ByteBuffer offset = ByteBuffer.allocate(Utils.PAIR_DISTANCE);
             for (BaseEntry<ByteBuffer> entry: data.values()) {
-                int bbSize = Integer.BYTES + entry.key().remaining()
-                           + Integer.BYTES + entry.value().remaining() + Character.BYTES;
-                ByteBuffer bb = ByteBuffer.allocate(bbSize);
-
-                bb.putInt(entry.key().remaining());
-                bb.put(entry.key());
-                bb.putInt(entry.value().remaining());
-                bb.put(entry.value());
-                bb.putChar(Utils.PAIR_SEPARATOR);
-                bb.rewind();
-
-                raf.getChannel().write(bb);
+                curOffset += bbSize;
+                putOffsetInIndexesFile(curOffset, offset, indexesFile);
+                bbSize = putPairInDataFile(entry, dataFile);
             }
         }
+    }
+
+    private void putOffsetInIndexesFile(int offset, ByteBuffer bbOffset, RandomAccessFile indexesFile) throws IOException {
+        bbOffset.putInt(offset);
+        bbOffset.putChar(Utils.LINE_SEPARATOR);
+        bbOffset.rewind();
+        indexesFile.getChannel().write(bbOffset);
+        bbOffset.rewind();
+    }
+
+    private int putPairInDataFile(BaseEntry<ByteBuffer> entry, RandomAccessFile dataFile) throws IOException {
+        int bbSize = Integer.BYTES + entry.key().remaining()
+                + Integer.BYTES + entry.value().remaining()
+                + Character.BYTES;
+        ByteBuffer pair = ByteBuffer.allocate(bbSize);
+
+        pair.putInt(entry.key().remaining());
+        pair.put(entry.key());
+        pair.putInt(entry.value().remaining());
+        pair.put(entry.value());
+        pair.putChar(Utils.LINE_SEPARATOR);
+        pair.rewind();
+        dataFile.getChannel().write(pair);
+
+        return bbSize;
     }
 
 }
