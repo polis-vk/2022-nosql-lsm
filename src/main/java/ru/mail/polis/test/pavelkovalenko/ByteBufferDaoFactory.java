@@ -7,13 +7,15 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
 @DaoFactory(stage = 2, week = 1)
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
+
     @Override
-    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) {
+    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
         return new InMemoryDao(config);
     }
 
@@ -31,4 +33,5 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
     public BaseEntry<ByteBuffer> fromBaseEntry(Entry<ByteBuffer> baseEntry) {
         return new BaseEntry<>(baseEntry.key(), baseEntry.value());
     }
+
 }

@@ -16,16 +16,13 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    private final String pathToDataFile;
+    private final Path pathToDataFile;
 
-    public InMemoryDao(Config config) {
-        pathToDataFile = config.basePath().resolve("data.txt").toString();
-        try {
-            if (!Files.exists(Path.of(pathToDataFile))) {
-                Files.createFile(Path.of(pathToDataFile));
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+    public InMemoryDao(Config config) throws IOException {
+        pathToDataFile = config.basePath().resolve("data.txt");
+        if (!Files.exists(pathToDataFile)) {
+            Files.createDirectories(config.basePath());
+            Files.createFile(pathToDataFile);
         }
     }
 
@@ -44,18 +41,14 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) {
-        try {
-            return findKey(key);
-        } catch (IOException e) {
-            return null;
-        }
+    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
+        BaseEntry<ByteBuffer> result = findKeyInMap(key);
+        return result == null ? findKeyInFile(key) : result;
     }
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         data.put(entry.key(), entry);
-        Utils.minSizeOfElem = Math.min(entry.key().remaining(), entry.value().remaining());
     }
 
     @Override
@@ -68,33 +61,24 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         flush();
     }
 
-    private BaseEntry<ByteBuffer> findKey(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> result = findKeyInMap(key);
-        return result == null ? findKeyInFile(key) : result;
-    }
-
     private BaseEntry<ByteBuffer> findKeyInMap(ByteBuffer key) {
         return data.get(key);
     }
 
     private BaseEntry<ByteBuffer> findKeyInFile(ByteBuffer key) throws IOException {
-        try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "r")) {
+        try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile.toString(), "r")) {
             return binarySearchInFile(raf, key);
         }
     }
 
     private boolean reachedEOF(RandomAccessFile raf) throws IOException {
-        return raf.getFilePointer() == raf.length() || raf.getFilePointer() <= 0;
+        return raf.getFilePointer() <= 0 || raf.getFilePointer() == raf.length();
     }
 
     private BaseEntry<ByteBuffer> binarySearchInFile(RandomAccessFile raf, ByteBuffer key) throws IOException {
-        if (raf.length() == 0) {
-            return null;
-        }
-
         long a = 0;
         long b = raf.length();
-        while (b - a > Utils.minSizeOfElem) {
+        while (b - a > Utils.minDistanceBetweenPairs) {
             long c = (b + a) / 2;
             raf.seek(c);
             rollbackToPairStart(raf);
@@ -130,7 +114,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private ByteBuffer readByteBuffer(RandomAccessFile raf) throws IOException {
         int bbSize = raf.readInt();
-        ByteBuffer bb = ByteBuffer.wrap(new byte[bbSize]);
+        ByteBuffer bb = ByteBuffer.allocate(bbSize);
         raf.getChannel().read(bb);
         bb.rewind();
         return bb;
@@ -141,17 +125,19 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return;
         }
 
-        try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile, "rw")) {
+        try (RandomAccessFile raf = new RandomAccessFile(pathToDataFile.toString(), "rw")) {
             for (BaseEntry<ByteBuffer> entry: data.values()) {
                 int bbSize = Integer.BYTES + entry.key().remaining()
                            + Integer.BYTES + entry.value().remaining() + Character.BYTES;
-                ByteBuffer bb = ByteBuffer.wrap(new byte[bbSize]);
+                ByteBuffer bb = ByteBuffer.allocate(bbSize);
+
                 bb.putInt(entry.key().remaining());
                 bb.put(entry.key());
                 bb.putInt(entry.value().remaining());
                 bb.put(entry.value());
                 bb.putChar(Utils.PAIR_SEPARATOR);
                 bb.rewind();
+
                 raf.getChannel().write(bb);
             }
         }
