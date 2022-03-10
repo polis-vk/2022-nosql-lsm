@@ -1,5 +1,6 @@
 package ru.mail.polis.nikitadergunov;
 
+import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
@@ -16,7 +17,7 @@ public class ReadFromNonVolatileMemory implements AutoCloseable{
 
     private MemorySegment readMemorySegment;
     private boolean isExist;
-    private final ResourceScope scope = ResourceScope.newConfinedScope();
+    private final ResourceScope scope = ResourceScope.newSharedScope();
 
     public ReadFromNonVolatileMemory(Config config) throws IOException {
         Path pathToTable = config.basePath().resolve("table");
@@ -37,22 +38,27 @@ public class ReadFromNonVolatileMemory implements AutoCloseable{
     public Entry<MemorySegment> get(MemorySegment key) {
         long offset = 0;
         MemorySegment readKey;
-        MemorySegment readValue = null;
-        long lengthMemorySegment;
+        MemorySegment readValue;
+        long lengthKey;
+        long lengthValue;
 
         while (offset < readMemorySegment.byteSize()) {
-            lengthMemorySegment = readMemorySegment.asSlice(offset, Long.BYTES).asByteBuffer().getLong();
+            lengthKey = MemoryAccess.getLongAtOffset(readMemorySegment, offset);
             offset += Long.BYTES;
-            readKey = readMemorySegment.asSlice(offset, lengthMemorySegment);
-            offset += lengthMemorySegment;
-
-            lengthMemorySegment = readMemorySegment.asSlice(offset, Long.BYTES).asByteBuffer().getLong();
+            lengthValue = MemoryAccess.getLongAtOffset(readMemorySegment, offset);
             offset += Long.BYTES;
-            if (lengthMemorySegment != -1) {
-                readValue = readMemorySegment.asSlice(offset, lengthMemorySegment);
-                offset += lengthMemorySegment;
+            if (lengthValue == -1) {
+                offset += lengthKey;
+                continue;
             }
-
+            readKey = readMemorySegment.asSlice(offset, lengthKey);
+            offset += lengthKey;
+            if (key.byteSize() != lengthKey) {
+                offset += lengthValue;
+                continue;
+            }
+            readValue = readMemorySegment.asSlice(offset, lengthValue);
+            offset += lengthValue;
             if (InMemoryDao.comparator(key, readKey) == 0) {
                 return new BaseEntry<>(key, readValue);
             }
@@ -62,6 +68,9 @@ public class ReadFromNonVolatileMemory implements AutoCloseable{
 
     @Override
     public void close() {
+        if (!scope.isAlive()) {
+            return;
+        }
         scope.close();
     }
 }

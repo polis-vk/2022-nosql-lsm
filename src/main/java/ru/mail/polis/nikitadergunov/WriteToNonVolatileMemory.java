@@ -1,51 +1,74 @@
 package ru.mail.polis.nikitadergunov;
 
+import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
+import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ConcurrentNavigableMap;
 
-public class WriteToNonVolatileMemory {
+public class WriteToNonVolatileMemory implements AutoCloseable {
 
-    private final FileChannel writeChannel;
+    private MemorySegment writeMemorySegment;
+    private final ResourceScope scope = ResourceScope.newConfinedScope();
+    ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage;
 
-    public WriteToNonVolatileMemory(Config config) throws IOException {
+    public WriteToNonVolatileMemory(Config config,
+                                    ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage,
+                                    long sizeInBytes) throws IOException {
         Path pathToTable = config.basePath().resolve("table");
         Files.deleteIfExists(pathToTable);
-        writeChannel = FileChannel.open(pathToTable,
+        try (FileChannel ignored = FileChannel.open(pathToTable,
                 StandardOpenOption.WRITE,
                 StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING);
+                StandardOpenOption.TRUNCATE_EXISTING)) {
+            this.storage = storage;
+            writeMemorySegment = MemorySegment.mapFile(pathToTable, 0,
+                    sizeInBytes + Long.BYTES * storage.size() * 2L,
+                    FileChannel.MapMode.READ_WRITE, scope);
+        } catch (NoSuchFileException e) {
+            writeMemorySegment = null;
+        }
+
     }
 
-    public void write(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage) throws IOException {
-        ByteBuffer allocateBuffer = ByteBuffer.allocate(Long.BYTES);
+    public void write() {
+        long offset = 0;
+        boolean valueIsNull;
+        long keySizeInBytes;
+        long valueSizeInBytes;
         for (Entry<MemorySegment> entry : storage.values()) {
-            writeMemorySegment(entry.key(), allocateBuffer);
-            writeMemorySegment(entry.value(), allocateBuffer);
+            keySizeInBytes = entry.key().byteSize();
+            MemoryAccess.setLongAtOffset(writeMemorySegment, offset, keySizeInBytes);
+            offset += Long.BYTES;
+            valueIsNull = entry.value() == null;
+            if (valueIsNull) {
+                valueSizeInBytes = -1;
+            } else {
+                valueSizeInBytes = entry.value().byteSize();
+            }
+            MemoryAccess.setLongAtOffset(writeMemorySegment, offset, valueSizeInBytes);
+            offset += Long.BYTES;
+
+            writeMemorySegment.asSlice(offset).copyFrom(entry.key());
+            offset += keySizeInBytes;
+
+            if (!valueIsNull) {
+                writeMemorySegment.asSlice(offset).copyFrom(entry.value());
+                offset += valueSizeInBytes;
+            }
         }
     }
 
-    private void writeLong(long value, ByteBuffer allocateBuffer) throws IOException {
-        allocateBuffer.putLong(0, value);
-        allocateBuffer.position(0);
-        writeChannel.write(allocateBuffer);
+    @Override
+    public void close() {
+        scope.close();
     }
-
-    private void writeMemorySegment(MemorySegment memorySegment, ByteBuffer allocateBuffer) throws IOException {
-        if (memorySegment == null) {
-            writeLong(-1, allocateBuffer);
-            return;
-        }
-        writeLong(memorySegment.byteSize(), allocateBuffer);
-        writeChannel.write(memorySegment.asByteBuffer());
-    }
-
 }

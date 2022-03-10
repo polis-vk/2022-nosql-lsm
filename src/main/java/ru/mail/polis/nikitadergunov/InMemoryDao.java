@@ -10,6 +10,9 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
@@ -17,6 +20,8 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             new ConcurrentSkipListMap<>(InMemoryDao::comparator);
     private final Config config;
     private final ReadFromNonVolatileMemory readFromNonVolatileMemory;
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final AtomicLong sizeInBytes = new AtomicLong(0);
 
     public static int comparator(MemorySegment firstSegment, MemorySegment secondSegment) {
         long offsetMismatch = firstSegment.mismatch(secondSegment);
@@ -40,44 +45,62 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) {
-        Entry<MemorySegment> value = storage.get(key);
-        if (value != null) {
+        try {
+            lock.readLock().lock();
+            Entry<MemorySegment> value = storage.get(key);
+            if (value == null && readFromNonVolatileMemory.isExist()) {
+                value = readFromNonVolatileMemory.get(key);
+            }
             return value;
+        } finally {
+            lock.readLock().unlock();
         }
-        if (readFromNonVolatileMemory.isExist()) {
-            return readFromNonVolatileMemory.get(key);
-        }
-        return null;
     }
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
-        if (from == null && to == null) {
-            return storage.values().iterator();
+        try {
+            lock.readLock().lock();
+            if (from == null && to == null) {
+                return storage.values().iterator();
+            }
+            if (from == null) {
+                return storage.headMap(to).values().iterator();
+            }
+            if (to == null) {
+                return storage.tailMap(from).values().iterator();
+            }
+            return storage.subMap(from, to).values().iterator();
+        } finally {
+            lock.readLock().unlock();
         }
-        if (from == null) {
-            return storage.headMap(to).values().iterator();
-        }
-        if (to == null) {
-            return storage.tailMap(from).values().iterator();
-        }
-        return storage.subMap(from, to).values().iterator();
+
     }
 
     @Override
     public void upsert(Entry<MemorySegment> entry) {
-        storage.put(entry.key(), entry);
-    }
-
-    @Override
-    public void flush() throws IOException {
-        WriteToNonVolatileMemory writeToNonVolatileMemory = new WriteToNonVolatileMemory(config);
-        writeToNonVolatileMemory.write(storage);
+        try {
+            lock.readLock().lock();
+            storage.put(entry.key(), entry);
+            sizeInBytes.addAndGet(entry.key().byteSize());
+            if (entry.value() != null) {
+                sizeInBytes.addAndGet(entry.value().byteSize());
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     @Override
     public void close() throws IOException {
-        flush();
-        readFromNonVolatileMemory.close();
+        try {
+            readFromNonVolatileMemory.close();
+            lock.writeLock().lock();
+            WriteToNonVolatileMemory writeToNonVolatileMemory = new WriteToNonVolatileMemory(config, storage, sizeInBytes.get());
+            writeToNonVolatileMemory.write();
+            writeToNonVolatileMemory.close();
+        } finally {
+            lock.writeLock().lock();
+        }
     }
 }
