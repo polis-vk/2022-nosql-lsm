@@ -23,7 +23,7 @@ public class MemorySegmentComparator implements Comparator<MemorySegment> {
         if (offset == rhs.byteSize()) {
             return 1;
         }
-        return Byte.compare(
+        return Byte.compareUnsigned(
                 MemoryAccess.getByteAtOffset(lhs, offset),
                 MemoryAccess.getByteAtOffset(rhs, offset)
         );
