@@ -19,10 +19,10 @@ public class FileSeeker {
     }
 
     public BaseEntry<ByteBuffer> tryFind(ByteBuffer key) throws IOException {
-        ByteBuffer value = null;
-        if (Files.size(dataPath) == 0) {
+        if (Files.notExists(dataPath)) {
             return null;
         }
+        ByteBuffer value = null;
         try (RandomAccessFile dataFile = new RandomAccessFile(dataPath.toFile(), "r");
              RandomAccessFile indexFile = new RandomAccessFile(indexPath.toFile(), "r");
              FileChannel channel = dataFile.getChannel()) {

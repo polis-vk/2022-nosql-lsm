@@ -6,7 +6,6 @@ import ru.mail.polis.Dao;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -23,19 +22,6 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public PersistenceDao(Config config) {
         Path dataPath = config.basePath().resolve(DATA_FILENAME);
         Path indexPath = config.basePath().resolve(INDEX_FILENAME);
-        try {
-            if (!Files.exists(config.basePath())) {
-                Files.createDirectories(config.basePath());
-            }
-            if (!Files.exists(dataPath)) {
-                Files.createFile(dataPath);
-            }
-            if (!Files.exists(indexPath)) {
-                Files.createFile(indexPath);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
         writer = new FileWriter(dataPath, indexPath);
         seeker = new FileSeeker(dataPath, indexPath);
     }
