@@ -16,7 +16,7 @@ repositories {
 dependencies {
     // Checks
     errorprone 'com.google.errorprone:error_prone_core:2.11.0'
-    checkstyle 'com.puppycrawl.tools:checkstyle:10.0'
+    checkstyle 'com.puppycrawl.tools:checkstyle:9.3'
 
     //implementation 'jdk.incubator.foreign'
 
@@ -24,14 +24,6 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
     testImplementation 'org.junit.jupiter:junit-jupiter-params:5.8.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
-}
-
-compileJava {
-    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
-}
-
-compileTestJava {
-    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
 }
 
 test {
@@ -43,4 +35,12 @@ test {
 checkstyle {
     configFile = new File("checkstyle.xml")
     checkstyleTest.enabled = false
+}
+
+compileJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+}
+
+compileTestJava {
+    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
 }
