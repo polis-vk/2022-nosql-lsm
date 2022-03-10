@@ -5,9 +5,9 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import java.io.EOFException;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -16,23 +16,15 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<String, Entry<String>> {
     private static final String FILENAME = "db.txt";
     private final ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
-    private final Config config;
+    private final Path dataPath;
     private long lastWritePos;
     private volatile boolean commit;
 
-    public InMemoryDao(Config config) throws IOException {
+    public InMemoryDao(Config config) {
         if (config == null) {
             throw new IllegalArgumentException("Config shouldn't be null");
         }
-        this.config = config;
-    }
-
-    private Path getPath() throws IOException {
-        Path path = config.basePath();
-        Files.createDirectories(path);
-        path = path.resolve(FILENAME);
-        path.toFile().createNewFile();
-        return path;
+        dataPath = config.basePath().resolve(FILENAME);
     }
 
     @Override
@@ -65,7 +57,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     }
 
     private Entry<String> findInFileByKey(String key) throws IOException {
-        try (RandomAccessFile input = new RandomAccessFile(getPath().toString(), "r")) {
+        try (RandomAccessFile input = new RandomAccessFile(dataPath.toString(), "r")) {
             input.seek(0);
             String line;
             while (input.getFilePointer() <= input.length()) {
@@ -81,7 +73,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 }
             }
             return null;
-        } catch (EOFException e) {
+        } catch (FileNotFoundException | EOFException e) {
             return null;
         }
     }
@@ -97,7 +89,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         if (commit) {
             return;
         }
-        try (RandomAccessFile output = new RandomAccessFile(getPath().toString(), "rw")) {
+        try (RandomAccessFile output = new RandomAccessFile(dataPath.toString(), "rw")) {
             output.seek(lastWritePos);
             StringBuilder result = new StringBuilder();
             for (Entry<String> value : data.values()) {
