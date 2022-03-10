@@ -31,6 +31,8 @@ plugins:
         enabled: false
       AvoidSynchronizedAtMethodLevel:
         enabled: false
+      AvoidThrowingNullPointerException:
+        enabled: false
       AvoidThrowingRawExceptionTypes:
         enabled: false
       DataClass:
