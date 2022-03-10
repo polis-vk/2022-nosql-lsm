@@ -7,8 +7,6 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.dmitrykondraev.FileBackedDao;
 import ru.mail.polis.test.DaoFactory;
 
-import java.nio.charset.StandardCharsets;
-
 /**
  * Author: Dmitry Kondraev.
  */
