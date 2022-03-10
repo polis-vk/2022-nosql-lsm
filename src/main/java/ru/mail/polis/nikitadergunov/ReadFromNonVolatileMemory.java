@@ -23,10 +23,11 @@ public class ReadFromNonVolatileMemory {
             isExist = false;
             return;
         }
-        FileChannel readChannel = FileChannel.open(pathToTable);
-        readMemorySegment = MemorySegment.mapFile(pathToTable, 0,
-                readChannel.size(), FileChannel.MapMode.READ_ONLY, ResourceScope.globalScope());
-        isExist = true;
+        try (FileChannel readChannel = FileChannel.open(pathToTable)) {
+            readMemorySegment = MemorySegment.mapFile(pathToTable, 0,
+                    readChannel.size(), FileChannel.MapMode.READ_ONLY, ResourceScope.globalScope());
+            isExist = true;
+        }
     }
 
     public boolean isExist() {
