@@ -4,7 +4,6 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -14,6 +13,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String FILE = "data.anime";
+    private static final String INDEX = "index.anime";
     private final Config config;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory = new ConcurrentSkipListMap<>();
 
@@ -56,13 +56,13 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private void store() throws IOException {
-        try (DaoWriter out = new DaoWriter(config.basePath() + File.separator + FILE)) {
+        try (DaoWriter out = new DaoWriter(config.basePath().resolve(FILE), config.basePath().resolve(INDEX))) {
             out.writeMap(memory);
         }
     }
 
     private BaseEntry<ByteBuffer> findInFile(ByteBuffer key) throws IOException {
-        try (DaoReader finder = new DaoReader(config.basePath() + File.separator + FILE)) {
+        try (DaoReader finder = new DaoReader(config.basePath().resolve(FILE), config.basePath().resolve(INDEX))) {
             return finder.binarySearch(key);
         } catch (FileNotFoundException e) {
             return null;

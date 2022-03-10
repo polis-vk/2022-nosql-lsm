@@ -6,116 +6,45 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class DaoReader implements Closeable {
-    private static final char DELIMITER = 0x1e;
     private final RandomAccessFile reader;
-    private final long size;
+    private final RandomAccessFile indexReader;
 
-    public DaoReader(String name) throws IOException {
-        reader = new RandomAccessFile(name, "r");
-        size = reader.length();
-    }
-
-    public BaseEntry<ByteBuffer> retrieveElement(ByteBuffer key) throws IOException {
-        int mapSize = readInt();
-        BaseEntry<ByteBuffer> elem;
-        for (int i = 0; i < mapSize; i++) {
-            elem = readElementPair();
-            if (elem.key().compareTo(key) == 0) {
-                return elem;
-            }
-        }
-        return null;
+    public DaoReader(Path fileName, Path indexName) throws IOException {
+        reader = new RandomAccessFile(String.valueOf(fileName), "r");
+        indexReader = new RandomAccessFile(String.valueOf(indexName), "r");
     }
 
     public BaseEntry<ByteBuffer> binarySearch(ByteBuffer key) throws IOException {
-        readInt();
         long lowerBond = 0;
-        long higherBond = this.size;
+        long higherBond = readSize();
         long middle = higherBond / 2;
 
         while (lowerBond <= higherBond) {
-            FileEntry result = nextEntry(middle);
-            if (key.compareTo(result.entry.key()) > 0) {
+            BaseEntry<ByteBuffer> result = getEntry(middle);
+            if (key.compareTo(result.key()) > 0) {
                 lowerBond = middle + 1;
-            } else if (key.compareTo(result.entry.key()) < 0) {
+            } else if (key.compareTo(result.key()) < 0) {
                 higherBond = middle - 1;
-            } else if (key.compareTo(result.entry.key()) == 0) {
-                return result.entry;
+            } else if (key.compareTo(result.key()) == 0) {
+                return result;
             }
             middle = (lowerBond + higherBond) / 2;
         }
         return null;
     }
 
-    private FileEntry nextEntry(long startingPosition) throws IOException {
-        int bufSize = 128;
-        FileEntry entry = new FileEntry();
-        ByteBuffer buffer = ByteBuffer.allocate(bufSize);
-        reader.seek(startingPosition);
-        byte[] bytes;
-        byte result = 'n';
-        long position = startingPosition;
-        while (position != size) {
-            reader.read(buffer.array());
-            bytes = buffer.array();
-            for (int i = 0; i < bytes.length; i++) {
-                if (bytes[i] == DELIMITER) {
-                    position += i;
-                    entry.bytePosition = position;
-                    result = DELIMITER;
-                    break;
-                }
-            }
-            if (result == DELIMITER) {
-                break;
-            }
-            position += bufSize;
-        }
-        reader.seek(position - Integer.BYTES);
-        entry.size = readInt();
-
-        reader.seek(position - entry.size);
-
-        entry.entry = readElementPair();
-
-        return entry;
-    }
-
-    public int checkForKey(ByteBuffer key) throws IOException {
-        int mapSize = readInt();
-        ByteBuffer prevElem = null;
-        ByteBuffer elem;
-        for (int i = 0; i < mapSize; i++) {
-            elem = readElementPair().key();
-
-            if (i == 0 && elem.compareTo(key) > 0) {
-                return -1;
-            } else if (prevElem != null && prevElem.compareTo(key) < 0 && elem.compareTo(key) > 0) {
-                return 404;
-            } else if (elem.compareTo(key) < 0 && i + 1 == mapSize) {
-                return 1;
-            } else if (elem.compareTo(key) == 0) {
-                return 0;
-            }
-
-            prevElem = elem;
-        }
-        return -2;
-    }
-
-    public ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> readMap() throws IOException {
-        int mapSize = readInt();
-        ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
-        BaseEntry<ByteBuffer> entry;
-        for (int i = 0; i < mapSize; i++) {
-            entry = readElementPair();
-            map.put(entry.key(), entry);
-        }
-        return map;
+    private BaseEntry<ByteBuffer> getEntry(long middle) throws IOException {
+        indexReader.seek(Integer.BYTES + middle * Long.BYTES);
+        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+        indexReader.getChannel().read(buffer);
+        buffer.rewind();
+        reader.seek(buffer.getLong());
+        return readElementPair();
     }
 
     public BaseEntry<ByteBuffer> readElementPair() throws IOException {
@@ -130,21 +59,12 @@ public class DaoReader implements Closeable {
         reader.getChannel().read(valBuffer);
         keyBuffer.rewind();
         valBuffer.rewind();
-        reader.read(buffer.array(), 0, Integer.BYTES + Byte.BYTES);
         return new BaseEntry<>(keyBuffer, valBuffer);
     }
 
-    public ByteBuffer readElement() throws IOException {
-        int elementSize = readInt();
-        ByteBuffer buffer = ByteBuffer.allocate(elementSize);
-        reader.getChannel().read(buffer);
-        buffer.rewind();
-        return buffer;
-    }
-
-    public int readInt() throws IOException {
+    public int readSize() throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
-        reader.getChannel().read(buffer);
+        indexReader.getChannel().read(buffer);
         buffer.rewind();
         return buffer.getInt();
     }
@@ -154,9 +74,30 @@ public class DaoReader implements Closeable {
         reader.close();
     }
 
-    private static class FileEntry {
-        public long bytePosition;
-        public int size;
+    //Метод для считывания всей мапы - вдруг понадобится
+    public ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> readMap() throws IOException {
+        int mapSize = readSize();
+        ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
         BaseEntry<ByteBuffer> entry;
+        for (int i = 0; i < mapSize; i++) {
+            entry = readElementPair();
+            map.put(entry.key(), entry);
+        }
+        return map;
+    }
+
+    //Метод для итеративного поиска - не используется
+    //Оставил, так как он всегда железно работает и хорош для тестов других, более быстрых
+    //Но опасных методов
+    public BaseEntry<ByteBuffer> retrieveElement(ByteBuffer key) throws IOException {
+        int mapSize = readSize();
+        BaseEntry<ByteBuffer> elem;
+        for (int i = 0; i < mapSize; i++) {
+            elem = readElementPair();
+            if (elem.key().compareTo(key) == 0) {
+                return elem;
+            }
+        }
+        return null;
     }
 }
