@@ -23,19 +23,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final SortedMap<MemorySegment, BaseEntry<MemorySegment>> storage =
             new ConcurrentSkipListMap<>(new MemorySegmentComparator());
-    private final File[] files;
+    private File[] files;
+    private final Path path;
 
     public InMemoryDao(Config config) {
-        Path path = config.basePath();
-        File[] listFiles = path.toFile().listFiles();
-
-        int count = listFiles == null ? 0 : listFiles.length;
-        try {
-            Files.createFile(path.resolve(Path.of("storage" + (++count) + ".txt")));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
+        this.path = config.basePath();
         this.files = path.toFile().listFiles();
     }
 
@@ -57,12 +49,12 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public BaseEntry<MemorySegment> get(MemorySegment key) {
+    public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
         BaseEntry<MemorySegment> result = storage.get(key);
         return result == null ? getFromFile(key) : result;
     }
 
-    public BaseEntry<MemorySegment> getFromFile(MemorySegment key) {
+    public BaseEntry<MemorySegment> getFromFile(MemorySegment key) throws IOException {
         if (this.files == null) {
             return null;
         }
@@ -84,8 +76,6 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
                         return new BaseEntry<>(key, MemorySegment.ofArray(rvalue));
                     }
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
             }
         }
 
@@ -102,7 +92,10 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public void flush() {
+    public void flush() throws IOException {
+        Files.createFile(path.resolve("storage" + (this.files.length) + ".txt"));
+        this.files = path.toFile().listFiles();
+
         try (OutputStream output = Files.newOutputStream(this.files[this.files.length - 1].toPath());
              BufferedOutputStream buffer = new BufferedOutputStream(output, 128)) {
             for (BaseEntry<MemorySegment> memorySegmentBaseEntry : storage.values()) {
@@ -111,8 +104,6 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
                 buffer.write((int) memorySegmentBaseEntry.value().byteSize());
                 buffer.write(memorySegmentBaseEntry.value().toByteArray());
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 
