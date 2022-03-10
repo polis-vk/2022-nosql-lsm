@@ -78,7 +78,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private BaseEntry<ByteBuffer> binarySearchInFile(RandomAccessFile raf, ByteBuffer key) throws IOException {
         long a = 0;
         long b = raf.length();
-        while (b - a > Utils.minDistanceBetweenPairs) {
+        while (b - a > Utils.MIN_DISTANCE_BETWEEN_PAIRS) {
             long c = (b + a) / 2;
             raf.seek(c);
             rollbackToPairStart(raf);
