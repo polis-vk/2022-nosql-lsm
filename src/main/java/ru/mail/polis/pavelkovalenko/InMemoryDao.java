@@ -102,10 +102,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private BaseEntry<ByteBuffer> binarySearchInFile(ByteBuffer key, RandomAccessFile dataFile,
                 RandomAccessFile indexesFile) throws IOException {
         long a = 0;
-        long b = indexesFile.length() / Utils.PAIR_DISTANCE;
+        long b = indexesFile.length() / Utils.OFFSET_VALUES_DISTANCE;
         while (b - a >= 1) {
             long c = (b + a) / 2;
-            indexesFile.seek(c * Utils.PAIR_DISTANCE);
+            indexesFile.seek(c * Utils.OFFSET_VALUES_DISTANCE);
             int dataFileOffset = indexesFile.readInt();
             dataFile.seek(dataFileOffset);
 
@@ -140,7 +140,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
              RandomAccessFile indexesFile = new RandomAccessFile(pathToDataIndexes.toString(), "rw")) {
             int curOffset = 0;
             int bbSize = 0;
-            ByteBuffer offset = ByteBuffer.allocate(Utils.PAIR_DISTANCE);
+            ByteBuffer offset = ByteBuffer.allocate(Utils.OFFSET_VALUES_DISTANCE);
             for (BaseEntry<ByteBuffer> entry: data.values()) {
                 curOffset += bbSize;
                 putOffsetInIndexesFile(curOffset, offset, indexesFile);
