@@ -14,7 +14,6 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<String, Entry<String>> {
-    private static final int MAX_CAPACITY = 20_000;
     private static final String FILENAME = "db.txt";
     private final ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
     private final Config config;
@@ -26,37 +25,13 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             throw new IllegalArgumentException("Config shouldn't be null");
         }
         this.config = config;
-        loadFromFile();
-    }
-
-    private long loadFromFile() throws IOException {
-        try (RandomAccessFile input = new RandomAccessFile(getPath().toString(), "r")) {
-            String line;
-            while (data.size() <= MAX_CAPACITY) {
-                line = input.readUTF();
-                int delimiterIndex = line.indexOf(' ');
-                if (delimiterIndex == -1) {
-                    continue;
-                }
-                Entry<String> entry = new BaseEntry<>(line.substring(0, delimiterIndex),
-                        line.substring(delimiterIndex + 1));
-                data.put(entry.key(), entry);
-            }
-            return input.getFilePointer();
-        } catch (EOFException e) {
-            return -1;
-        }
     }
 
     private Path getPath() throws IOException {
         Path path = config.basePath();
-        if (Files.notExists(path)) {
-            Files.createDirectories(path);
-        }
+        Files.createDirectories(path);
         path = path.resolve(FILENAME);
-        if (Files.notExists(path)) {
-            Files.createFile(path);
-        }
+        path.toFile().createNewFile();
         return path;
     }
 
@@ -78,14 +53,15 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     @Override
     public Entry<String> get(String key) throws IOException {
-        if (!data.containsKey(key)) {
-            Entry<String> entry = findInFileByKey(key);
+        Entry<String> entry = data.get(key);
+        if (entry == null) {
+            entry = findInFileByKey(key);
             if (entry != null) {
                 data.put(entry.key(), entry);
             }
             return entry;
         }
-        return data.get(key);
+        return entry;
     }
 
     private Entry<String> findInFileByKey(String key) throws IOException {
@@ -98,9 +74,10 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 if (delimiterIndex == -1) {
                     continue;
                 }
-                String currentKey = line.substring(0, delimiterIndex);
+                int keyLength = Integer.parseInt(line, 0,delimiterIndex, 10);
+                String currentKey = line.substring(delimiterIndex + 1, delimiterIndex + keyLength + 1);
                 if (key.equals(currentKey)) {
-                    return new BaseEntry<>(currentKey, line.substring(delimiterIndex + 1));
+                    return new BaseEntry<>(currentKey, line.substring(delimiterIndex + keyLength + 1));
                 }
             }
             return null;
@@ -124,7 +101,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             output.seek(lastWritePos);
             StringBuilder result = new StringBuilder();
             for (Entry<String> value : data.values()) {
-                result.append(value.key()).append(' ').append(value.value());
+                result.append(value.key().length()).append(' ').append(value.key()).append(value.value());
                 output.writeUTF(result.toString());
                 result.setLength(0);
             }
