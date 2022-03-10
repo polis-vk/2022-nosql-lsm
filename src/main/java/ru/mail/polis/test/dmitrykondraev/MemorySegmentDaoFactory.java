@@ -11,7 +11,7 @@ import ru.mail.polis.test.DaoFactory;
  * Author: Dmitry Kondraev.
  */
 
-@DaoFactory(stage = 2)
+@DaoFactory(stage = 2, week = 1)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
 
     @Override
