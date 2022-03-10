@@ -23,6 +23,12 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         if (offsetMismatch == -1) {
             return 0;
         }
+        if (offsetMismatch == firstSegment.byteSize()) {
+            return -1;
+        }
+        if (offsetMismatch == secondSegment.byteSize()) {
+            return 1;
+        }
         return Byte.compare(MemoryAccess.getByteAtOffset(firstSegment, offsetMismatch),
                 MemoryAccess.getByteAtOffset(secondSegment, offsetMismatch));
     }

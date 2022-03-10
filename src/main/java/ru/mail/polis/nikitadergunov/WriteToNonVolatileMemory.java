@@ -19,29 +19,29 @@ public class WriteToNonVolatileMemory {
     public WriteToNonVolatileMemory(Config config) throws IOException {
         Path pathToTable = config.basePath().resolve("table");
         Files.deleteIfExists(pathToTable);
-        writeChannel = FileChannel.open(pathToTable, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        writeChannel = FileChannel.open(pathToTable, StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW);
     }
 
     public void write(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage) throws IOException {
+        ByteBuffer allocateBuffer = ByteBuffer.allocate(Long.BYTES);
         for (Entry<MemorySegment> entry : storage.values()) {
-            writeMemorySegment(entry.key());
-            writeMemorySegment(entry.value());
+            writeMemorySegment(entry.key(), allocateBuffer);
+            writeMemorySegment(entry.value(), allocateBuffer);
         }
     }
 
-    private void writeLong(long value) throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-        buffer.putLong(value);
-        buffer.position(0);
-        writeChannel.write(buffer);
+    private void writeLong(long value, ByteBuffer allocateBuffer) throws IOException {
+        allocateBuffer.putLong(0, value);
+        allocateBuffer.position(0);
+        writeChannel.write(allocateBuffer);
     }
 
-    private void writeMemorySegment(MemorySegment memorySegment) throws IOException {
+    private void writeMemorySegment(MemorySegment memorySegment, ByteBuffer allocateBuffer) throws IOException {
         if (memorySegment == null) {
-            writeLong(-1);
+            writeLong(-1, allocateBuffer);
             return;
         }
-        writeLong(memorySegment.byteSize());
+        writeLong(memorySegment.byteSize(), allocateBuffer);
         writeChannel.write(memorySegment.asByteBuffer());
     }
 

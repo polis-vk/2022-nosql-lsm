@@ -39,17 +39,15 @@ public class ReadFromNonVolatileMemory {
 
     public Entry<MemorySegment> get(MemorySegment key) {
         long offset = 0;
-        MemorySegment readKey = null;
+        MemorySegment readKey;
         MemorySegment readValue = null;
         long lengthMemorySegment;
 
         while (offset < readMemorySegment.byteSize()) {
             lengthMemorySegment = readMemorySegment.asSlice(offset, Long.BYTES).asByteBuffer().getLong();
             offset += Long.BYTES;
-            if (lengthMemorySegment != -1) {
-                readKey = readMemorySegment.asSlice(offset, lengthMemorySegment);
-                offset += lengthMemorySegment;
-            }
+            readKey = readMemorySegment.asSlice(offset, lengthMemorySegment);
+            offset += lengthMemorySegment;
 
             lengthMemorySegment = readMemorySegment.asSlice(offset, Long.BYTES).asByteBuffer().getLong();
             offset += Long.BYTES;
