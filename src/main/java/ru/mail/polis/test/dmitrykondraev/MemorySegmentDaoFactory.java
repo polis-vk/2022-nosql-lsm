@@ -8,6 +8,8 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.dmitrykondraev.FileBackedDao;
 import ru.mail.polis.test.DaoFactory;
 
+import java.nio.charset.StandardCharsets;
+
 /**
  * Author: Dmitry Kondraev.
  */
@@ -27,7 +29,7 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
 
     @Override
     public String toString(MemorySegment data) {
-        return new String(data.toCharArray());
+        return new String(data.toByteArray());
     }
 
     @Override
@@ -36,7 +38,7 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
             return null;
         }
         // MemorySegment backed by heap
-        return MemorySegment.ofArray(data.toCharArray());
+        return MemorySegment.ofArray(data.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
