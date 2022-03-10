@@ -149,7 +149,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
     }
 
-    private void putOffsetInIndexesFile(int offset, ByteBuffer bbOffset, RandomAccessFile indexesFile) throws IOException {
+    private void putOffsetInIndexesFile(int offset, ByteBuffer bbOffset, RandomAccessFile indexesFile)
+            throws IOException {
         bbOffset.putInt(offset);
         bbOffset.putChar(Utils.LINE_SEPARATOR);
         bbOffset.rewind();
