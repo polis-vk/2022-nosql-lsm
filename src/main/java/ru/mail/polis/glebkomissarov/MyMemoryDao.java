@@ -16,11 +16,11 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     private final ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<>(
             new SegmentsComparator()
     );
-    private final Path basePath;
+    private final Path path;
     private final Converter converter = new Converter();
 
     public MyMemoryDao(Config config) {
-        basePath = config.basePath();
+        path = config.basePath();
     }
 
     @Override
@@ -41,7 +41,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         BaseEntry<MemorySegment> result = data.get(key);
 
         if (result == null) {
-            result = converter.searchEntry(basePath, key);
+            result = converter.searchEntry(path, key);
         }
         return result;
     }
@@ -55,7 +55,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     public void flush() throws IOException {
         long size = data.values().stream()
                 .mapToLong(entry -> entry.value().byteSize() + entry.key().byteSize()).sum();
-        converter.startSerializeEntries(data.size(), size, basePath);
+        converter.startSerializeEntries(data.size(), size, path);
         for (BaseEntry<MemorySegment> entry : data.values()) {
             converter.writeEntries(entry, entry.key().byteSize(), entry.value().byteSize());
         }
