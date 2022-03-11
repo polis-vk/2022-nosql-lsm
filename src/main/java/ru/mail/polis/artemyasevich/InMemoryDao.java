@@ -148,7 +148,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     long pos = offsetsOfLastFile[middle];
                     reader.seek(pos);
                     reader.read(buffer, 0, 2);
-                    short keySize = (short) (((buffer[0] << 8) + buffer[1]) & 0xff);
+                    int keySize = (((buffer[0] << 8) + buffer[1]));
                     reader.read(buffer, 0, keySize);
                     String entryKey = new String(buffer, 0, keySize, StandardCharsets.UTF_8);
                     int comparison = key.compareTo(entryKey);
