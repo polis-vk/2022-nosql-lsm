@@ -10,7 +10,7 @@ import ru.mail.polis.test.DaoFactory;
 
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 2, week = 1)
+@DaoFactory(stage = 2, week = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
 
     @Override

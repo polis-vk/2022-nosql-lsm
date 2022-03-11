@@ -23,12 +23,13 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final SortedMap<MemorySegment, BaseEntry<MemorySegment>> storage =
             new ConcurrentSkipListMap<>(new MemorySegmentComparator());
-    private File[] files;
     private final Path path;
+    private int filesCount;
 
     public InMemoryDao(Config config) {
         this.path = config.basePath();
-        this.files = path.toFile().listFiles();
+        File[] files = this.path.toFile().listFiles();
+        this.filesCount = files == null ? 0 : files.length;
     }
 
     @Override
@@ -55,12 +56,15 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     public BaseEntry<MemorySegment> getFromFile(MemorySegment key) throws IOException {
-        if (this.files == null) {
+        File[] files = this.path.toFile().listFiles();
+        if (files == null) {
             return null;
         }
 
-        for (int i = this.files.length - 1; i >= 0; i--) {
-            try (InputStream input = Files.newInputStream(this.files[i].toPath())) {
+        Arrays.sort(files, Collections.reverseOrder());
+
+        for (File file : files) {
+            try (InputStream input = Files.newInputStream(file.toPath())) {
                 while (true) {
                     int size = input.read();
                     if (size < 0) {
@@ -93,10 +97,9 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     @Override
     public void flush() throws IOException {
-        Files.createFile(path.resolve("storage" + (this.files.length) + ".txt"));
-        this.files = path.toFile().listFiles();
+        Path newFile = Files.createFile(path.resolve("storage" + (++this.filesCount) + ".txt"));
 
-        try (OutputStream output = Files.newOutputStream(this.files[this.files.length - 1].toPath());
+        try (OutputStream output = Files.newOutputStream(newFile);
              BufferedOutputStream buffer = new BufferedOutputStream(output, 128)) {
             for (BaseEntry<MemorySegment> memorySegmentBaseEntry : storage.values()) {
                 buffer.write((int) memorySegmentBaseEntry.key().byteSize());
