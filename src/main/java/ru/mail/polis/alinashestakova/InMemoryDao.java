@@ -66,13 +66,13 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         for (File file : files) {
             try (InputStream input = Files.newInputStream(file.toPath())) {
                 while (true) {
-                    int size = input.read();
+                    byte size = (byte) input.read();
                     if (size < 0) {
                         break;
                     }
                     byte[] rkey = new byte[size];
                     input.read(rkey);
-                    size = input.read();
+                    size = (byte) input.read();
                     byte[] rvalue = new byte[size];
                     input.read(rvalue);
 
@@ -102,9 +102,9 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         try (OutputStream output = Files.newOutputStream(newFile);
              BufferedOutputStream buffer = new BufferedOutputStream(output, 128)) {
             for (BaseEntry<MemorySegment> memorySegmentBaseEntry : storage.values()) {
-                buffer.write((int) memorySegmentBaseEntry.key().byteSize());
+                buffer.write((byte) memorySegmentBaseEntry.key().byteSize());
                 buffer.write(memorySegmentBaseEntry.key().toByteArray());
-                buffer.write((int) memorySegmentBaseEntry.value().byteSize());
+                buffer.write((byte) memorySegmentBaseEntry.value().byteSize());
                 buffer.write(memorySegmentBaseEntry.value().toByteArray());
             }
         }
