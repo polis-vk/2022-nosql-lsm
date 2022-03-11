@@ -79,17 +79,14 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(ByteBuffer from, ByteBuffer to) {
-        Iterator<BaseEntry<ByteBuffer>> inMemoryIter;
         if (from == null && to == null) {
-            inMemoryIter = map.values().iterator();
+            return map.values().iterator();
         } else if (from == null) {
-            inMemoryIter = map.headMap(to, false).values().iterator();
+            return map.headMap(to, false).values().iterator();
         } else if (to == null) {
-            inMemoryIter = map.tailMap(from, true).values().iterator();
-        } else {
-            inMemoryIter = map.subMap(from, true, to, false).values().iterator();
+            return map.tailMap(from, true).values().iterator();
         }
-        return inMemoryIter;
+        return map.subMap(from, true, to, false).values().iterator();
     }
 
     @Override
