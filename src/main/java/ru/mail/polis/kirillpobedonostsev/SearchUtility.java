@@ -3,7 +3,10 @@ package ru.mail.polis.kirillpobedonostsev;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 
-public class SearchUtils {
+public class SearchUtility {
+    private SearchUtility() {
+    }
+
     public static int floorOffset(MappedByteBuffer readDataPage, MappedByteBuffer readIndexPage, ByteBuffer to) {
         int low = 0;
         int high = readIndexPage.capacity() / Integer.BYTES - 1;

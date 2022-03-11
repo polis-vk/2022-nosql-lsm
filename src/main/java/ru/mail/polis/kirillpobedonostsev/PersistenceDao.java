@@ -21,9 +21,9 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import static ru.mail.polis.kirillpobedonostsev.SearchUtils.ceilOffset;
-import static ru.mail.polis.kirillpobedonostsev.SearchUtils.floorOffset;
-import static ru.mail.polis.kirillpobedonostsev.SearchUtils.searchInFile;
+import static ru.mail.polis.kirillpobedonostsev.SearchUtility.ceilOffset;
+import static ru.mail.polis.kirillpobedonostsev.SearchUtility.floorOffset;
+import static ru.mail.polis.kirillpobedonostsev.SearchUtility.searchInFile;
 
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String ELEMENTS_FILENAME = "elements.dat";
