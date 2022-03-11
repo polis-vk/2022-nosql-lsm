@@ -19,6 +19,9 @@ public class Converter {
     private int idx;
 
     public void startSerializeEntries(long dataCount, long fileSize, Path path) throws IOException {
+        offsets = new long[(int) (dataCount * 2 + 1)];
+        offsets[0] = 0;
+        
         if (dataCount == 0) {
             return;
         }
@@ -28,9 +31,6 @@ public class Converter {
             Files.createFile(pathToEntries);
             Files.createFile(pathToOffsets);
         }
-
-        offsets = new long[(int) (dataCount * 2 + 1)];
-        offsets[0] = 0;
 
         mappedSegmentEntries = newMapped(pathToEntries, fileSize);
         mappedSegmentOffsets = newMapped(pathToOffsets, Long.SIZE * dataCount);
