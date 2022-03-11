@@ -1,5 +1,6 @@
 package ru.mail.polis.vladislavfetisov;
 
+import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.Config;
@@ -7,13 +8,10 @@ import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.NavigableMap;
@@ -29,7 +27,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     public static final Comparator<MemorySegment> comparator = Utils::compareMemorySegments;
     private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage = new ConcurrentSkipListMap<>(comparator);
 
-    public InMemoryDao(Config config) {
+    public InMemoryDao(Config config) throws IOException {
         this.config = config;
         Path table = config.basePath().resolve(Path.of(TABLE_NAME));
         if (!Files.exists(table)) {
@@ -38,24 +36,11 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             return;
         }
         Path index = table.resolveSibling(TABLE_NAME + INDEX);
-        try (FileChannel channel = FileChannel.open(table);
-             FileChannel indexChannel = FileChannel.open(index)) {
 
-            mapFile = map(table, channel.size());
-            mapIndex = map(index, indexChannel.size());
-
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        mapFile = map(table, Files.size(table), FileChannel.MapMode.READ_ONLY);
+        mapIndex = map(index, Files.size(index), FileChannel.MapMode.READ_ONLY);
     }
 
-    private static MemorySegment map(Path table, long length) throws IOException {
-        return MemorySegment.mapFile(table,
-                0,
-                length,
-                FileChannel.MapMode.READ_ONLY,
-                ResourceScope.globalScope());
-    }
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
@@ -79,55 +64,64 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         Path index = table.resolveSibling(TABLE_NAME + INDEX);
         Path indexTemp = index.resolveSibling(index.getFileName() + TEMP);
 
-        Files.deleteIfExists(tableTemp);
-        Files.deleteIfExists(indexTemp);
-
         Iterator<Entry<MemorySegment>> iterator = storage.values().iterator();
-        ByteBuffer forLength = ByteBuffer.allocate(Long.BYTES);
-        long offset = 0;
-        try (FileChannel channel = open(tableTemp);
-             FileChannel indexChannel = open(indexTemp)) {
-            while (iterator.hasNext()) {
-                Entry<MemorySegment> entry = iterator.next();
 
-                writeLong(forLength, indexChannel, offset);
-                offset += Utils.sizeOfEntry(entry);
+        long sizeInBytes = 0;
+        for (Entry<MemorySegment> entry : storage.values()) {
+            sizeInBytes += Utils.sizeOfEntry(entry);
+        }
+        long indexSize = (long) storage.size() * Long.BYTES;
 
-                writeBuffer(forLength, channel, entry.key());
-                if (entry.value() == null) {
-                    writeLong(forLength, channel, -1);
-                    continue;
-                }
-                writeBuffer(forLength, channel, entry.value());
+        Files.createFile(tableTemp);
+        Files.createFile(indexTemp);
+        MemorySegment fileMap = map(tableTemp, sizeInBytes, FileChannel.MapMode.READ_WRITE);
+        MemorySegment indexMap = map(indexTemp, indexSize, FileChannel.MapMode.READ_WRITE);
+
+
+        long indexOffset = 0;
+        long fileOffset = 0;
+
+        while (iterator.hasNext()) {
+            Entry<MemorySegment> entry = iterator.next();
+
+            MemoryAccess.setLongAtOffset(indexMap, indexOffset, fileOffset);
+            indexOffset += Long.BYTES;
+
+            fileOffset = writeSegment(entry.key(), fileMap, fileOffset);
+
+            if (entry.value() == null) {
+                MemoryAccess.setLongAtOffset(fileMap, fileOffset, -1);
+                fileOffset += Long.BYTES;
+                continue;
             }
-            channel.force(false);
-            indexChannel.force(false);
+            fileOffset = writeSegment(entry.value(), fileMap, fileOffset);
         }
         rename(table, tableTemp);
         rename(index, indexTemp);
     }
 
+    private static MemorySegment map(Path table, long length, FileChannel.MapMode mapMode) throws IOException {
+        return MemorySegment.mapFile(table,
+                0,
+                length,
+                mapMode,
+                ResourceScope.globalScope());
+    }
+
+    private long writeSegment(MemorySegment segment, MemorySegment fileMap, long fileOffset) {
+        long length = segment.byteSize();
+        MemoryAccess.setLongAtOffset(fileMap, fileOffset, length);
+        fileOffset += Long.BYTES;
+
+        fileMap.asSlice(fileOffset).copyFrom(segment);
+
+        return fileOffset + length;
+    }
+
     private static void rename(Path table, Path temp) throws IOException {
         Files.deleteIfExists(table);
         Files.move(temp, table, StandardCopyOption.ATOMIC_MOVE);
-    }
-
-    private void writeBuffer(ByteBuffer forLength, FileChannel channel, MemorySegment value) throws IOException {
-        writeLong(forLength, channel, value.byteSize());
-        channel.write(value.asByteBuffer());
-    }
-
-    private void writeLong(ByteBuffer forLength, FileChannel channel, long value) throws IOException {
-        forLength.position(0);
-        forLength.putLong(value);
-        forLength.position(0);
-        channel.write(forLength);
-    }
-
-    private static FileChannel open(Path filename) throws IOException {
-        return FileChannel.open(filename,
-                StandardOpenOption.CREATE_NEW,
-                StandardOpenOption.WRITE);
+        Files.deleteIfExists(temp);
     }
 
     @Override

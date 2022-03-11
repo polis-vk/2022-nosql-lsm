@@ -12,7 +12,7 @@ public final class Utils {
 
     public static long sizeOfEntry(Entry<MemorySegment> entry) {
         long valueSize = (entry.value() == null) ? 0 : entry.value().byteSize();
-        return 2 * Long.BYTES + entry.key().byteSize() + valueSize;
+        return 2L * Long.BYTES + entry.key().byteSize() + valueSize;
     }
 
     public static int compareMemorySegments(MemorySegment o1, MemorySegment o2) {
@@ -35,7 +35,7 @@ public final class Utils {
         long l = 0;
         long r = mapIndex.byteSize() / Long.BYTES;
         while (l <= r) {
-            long middle = l + r >>> 1;
+            long middle = (l + r) >>> 1;
             Entry<MemorySegment> middleEntry = getByIndex(mapFile, mapIndex, middle);
             int res = compareMemorySegments(middleEntry.key(), key);
             if (res == 0) {
@@ -68,8 +68,7 @@ public final class Utils {
     }
 
     private static long getLength(MemorySegment mapFile, long offset) {
-        MemorySegment valueLengthSegment = mapFile.asSlice(offset, Long.BYTES);
-        return valueLengthSegment.asByteBuffer().getLong();
+        return MemoryAccess.getLongAtOffset(mapFile, offset);
     }
 
 }
