@@ -4,29 +4,32 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
-    private static final int MAX_SIZE = 100_000;
     private static final String DATA_FILE = "data";
-    private static final String OFFSETS_FILE = "offset";
+    private static final String META_FILE = "meta";
     private static final String FILE_EXTENSION = ".txt";
 
+    private final OpenOption[] writeOptions = {StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE};
     private final ConcurrentNavigableMap<String, BaseEntry<String>> dataMap = new ConcurrentSkipListMap<>();
     private final Path pathToDirectory;
     private int fileToWrite;
     private int lastReadFile = -1;
-    private List<String> offsetsOfLastFile;
+    private int maxKeySize;
+    private int maxValueSize;
+    private int lastDataSize;
+    private long[] offsetsOfLastFile;
 
     public InMemoryDao(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
@@ -65,12 +68,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void upsert(BaseEntry<String> entry) {
-        if (dataMap.size() == MAX_SIZE && !dataMap.containsKey(entry.key())) {
-            try {
-                flush();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        if (entry.key().length() > maxKeySize) {
+            maxKeySize = entry.key().length();
+        }
+        if (entry.value().length() > maxValueSize) {
+            maxValueSize = entry.value().length();
         }
         dataMap.put(entry.key(), entry);
     }
@@ -88,42 +90,67 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private void savaData() throws IOException {
         Path pathToData = pathToDirectory.resolve(DATA_FILE + fileToWrite + FILE_EXTENSION);
-        Path pathToOffsets = pathToDirectory.resolve(OFFSETS_FILE + fileToWrite + FILE_EXTENSION);
-        createFileIfNeeded(pathToData);
-        createFileIfNeeded(pathToOffsets);
-        try (BufferedWriter writer = Files.newBufferedWriter(pathToData);
-             BufferedWriter writer2 = Files.newBufferedWriter(pathToOffsets)) {
+        Path pathToOffsets = pathToDirectory.resolve(META_FILE + fileToWrite + FILE_EXTENSION);
+        try (DataOutputStream dataStream = new DataOutputStream(new BufferedOutputStream(
+                Files.newOutputStream(pathToData, writeOptions)));
+             DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
+                     Files.newOutputStream(pathToOffsets, writeOptions)
+             ))) {
             long currentOffset = 0;
+            metaStream.writeInt(dataMap.size());
+            metaStream.writeShort(maxKeySize);
+            metaStream.writeInt(maxValueSize);
             for (BaseEntry<String> entry : dataMap.values()) {
-                String line = entry.key() + " " + entry.value() + "\n";
-                writer.write(line);
-                writer2.write(currentOffset + "\n");
-                currentOffset += line.getBytes().length;
+                dataStream.writeUTF(entry.key());
+                dataStream.writeBytes(entry.value());
+                metaStream.writeLong(currentOffset);
+                currentOffset += entry.key().getBytes(StandardCharsets.UTF_8).length
+                        + entry.value().getBytes(StandardCharsets.UTF_8).length + 2;
             }
+            metaStream.writeLong(currentOffset);
             fileToWrite++;
         }
     }
 
     private BaseEntry<String> getFromFile(String key) throws IOException {
         BaseEntry<String> res = null;
-        for (int i = fileToWrite - 1; i >= 0; i--) {
-            Path pathToData = pathToDirectory.resolve(DATA_FILE + i + FILE_EXTENSION);
-            Path pathToOffsets = pathToDirectory.resolve(OFFSETS_FILE + i + FILE_EXTENSION);
-            try (RandomAccessFile reader = new RandomAccessFile(pathToData.toFile(), "r")) {
-                if (lastReadFile != i) {
-                    offsetsOfLastFile = Files.readAllLines(pathToOffsets);
-                    lastReadFile = i;
+        for (int fileNumber = fileToWrite - 1; fileNumber >= 0; fileNumber--) {
+            Path pathToData = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
+            Path pathToMeta = pathToDirectory.resolve(META_FILE + fileNumber + FILE_EXTENSION);
+            if (lastReadFile != fileNumber) {
+                try (DataInputStream dataInputStream = new DataInputStream(new BufferedInputStream(
+                        Files.newInputStream(pathToMeta)))) {
+                    lastDataSize = dataInputStream.readInt();
+                    offsetsOfLastFile = new long[lastDataSize + 1];
+                    maxKeySize = dataInputStream.readShort();
+                    maxValueSize = dataInputStream.readInt();
+                    for (int i = 0; i < lastDataSize + 1; i++) {
+                        offsetsOfLastFile[i] = dataInputStream.readLong();
+                    }
+                    lastReadFile = fileNumber;
                 }
+            }
+            try (RandomAccessFile reader = new RandomAccessFile(pathToData.toFile(), "r")) {
                 int left = 0;
                 int middle;
-                int right = offsetsOfLastFile.size() - 1;
+                int right = lastDataSize - 1;
+                int bufferSize = Math.max(maxKeySize, maxValueSize);
+                byte[] buffer = new byte[bufferSize];
+
                 while (left <= right) {
                     middle = (right - left) / 2 + left;
-                    reader.seek(Long.parseLong(offsetsOfLastFile.get(middle)));
-                    String[] entry = reader.readLine().split(" ");
-                    int comparison = key.compareTo(entry[0]);
+                    long pos = offsetsOfLastFile[middle];
+                    reader.seek(pos);
+                    reader.read(buffer, 0, 2);
+                    short keySize = (short) ((buffer[0] << 8) + buffer[1]);
+                    reader.read(buffer, 0, keySize);
+                    String entryKey = new String(buffer, 0, keySize, StandardCharsets.UTF_8);
+                    int comparison = key.compareTo(entryKey);
                     if (comparison == 0) {
-                        res = new BaseEntry<>(entry[0], entry[1].trim());
+                        int valueSize = (int) (offsetsOfLastFile[middle + 1] - pos) - keySize - 2;
+                        reader.read(buffer, 0, valueSize);
+                        String entryValue = new String(buffer, 0, valueSize, StandardCharsets.UTF_8);
+                        res = new BaseEntry<>(entryKey, entryValue);
                         break;
                     } else if (comparison > 0) {
                         left = middle + 1;
@@ -137,12 +164,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             }
         }
         return res;
-    }
-
-    private void createFileIfNeeded(Path path) throws IOException {
-        if (!Files.exists(path)) {
-            Files.createFile(path);
-        }
     }
 
 }
