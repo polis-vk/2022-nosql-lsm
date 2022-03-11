@@ -31,11 +31,8 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
 
     @Override
     public MemorySegment fromString(String data) {
-        if (data == null) {
-            return null;
-        }
         // MemorySegment backed by heap
-        return MemorySegment.ofArray(data.toCharArray());
+        return data == null ? null : MemorySegment.ofArray(data.toCharArray());
     }
 
     @Override
