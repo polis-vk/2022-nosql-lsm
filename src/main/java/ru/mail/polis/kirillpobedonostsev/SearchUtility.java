@@ -3,7 +3,7 @@ package ru.mail.polis.kirillpobedonostsev;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 
-public class SearchUtility {
+public final class SearchUtility {
     private SearchUtility() {
     }
 
