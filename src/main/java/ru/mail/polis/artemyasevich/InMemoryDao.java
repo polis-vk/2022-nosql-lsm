@@ -11,6 +11,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
@@ -148,7 +149,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     long pos = offsetsOfLastFile[middle];
                     reader.seek(pos);
                     reader.read(buffer, 0, 2);
-                    short keySize = (short) ((buffer[0] << 8) & 0xff + buffer[1]);
+                    short keySize = ByteBuffer.wrap(buffer, 0, 2).getShort();
                     reader.read(buffer, 0, keySize);
                     String entryKey = new String(buffer, 0, keySize, StandardCharsets.UTF_8);
                     int comparison = key.compareTo(entryKey);
