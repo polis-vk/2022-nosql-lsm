@@ -37,7 +37,7 @@ public class MapDeserializeStream {
             theUnsafeField.setAccessible(true);
             fieldValue = theUnsafeField.get(null);
         } catch (Exception e) {
-            throw new IOException(e);
+            throw new IllegalStateException(e);
         }
     }
 
@@ -51,6 +51,9 @@ public class MapDeserializeStream {
     }
 
     public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) {
+        if (indexesBuffer.capacity() < Integer.BYTES) {
+            return null;
+        }
         return binarySearch(key);
     }
 

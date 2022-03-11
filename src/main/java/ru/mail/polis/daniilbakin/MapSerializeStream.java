@@ -7,9 +7,11 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.Map;
 import java.util.Set;
+
+import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.WRITE;
 
 public class MapSerializeStream {
 
@@ -17,8 +19,8 @@ public class MapSerializeStream {
     private final FileChannel indexesChannel;
 
     public MapSerializeStream(Path map, Path indexes) throws IOException {
-        mapChannel = (FileChannel) Files.newByteChannel(map, Set.of(StandardOpenOption.WRITE));
-        indexesChannel = (FileChannel) Files.newByteChannel(indexes, Set.of(StandardOpenOption.WRITE));
+        mapChannel = (FileChannel) Files.newByteChannel(map, Set.of(WRITE, CREATE));
+        indexesChannel = (FileChannel) Files.newByteChannel(indexes, Set.of(WRITE, CREATE));
     }
 
     public void close() throws IOException {

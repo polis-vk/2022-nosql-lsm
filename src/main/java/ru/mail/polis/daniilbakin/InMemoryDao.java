@@ -4,30 +4,27 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.Paths;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    private static final String LOG_NAME = "myLog";
-    private static final String INDEXES_NAME = "indexes";
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final Config config;
-    private File mapFile;
-    private File indexesFile;
+    private final Path mapPath;
+    private final Path indexesPath;
     private MapDeserializeStream deserialize;
-
-    public InMemoryDao() {
-        config = new Config(Paths.get("tmp/" + System.currentTimeMillis()));
-    }
+    private boolean dataNotExistsForSure = false;
 
     public InMemoryDao(Config config) {
         this.config = config;
+        this.mapPath = config.basePath().resolve("myLog");
+        this.indexesPath = config.basePath().resolve("indexes");
     }
 
     @Override
@@ -45,16 +42,15 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) {
+    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> value = data.get(key);
         if (value != null) {
             return value;
         }
-        try {
-            return getFromLog(key);
-        } catch (IOException ignored) {
+        if (dataNotExistsForSure) {
             return null;
         }
+        return getFromLog(key);
     }
 
     @Override
@@ -72,28 +68,20 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        createFilesIfNeed();
-        MapSerializeStream writer = new MapSerializeStream(mapFile.toPath(), indexesFile.toPath());
+        MapSerializeStream writer = new MapSerializeStream(mapPath, indexesPath);
         writer.serializeMap(data);
         writer.close();
     }
 
     private BaseEntry<ByteBuffer> getFromLog(ByteBuffer key) throws IOException {
-        createFilesIfNeed();
         if (deserialize == null) {
-            deserialize = new MapDeserializeStream(mapFile.toPath(), indexesFile.toPath());
+            try {
+                deserialize = new MapDeserializeStream(mapPath, indexesPath);
+            } catch (NoSuchFileException e) {
+                dataNotExistsForSure = true;
+                return null;
+            }
         }
         return deserialize.readByKey(key);
-    }
-
-    private void createFilesIfNeed() throws IOException {
-        if (mapFile == null) {
-            mapFile = new File(config.basePath().toString() + File.separator + LOG_NAME);
-        }
-        if (indexesFile == null) {
-            indexesFile = new File(config.basePath().toString() + File.separator + INDEXES_NAME);
-        }
-        mapFile.createNewFile();
-        indexesFile.createNewFile();
     }
 }
