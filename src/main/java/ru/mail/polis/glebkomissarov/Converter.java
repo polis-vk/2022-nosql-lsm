@@ -21,7 +21,7 @@ public class Converter {
     public void startSerializeEntries(long dataCount, long fileSize, Path path) throws IOException {
         offsets = new long[(int) (dataCount * 2 + 1)];
         offsets[0] = 0;
-        
+
         if (dataCount == 0) {
             return;
         }
@@ -46,7 +46,7 @@ public class Converter {
         mappedSegmentEntries = newMapped(pathToEntries, Files.size(pathToEntries));
         mappedSegmentOffsets = newMapped(pathToOffsets, Files.size(pathToOffsets));
 
-        long[] offsets = mappedSegmentOffsets.toLongArray();
+        offsets = mappedSegmentOffsets.toLongArray();
 
         SegmentsComparator comparator = new SegmentsComparator();
         MemorySegment currentKey;
