@@ -1,5 +1,6 @@
 package ru.mail.polis.glebkomissarov;
 
+import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
@@ -33,7 +34,7 @@ public class Converter {
         }
 
         mappedSegmentEntries = newMapped(pathToEntries, fileSize);
-        mappedSegmentOffsets = newMapped(pathToOffsets, Long.SIZE * dataCount);
+        mappedSegmentOffsets = newMapped(pathToOffsets, Long.BYTES * (dataCount * 2 + 1));
     }
 
     public BaseEntry<MemorySegment> searchEntry(Path path, MemorySegment key) throws IOException {
@@ -43,20 +44,23 @@ public class Converter {
             return null;
         }
 
+        long offsetsSize = Files.size(pathToOffsets);
         mappedSegmentEntries = newMapped(pathToEntries, Files.size(pathToEntries));
-        mappedSegmentOffsets = newMapped(pathToOffsets, Files.size(pathToOffsets));
-
-        offsets = mappedSegmentOffsets.toLongArray();
+        mappedSegmentOffsets = newMapped(pathToOffsets, offsetsSize);
 
         SegmentsComparator comparator = new SegmentsComparator();
         MemorySegment currentKey;
         long size;
-        for (int i = 0; i < offsets.length - 1; i += 2) {
-            size = offsets[i + 1] - offsets[i];
-            currentKey = mappedSegmentEntries.asSlice(offsets[i], size);
+        long currentLong;
+        long nextLong;
+        for (long i = 0; i < (offsetsSize - Long.BYTES) / 8; i++) {
+            currentLong = MemoryAccess.getLongAtIndex(mappedSegmentOffsets, i);
+            nextLong = MemoryAccess.getLongAtIndex(mappedSegmentOffsets, i + 1);
+            size = nextLong - currentLong;
+            currentKey = mappedSegmentEntries.asSlice(currentLong, size);
             if (comparator.compare(key, currentKey) == 0) {
-                size = offsets[i + 2] - offsets[i + 1];
-                return new BaseEntry<>(currentKey, mappedSegmentEntries.asSlice(offsets[i + 1], size));
+                size = MemoryAccess.getLongAtIndex(mappedSegmentOffsets, i + 2) - nextLong;
+                return new BaseEntry<>(currentKey, mappedSegmentEntries.asSlice(nextLong, size));
             }
         }
         return null;
@@ -66,7 +70,7 @@ public class Converter {
         if (size == 0) {
             return;
         }
-        mappedSegmentOffsets.asSlice(0L, (long) offsets.length * Long.SIZE / 8)
+        mappedSegmentOffsets.asSlice(0L, (long) offsets.length * Long.BYTES)
                 .copyFrom(MemorySegment.ofArray(offsets));
     }
 
