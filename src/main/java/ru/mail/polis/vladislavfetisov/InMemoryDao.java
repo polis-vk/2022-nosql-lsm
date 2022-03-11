@@ -41,7 +41,6 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         mapIndex = map(index, Files.size(index), FileChannel.MapMode.READ_ONLY);
     }
 
-
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         if (from == null && to == null) {
@@ -64,7 +63,6 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         Path index = table.resolveSibling(TABLE_NAME + INDEX);
         Path indexTemp = index.resolveSibling(index.getFileName() + TEMP);
 
-        Iterator<Entry<MemorySegment>> iterator = storage.values().iterator();
 
         long sizeInBytes = 0;
         for (Entry<MemorySegment> entry : storage.values()) {
@@ -77,24 +75,21 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         MemorySegment fileMap = map(tableTemp, sizeInBytes, FileChannel.MapMode.READ_WRITE);
         MemorySegment indexMap = map(indexTemp, indexSize, FileChannel.MapMode.READ_WRITE);
 
-
         long indexOffset = 0;
         long fileOffset = 0;
 
-        while (iterator.hasNext()) {
-            Entry<MemorySegment> entry = iterator.next();
-
+        for (Entry<MemorySegment> entry : storage.values()) {
             MemoryAccess.setLongAtOffset(indexMap, indexOffset, fileOffset);
             indexOffset += Long.BYTES;
 
-            fileOffset = writeSegment(entry.key(), fileMap, fileOffset);
+            fileOffset += writeSegment(entry.key(), fileMap, fileOffset);
 
             if (entry.value() == null) {
                 MemoryAccess.setLongAtOffset(fileMap, fileOffset, -1);
                 fileOffset += Long.BYTES;
                 continue;
             }
-            fileOffset = writeSegment(entry.value(), fileMap, fileOffset);
+            fileOffset += writeSegment(entry.value(), fileMap, fileOffset);
         }
         rename(table, tableTemp);
         rename(index, indexTemp);
@@ -111,11 +106,10 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private long writeSegment(MemorySegment segment, MemorySegment fileMap, long fileOffset) {
         long length = segment.byteSize();
         MemoryAccess.setLongAtOffset(fileMap, fileOffset, length);
-        fileOffset += Long.BYTES;
 
-        fileMap.asSlice(fileOffset).copyFrom(segment);
+        fileMap.asSlice(fileOffset + Long.BYTES).copyFrom(segment);
 
-        return fileOffset + length;
+        return Long.BYTES + length;
     }
 
     private static void rename(Path table, Path temp) throws IOException {
