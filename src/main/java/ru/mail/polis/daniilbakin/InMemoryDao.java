@@ -17,12 +17,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final Path mapPath;
     private final Path indexesPath;
-    private final Config config;
     private MapDeserializeStream deserialize;
-    private boolean dataNotExistsForSure = false;
+    private boolean dataNotExistsForSure;
 
     public InMemoryDao(Config config) {
-        this.config = config;
         this.mapPath = config.basePath().resolve("myLog");
         this.indexesPath = config.basePath().resolve("indexes");
     }
