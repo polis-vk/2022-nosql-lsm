@@ -53,11 +53,11 @@ public class ReadFromNonVolatileMemory implements AutoCloseable {
                 offset += lengthValue;
                 continue;
             }
-            if (lengthValue != -1) {
+            if (lengthValue == -1) {
+                readValue = null;
+            } else {
                 readValue = readMemorySegment.asSlice(offset, lengthValue);
                 offset += lengthValue;
-            } else {
-                readValue = null;
             }
             if (InMemoryDao.comparator(key, readKey) == 0) {
                 return new BaseEntry<>(key, readValue);
