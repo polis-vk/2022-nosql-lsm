@@ -1,8 +1,5 @@
 package ru.mail.polis;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assertions;
-import org.opentest4j.AssertionFailedError;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
@@ -22,7 +19,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.IntConsumer;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.opentest4j.AssertionFailedError;
 
 public class BaseTest {
 

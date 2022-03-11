@@ -1,4 +1,4 @@
 package ru.mail.polis.artyomscheredin;
 
-public class FileManager {
+public class FileIterator {
 }
