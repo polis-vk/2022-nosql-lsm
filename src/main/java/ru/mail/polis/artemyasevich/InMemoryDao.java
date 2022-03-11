@@ -4,7 +4,13 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
@@ -142,7 +148,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     long pos = offsetsOfLastFile[middle];
                     reader.seek(pos);
                     reader.read(buffer, 0, 2);
-                    short keySize = (short) ((buffer[0] << 8) + buffer[1]);
+                    short keySize = (short) (((buffer[0] << 8) + buffer[1]) & 0xff);
                     reader.read(buffer, 0, keySize);
                     String entryKey = new String(buffer, 0, keySize, StandardCharsets.UTF_8);
                     int comparison = key.compareTo(entryKey);
