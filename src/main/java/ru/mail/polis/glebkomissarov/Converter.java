@@ -84,8 +84,8 @@ public class Converter {
     }
 
     private void createPaths(Path path) {
-        pathToOffsets = path.resolve(String.valueOf(FileNames.OFFSETS.getName()));
-        pathToEntries = path.resolve(String.valueOf(FileNames.SAVED_DATA.getName()));
+        pathToOffsets = path.resolve(String.valueOf(FileName.OFFSETS.getName()));
+        pathToEntries = path.resolve(String.valueOf(FileName.SAVED_DATA.getName()));
     }
 
     private MemorySegment newMapped(Path path, long size) throws IOException {

@@ -1,12 +1,12 @@
 package ru.mail.polis.glebkomissarov;
 
-public enum FileNames {
+public enum FileName {
     SAVED_DATA("savedData"),
     OFFSETS("offsets");
 
     private final String name;
 
-    FileNames(String name) {
+    FileName(String name) {
         this.name = name;
     }
 
