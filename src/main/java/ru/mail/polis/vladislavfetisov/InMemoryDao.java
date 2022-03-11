@@ -63,7 +63,6 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         Path index = table.resolveSibling(TABLE_NAME + INDEX);
         Path indexTemp = index.resolveSibling(index.getFileName() + TEMP);
 
-
         long sizeInBytes = 0;
         for (Entry<MemorySegment> entry : storage.values()) {
             sizeInBytes += Utils.sizeOfEntry(entry);
