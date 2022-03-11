@@ -59,7 +59,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         for (BaseEntry<MemorySegment> entry : data.values()) {
             converter.writeEntries(entry, entry.key().byteSize(), entry.value().byteSize());
         }
-        converter.writeOffsets();
+        converter.writeOffsets(data.size());
     }
 
     private Iterator<BaseEntry<MemorySegment>> shell(Map<MemorySegment, BaseEntry<MemorySegment>> sub) {

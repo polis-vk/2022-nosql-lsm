@@ -62,8 +62,8 @@ public class Converter {
         return null;
     }
 
-    public void writeOffsets() {
-        if (offsets == null) {
+    public void writeOffsets(long size) {
+        if (size == 0) {
             return;
         }
         mappedSegmentOffsets.asSlice(0L, (long) offsets.length * Long.SIZE / 8)
@@ -73,7 +73,6 @@ public class Converter {
     public void writeEntries(BaseEntry<MemorySegment> data, long keySize, long valueSize) {
         offsets[idx + 1] = offsets[idx] + keySize;
         offsets[idx + 2] = offsets[idx + 1] + valueSize;
-
         mappedSegmentEntries.asSlice(offsets[idx], keySize).copyFrom(data.key());
         mappedSegmentEntries.asSlice(offsets[idx + 1], valueSize).copyFrom(data.value());
 
