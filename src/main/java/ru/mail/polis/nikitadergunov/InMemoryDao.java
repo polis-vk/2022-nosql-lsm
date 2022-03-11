@@ -45,8 +45,8 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) {
+        lock.readLock().lock();
         try {
-            lock.readLock().lock();
             Entry<MemorySegment> value = storage.get(key);
             if (value == null && readFromNonVolatileMemory.isExist()) {
                 value = readFromNonVolatileMemory.get(key);
@@ -59,8 +59,8 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
+        lock.readLock().lock();
         try {
-            lock.readLock().lock();
             if (from == null && to == null) {
                 return storage.values().iterator();
             }
@@ -79,8 +79,8 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public void upsert(Entry<MemorySegment> entry) {
+        lock.readLock().lock();
         try {
-            lock.readLock().lock();
             storage.put(entry.key(), entry);
             sizeInBytes.addAndGet(entry.key().byteSize());
             if (entry.value() != null) {
@@ -93,9 +93,9 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public void close() throws IOException {
+        readFromNonVolatileMemory.close();
+        lock.writeLock().lock();
         try {
-            readFromNonVolatileMemory.close();
-            lock.writeLock().lock();
             WriteToNonVolatileMemory writeToNonVolatileMemory =
                     new WriteToNonVolatileMemory(config, storage, sizeInBytes.get());
             writeToNonVolatileMemory.write();

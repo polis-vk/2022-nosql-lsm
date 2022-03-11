@@ -47,18 +47,18 @@ public class ReadFromNonVolatileMemory implements AutoCloseable {
             offset += Long.BYTES;
             lengthValue = MemoryAccess.getLongAtOffset(readMemorySegment, offset);
             offset += Long.BYTES;
-            if (lengthValue == -1) {
-                offset += lengthKey;
-                continue;
-            }
             readKey = readMemorySegment.asSlice(offset, lengthKey);
             offset += lengthKey;
             if (key.byteSize() != lengthKey) {
                 offset += lengthValue;
                 continue;
             }
-            readValue = readMemorySegment.asSlice(offset, lengthValue);
-            offset += lengthValue;
+            if (lengthValue != -1) {
+                readValue = readMemorySegment.asSlice(offset, lengthValue);
+                offset += lengthValue;
+            } else {
+                readValue = null;
+            }
             if (InMemoryDao.comparator(key, readKey) == 0) {
                 return new BaseEntry<>(key, readValue);
             }
