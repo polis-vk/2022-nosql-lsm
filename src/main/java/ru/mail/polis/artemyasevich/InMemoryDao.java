@@ -37,6 +37,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private int maxValueSize;
     private int lastDataSize;
     private long[] offsetsOfLastFile;
+    private byte[] buffer;
 
     public InMemoryDao(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
@@ -131,6 +132,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     offsetsOfLastFile = new long[lastDataSize + 1];
                     maxKeySize = dataInputStream.readShort();
                     maxValueSize = dataInputStream.readInt();
+                    buffer = new byte[Math.max(maxKeySize, maxValueSize)];
                     for (int i = 0; i < lastDataSize + 1; i++) {
                         offsetsOfLastFile[i] = dataInputStream.readLong();
                     }
@@ -141,8 +143,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 int left = 0;
                 int middle;
                 int right = lastDataSize - 1;
-                int bufferSize = Math.max(maxKeySize, maxValueSize);
-                byte[] buffer = new byte[bufferSize];
 
                 while (left <= right) {
                     middle = (right - left) / 2 + left;
@@ -152,6 +152,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     short keySize = ByteBuffer.wrap(buffer, 0, 2).getShort();
                     reader.read(buffer, 0, keySize);
                     String entryKey = new String(buffer, 0, keySize, StandardCharsets.UTF_8);
+
                     int comparison = key.compareTo(entryKey);
                     if (comparison == 0) {
                         int valueSize = (int) (offsetsOfLastFile[middle + 1] - pos) - keySize - 2;
