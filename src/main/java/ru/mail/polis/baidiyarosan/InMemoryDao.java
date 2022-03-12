@@ -80,7 +80,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 }
             }
         }
-        throw new IOException("Entry doesn't exist");
+        return null;
     }
 
     private int readInt(FileChannel in, ByteBuffer temp) throws IOException {
