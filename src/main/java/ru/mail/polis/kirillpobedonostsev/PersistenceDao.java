@@ -53,8 +53,12 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
         lock.readLock().lock();
         try {
+            Iterator<BaseEntry<ByteBuffer>> inMemoryIterator = getInMemoryIterator(from, to);
+            if (fileNumber == 0) {
+                return inMemoryIterator;
+            }
             List<Iterator<BaseEntry<ByteBuffer>>> iteratorsList = new ArrayList<>(fileNumber + 1);
-            iteratorsList.add(getInMemoryIterator(from, to));
+            iteratorsList.add(inMemoryIterator);
             for (int i = fileNumber - 1; i >= 0; i--) {
                 iteratorsList.add(getFileIterator(from, to, getFilePath(DATA_PREFIX, i), getFilePath(INDEX_PREFIX, i)));
             }

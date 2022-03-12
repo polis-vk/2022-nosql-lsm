@@ -21,13 +21,16 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
     }
 
     @Override
-    public String toString(ByteBuffer bb) {
-        return bb == null ? null : StandardCharsets.UTF_8.decode(bb.asReadOnlyBuffer()).toString();
+    public String toString(ByteBuffer data) {
+        ByteBuffer temp = data.asReadOnlyBuffer();
+        byte[] bytes = new byte[temp.remaining()];
+        temp.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     @Override
     public ByteBuffer fromString(String data) {
-        return data == null ? null : StandardCharsets.UTF_8.encode(CharBuffer.wrap(data));
+        return data == null ? null : ByteBuffer.wrap(data.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override

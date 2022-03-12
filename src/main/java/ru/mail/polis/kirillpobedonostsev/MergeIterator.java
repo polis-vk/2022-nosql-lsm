@@ -27,6 +27,7 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         }
     }
 
+    @Override
     public boolean hasNext() {
         if (queue.isEmpty()) {
             return false;
@@ -49,6 +50,7 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         return !queue.isEmpty();
     }
 
+    @Override
     public BaseEntry<ByteBuffer> next() {
         if (!hasNext()) {
             throw new NoSuchElementException();
