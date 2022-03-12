@@ -17,7 +17,6 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.logging.Logger;
 
-
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     private static final Logger LOGGER = Logger.getLogger(InMemoryDao.class.getName());
