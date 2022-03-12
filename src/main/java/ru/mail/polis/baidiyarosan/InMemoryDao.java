@@ -75,11 +75,9 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 }
                 ByteBuffer compareKey = readBuffer(in, keySize);
                 size += compareKey.capacity();
-                if (!key.equals(compareKey)) {
-                    continue;
+                if (key.equals(compareKey)) {
+                    return new BaseEntry<>(key, readBuffer(in, readInt(in, temp)));
                 }
-
-                return new BaseEntry<>(key, readBuffer(in, readInt(in, temp)));
             }
         }
         throw new IOException("Entry doesn't exist");
@@ -120,7 +118,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
         }
     }
-
 
     private int sizeOfEntry(BaseEntry<ByteBuffer> entry) {
         return 2 * Integer.BYTES + entry.key().capacity() + entry.value().capacity();
