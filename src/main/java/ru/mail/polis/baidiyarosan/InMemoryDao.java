@@ -5,9 +5,9 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -63,30 +63,39 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private BaseEntry<ByteBuffer> searchFile(ByteBuffer key) throws IOException {
-        try (InputStream in = Files.newInputStream(path)) {
-            while (in.available() > Integer.BYTES) {
-                ByteBuffer value = read(in, key);
-                if (value != null) {
-                    return new BaseEntry<>(key, value);
+        try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw");
+             FileChannel in = raf.getChannel()) {
+            long size = 0L;
+            ByteBuffer temp = ByteBuffer.allocate(Integer.BYTES);
+            while (size < in.size()) {
+                int keySize = readInt(in, temp);
+                size += Integer.BYTES;
+                if (key.capacity() != keySize) {
+                    continue;
+                }
+                ByteBuffer compareKey = readBuffer(in, keySize);
+                size += compareKey.capacity();
+                if (!key.equals(compareKey)) {
+                    continue;
                 }
 
+                return new BaseEntry<>(key, readBuffer(in, readInt(in, temp)));
             }
         }
-        return null;
+        throw new IOException("Entry doesn't exist");
     }
 
-    private ByteBuffer read(InputStream in, ByteBuffer key) throws IOException {
-        int keySize = in.read();
-        if (!key.equals(wrap(in.readNBytes(keySize)))) {
-            return null;
-        }
-        int valSize = in.read();
-        return ByteBuffer.wrap(in.readNBytes(valSize));
+    private int readInt(FileChannel in, ByteBuffer temp) throws IOException {
+        temp.clear();
+        in.read(temp);
+        temp.flip();
+        return temp.getInt();
     }
 
-    //non-heap?
-    private ByteBuffer wrap(byte[] bytes) {
-        return ByteBuffer.allocateDirect(bytes.length).put(bytes).flip();
+    private ByteBuffer readBuffer(FileChannel in, int size) throws IOException {
+        ByteBuffer buffer = ByteBuffer.allocate(size);
+        in.read(buffer);
+        return buffer.flip();
     }
 
     @Override
@@ -94,17 +103,26 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (collection.isEmpty()) {
             return;
         }
-        try (OutputStream out = Files.newOutputStream(path)) {
+        int size;
+        ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
+        try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw");
+             FileChannel out = raf.getChannel()) {
             for (BaseEntry<ByteBuffer> entry : collection.values()) {
-                write(out, entry.key());
-                write(out, entry.value());
+                size = sizeOfEntry(entry);
+                if (buffer.capacity() != size) {
+                    buffer = ByteBuffer.allocate(size);
+                }
+                buffer.putInt(entry.key().capacity()).put(entry.key());
+                buffer.putInt(entry.value().capacity()).put(entry.value());
+                buffer.flip();
+                out.write(buffer);
+                buffer.clear();
             }
         }
     }
 
-    private void write(OutputStream out, ByteBuffer buffer) throws IOException {
-        byte[] array = buffer.array();
-        out.write(array.length);
-        out.write(array);
+
+    private int sizeOfEntry(BaseEntry<ByteBuffer> entry) {
+        return 2 * Integer.BYTES + entry.key().capacity() + entry.value().capacity();
     }
 }

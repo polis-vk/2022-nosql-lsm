@@ -11,8 +11,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 2)
-public class MemoryDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
+@DaoFactory(stage = 2, week = 2)
+public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
@@ -21,12 +21,12 @@ public class MemoryDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntr
 
     @Override
     public String toString(ByteBuffer data) {
-        return data == null ? null : new String(data.array(), StandardCharsets.UTF_8);
+        return data == null ? null : StandardCharsets.UTF_8.decode(data.asReadOnlyBuffer()).toString();
     }
 
     @Override
     public ByteBuffer fromString(String data) {
-        return data == null ? null : ByteBuffer.wrap(data.getBytes(StandardCharsets.UTF_8));
+        return data == null ? null : ByteBuffer.wrap(data.getBytes(StandardCharsets.UTF_8));//StandardCharsets.UTF_8.encode(CharBuffer.wrap(data).asReadOnlyBuffer());
     }
 
     @Override
