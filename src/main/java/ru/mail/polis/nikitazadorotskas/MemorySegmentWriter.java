@@ -37,12 +37,13 @@ class MemorySegmentWriter {
     }
 
     void writeEntry(BaseEntry<MemorySegment> entry) {
-        MemorySegment key = entry.key();
-        writeIndex(key.byteSize());
-        writeData(key);
-        MemorySegment value = entry.value();
-        writeIndex(value.byteSize());
-        writeData(value);
+        writePartOfEntry(entry.key());
+        writePartOfEntry(entry.value());
+    }
+
+    void writePartOfEntry(MemorySegment data) {
+        writeIndex(data.byteSize());
+        writeData(data);
     }
 
     private void writeIndex(long size) {
