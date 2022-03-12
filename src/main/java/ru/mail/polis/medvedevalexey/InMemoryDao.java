@@ -8,7 +8,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
@@ -17,12 +16,19 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.logging.Logger;
 
+import static ru.mail.polis.medvedevalexey.BinarySearchUtils.binarySearch;
+import static ru.mail.polis.medvedevalexey.BinarySearchUtils.readFromChannel;
+
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     private static final Logger LOGGER = Logger.getLogger(InMemoryDao.class.getName());
 
     private static final int FLUSH_THRESHOLD = 100_000;
     private static final String SUFFIX = ".dat";
+    static final int NUM_OF_ROWS_SIZE = Integer.BYTES;
+    static final int KEY_LENGTH_SIZE = Integer.BYTES;
+    static final int VALUE_LENGTH_SIZE = Integer.BYTES;
+    static final int OFFSET_VALUE_SIZE = Long.BYTES;
 
     private final Path path;
     private int generation;
@@ -80,18 +86,21 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     public void flush() throws IOException {
         Path newFilePath = this.path.resolve(generation + SUFFIX);
 
-        if (!Files.exists(newFilePath)) {
-            Files.createFile(newFilePath);
-        }
+        try (FileChannel channel = FileChannel.open(newFilePath, StandardOpenOption.WRITE, StandardOpenOption.CREATE)) {
+            int numOfRows = storage.values().size();
+            // смещения (начала) строк в файле (используется в бинарном поиске)
+            ByteBuffer offsets = ByteBuffer.allocate(numOfRows * OFFSET_VALUE_SIZE);
 
-        try (FileChannel channel = FileChannel.open(newFilePath, StandardOpenOption.WRITE)) {
             for (BaseEntry<byte[]> entry : storage.values()) {
-                channel.write(ByteBuffer.allocate(Integer.BYTES).putInt(entry.key().length).rewind());
-                channel.write(ByteBuffer.allocate(entry.key().length).put(entry.key()).rewind());
-                channel.write(ByteBuffer.allocate(Integer.BYTES).putInt(entry.value().length).rewind());
-                channel.write(ByteBuffer.allocate(entry.value().length).put(entry.value()).rewind());
+                offsets.putLong(channel.position());
+                channel.write(toByteBuffer(entry.key().length, KEY_LENGTH_SIZE));
+                channel.write(toByteBuffer(entry.key()));
+                channel.write(toByteBuffer(entry.value().length, VALUE_LENGTH_SIZE));
+                channel.write(toByteBuffer(entry.value()));
             }
-            channel.write(ByteBuffer.allocate(Integer.BYTES).putInt(storage.values().size()).rewind());
+
+            channel.write(offsets.rewind());
+            channel.write(toByteBuffer(numOfRows, NUM_OF_ROWS_SIZE));
         }
 
         generation++;
@@ -104,47 +113,33 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     private BaseEntry<byte[]> getFromFile(byte[] requiredKey) throws IOException {
-        ByteBuffer buffer;
-        int valueLength;
-        int keyLength;
+        ByteBuffer requiredKeyByteBuffer = toByteBuffer(requiredKey);
         Path filePath;
-        byte[] value;
-        byte[] key;
 
         for (int i = generation - 1; i >= 0; i--) {
             filePath = this.path.resolve(i + SUFFIX);
 
             try (FileChannel channel = FileChannel.open(filePath, StandardOpenOption.READ)) {
-                buffer = ByteBuffer.allocate(Integer.BYTES);
-                channel.read(buffer, channel.size() - Integer.BYTES);
-                int numOfRows = buffer.rewind().getInt();
+                int numOfRows = readFromChannel(channel, NUM_OF_ROWS_SIZE, channel.size() - NUM_OF_ROWS_SIZE)
+                        .rewind()
+                        .getInt();
 
-                for (int j = 0; j < numOfRows; j++) {
-                    buffer = ByteBuffer.allocate(Integer.BYTES);
-                    channel.read(buffer);
-                    keyLength = buffer.rewind().getInt();
+                ByteBuffer value = binarySearch(channel, numOfRows, requiredKeyByteBuffer);
 
-                    buffer = ByteBuffer.allocate(keyLength);
-                    channel.read(buffer);
-                    key = buffer.array();
-
-                    buffer = ByteBuffer.allocate(Integer.BYTES);
-                    channel.read(buffer);
-                    valueLength = buffer.rewind().getInt();
-
-                    if (Arrays.compare(requiredKey, key) == 0) {
-                        buffer = ByteBuffer.allocate(valueLength);
-                        channel.read(buffer);
-                        value = buffer.array();
-
-                        return new BaseEntry<>(key, value);
-                    }
-
-                    channel.position(channel.position() + valueLength);
+                if (value != null) {
+                    return new BaseEntry<>(requiredKey, value.array());
                 }
             }
         }
 
         return null;
+    }
+
+    private ByteBuffer toByteBuffer(byte[] value) {
+        return ByteBuffer.allocate(value.length).put(value).rewind();
+    }
+
+    private ByteBuffer toByteBuffer(int value, int size) {
+        return ByteBuffer.allocate(size).putInt(value).rewind();
     }
 }

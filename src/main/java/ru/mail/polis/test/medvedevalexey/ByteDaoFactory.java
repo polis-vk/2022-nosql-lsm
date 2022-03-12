@@ -10,7 +10,7 @@ import ru.mail.polis.test.DaoFactory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 2, week = 1)
+@DaoFactory(stage = 3, week = 1)
 public class ByteDaoFactory implements DaoFactory.Factory<byte[], BaseEntry<byte[]>> {
 
     @Override
