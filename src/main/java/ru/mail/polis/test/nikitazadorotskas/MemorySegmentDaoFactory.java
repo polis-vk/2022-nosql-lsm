@@ -8,17 +8,18 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.nikitazadorotskas.PersistentDao;
 import ru.mail.polis.test.DaoFactory;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 2)
+@DaoFactory(stage = 2, week = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
     @Override
-    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao() {
+    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao() throws IOException {
         return new PersistentDao(null);
     }
 
     @Override
-    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) {
+    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) throws IOException {
         return new PersistentDao(config);
     }
 

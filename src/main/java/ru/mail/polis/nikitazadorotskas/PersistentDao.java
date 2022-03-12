@@ -1,11 +1,13 @@
 package ru.mail.polis.nikitazadorotskas;
 
 import jdk.incubator.foreign.MemorySegment;
+import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
+import java.nio.file.NoSuchFileException;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -13,13 +15,25 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory
-            = new ConcurrentSkipListMap<>(Utils::compareMemorySegment);
+            = new ConcurrentSkipListMap<>(this::compareMemorySegment);
     private final AtomicLong storageSizeInBytes = new AtomicLong(0);
-    private MemorySegmentReader reader;
+    private final MemorySegmentReader reader;
     private final Utils utils;
+    private final ResourceScope scope = ResourceScope.newSharedScope();
 
-    public PersistentDao(Config config) {
+    public PersistentDao(Config config) throws IOException {
+        MemorySegmentReader tmpReader;
         utils = new Utils(config);
+        try {
+            tmpReader = new MemorySegmentReader(utils, scope);
+        } catch (NoSuchFileException e) {
+            tmpReader = null;
+        }
+        reader = tmpReader;
+    }
+
+    private int compareMemorySegment(MemorySegment first, MemorySegment second) {
+        return utils.compareMemorySegment(first, second);
     }
 
     @Override
@@ -54,28 +68,39 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
         }
 
         if (reader == null) {
-            reader = new MemorySegmentReader(utils);
+            return null;
         }
 
         return reader.getFromDisk(key);
     }
 
     @Override
-    public void flush() throws IOException {
-        utils.createFilesIfNotExist();
-
-        MemorySegmentWriter segmentWriter = new MemorySegmentWriter(memory.size(), storageSizeInBytes.get(), utils);
-        for (BaseEntry<MemorySegment> entry : memory.values()) {
-            segmentWriter.writeEntry(entry);
-        }
-
-        memory.clear();
-        segmentWriter.save();
+    public void flush() {
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
         storageSizeInBytes.addAndGet(entry.key().byteSize() + entry.value().byteSize());
         memory.put(entry.key(), entry);
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (!scope.isAlive()) {
+            return;
+        }
+        scope.close();
+
+        try (ResourceScope confinedScope = ResourceScope.newConfinedScope()) {
+            utils.createFilesIfNotExist();
+            MemorySegmentWriter segmentWriter
+                    = new MemorySegmentWriter(memory.size(), storageSizeInBytes.get(), utils, confinedScope);
+            for (BaseEntry<MemorySegment> entry : memory.values()) {
+                segmentWriter.writeEntry(entry);
+            }
+        }
+
+        memory.clear();
     }
 }

@@ -15,11 +15,15 @@ class MemorySegmentWriter {
     private long lastIndex;
     private final MemorySegment mappedMemorySegmentForStorage;
     private final MemorySegment mappedMemorySegmentForIndexes;
+    private final ResourceScope scope;
 
-    MemorySegmentWriter(int arraySize, long storageSize, Utils utils) throws IOException {
+    MemorySegmentWriter(int arraySize, long storageSize, Utils utils, ResourceScope scope) throws IOException {
+        this.scope = scope;
         mappedMemorySegmentForStorage = createMappedSegment(utils.getStoragePath(), storageSize);
-        long longSize = 8;
-        mappedMemorySegmentForIndexes = createMappedSegment(utils.getIndexesPath(), longSize * (arraySize * 2L + 1));
+        mappedMemorySegmentForIndexes = createMappedSegment(
+                utils.getIndexesPath(),
+                Long.BYTES * (arraySize * 2L + 1)
+        );
     }
 
     private MemorySegment createMappedSegment(Path path, long size) throws IOException {
@@ -28,7 +32,7 @@ class MemorySegmentWriter {
                 0,
                 size,
                 FileChannel.MapMode.READ_WRITE,
-                ResourceScope.globalScope()
+                scope
         );
     }
 
@@ -45,8 +49,7 @@ class MemorySegmentWriter {
         lastIndex += size;
         lastSize = size;
         arrayIndex++;
-        long longSize = 8;
-        MemoryAccess.setLong(mappedMemorySegmentForIndexes.asSlice(arrayIndex * longSize, longSize), lastIndex);
+        MemoryAccess.setLongAtIndex(mappedMemorySegmentForIndexes, arrayIndex, lastIndex);
     }
 
     private void writeData(MemorySegment other) {
@@ -55,18 +58,5 @@ class MemorySegmentWriter {
 
     private void writeToMappedMemorySegment(MemorySegment mapped, long byteOffset, long byteSize, MemorySegment other) {
         mapped.asSlice(byteOffset, byteSize).copyFrom(other);
-    }
-
-    void save() {
-        saveIndexes();
-        saveMemorySegments();
-    }
-
-    private void saveMemorySegments() {
-        mappedMemorySegmentForStorage.load();
-    }
-
-    private void saveIndexes() {
-        mappedMemorySegmentForIndexes.load();
     }
 }

@@ -1,78 +1,64 @@
 package ru.mail.polis.nikitazadorotskas;
 
+import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static java.nio.channels.FileChannel.MapMode.READ_ONLY;
-import static java.nio.channels.FileChannel.MapMode.READ_WRITE;
 
 class MemorySegmentReader {
-    private long[] indexes;
-    private MemorySegment mappedSegment;
+    private MemorySegment mappedSegmentForIndexes;
+    private MemorySegment mappedSegmentForData;
     private final Utils utils;
-    private final boolean filesExist;
+    private final ResourceScope scope;
+    private long lastIndex;
 
-    MemorySegmentReader(Utils utils) {
+    MemorySegmentReader(Utils utils, ResourceScope scope) throws IOException {
         this.utils = utils;
-        filesExist = filesExists();
+        this.scope = scope;
+        createMappedForData();
+        createMappedForIndexes();
     }
 
-    BaseEntry<MemorySegment> getFromDisk(MemorySegment key) throws IOException {
-        if (!filesExist) {
-            return null;
-        }
-
-        if (indexes == null) {
-            readIndexes();
-        }
-
-        if (mappedSegment == null) {
-            createdMapped();
-        }
-
+    BaseEntry<MemorySegment> getFromDisk(MemorySegment key) {
         return binarySearch(key);
     }
 
-    private boolean filesExists() {
-        return Files.exists(utils.getIndexesPath()) && Files.exists(utils.getStoragePath());
-    }
-
-    private void readIndexes() throws IOException {
+    private void createMappedForIndexes() throws IOException {
         long fileSize = Files.size(utils.getIndexesPath());
-        MemorySegment ms = MemorySegment.mapFile(
-                utils.getIndexesPath(),
-                0,
-                fileSize,
-                READ_ONLY,
-                ResourceScope.globalScope()
-        );
-        indexes = ms.toLongArray();
+        lastIndex = fileSize / Long.BYTES - 3;
+        mappedSegmentForIndexes = createMappedSegment(utils.getIndexesPath(), fileSize);
     }
 
-    private void createdMapped() throws IOException {
+    private void createMappedForData() throws IOException {
         long fileSize = Files.size(utils.getStoragePath());
-        mappedSegment = MemorySegment.mapFile(
-                utils.getStoragePath(),
+        mappedSegmentForData = createMappedSegment(utils.getStoragePath(), fileSize);
+    }
+
+    private MemorySegment createMappedSegment(Path path, long size) throws IOException {
+        return MemorySegment.mapFile(
+                path,
                 0,
-                fileSize,
-                READ_WRITE,
-                ResourceScope.globalScope()
+                size,
+                READ_ONLY,
+                scope
         );
     }
 
     private BaseEntry<MemorySegment> binarySearch(MemorySegment key) {
-        int low = 0;
-        int high = indexes.length - 3;
+        long low = 0;
+        long high = lastIndex;
 
         while (low < high) {
-            int mid = countMid(low, high);
+            long mid = countMid(low, high);
 
             MemorySegment currentKey = getMemorySegment(mid);
-            int compare = Utils.compareMemorySegment(key, currentKey);
+            int compare = utils.compareMemorySegment(key, currentKey);
 
             if (compare > 0) {
                 low = mid + 2;
@@ -85,24 +71,24 @@ class MemorySegmentReader {
 
         MemorySegment currentMemorySegment = getMemorySegment(low);
 
-        if (Utils.compareMemorySegment(key, currentMemorySegment) == 0) {
+        if (utils.compareMemorySegment(key, currentMemorySegment) == 0) {
             return new BaseEntry<>(currentMemorySegment, getMemorySegment(low + 1));
         }
 
         return null;
     }
 
-    private int countMid(int low, int high) {
-        int mid = low + ((high - low) / 2);
-        if (mid % 2 == 1) {
+    private long countMid(long low, long high) {
+        long mid = low + ((high - low) / 2); // Аналогично (low + high) / 2, но так не будет переполнения
+        if (mid % 2 == 1) { // Делаю так, потому что по нечетным индексам находятся значения, а не ключи
             mid--;
         }
         return mid;
     }
 
-    private MemorySegment getMemorySegment(int index) {
-        long byteOffset = indexes[index];
-        long byteSize = indexes[index + 1] - byteOffset;
-        return mappedSegment.asSlice(byteOffset, byteSize);
+    private MemorySegment getMemorySegment(long index) {
+        long byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, index);
+        long byteSize = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, index + 1) - byteOffset;
+        return mappedSegmentForData.asSlice(byteOffset, byteSize);
     }
 }

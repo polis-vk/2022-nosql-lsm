@@ -33,11 +33,18 @@ class Utils {
         return indexesPath;
     }
 
-    public static int compareMemorySegment(MemorySegment first, MemorySegment second) {
+    public int compareMemorySegment(MemorySegment first, MemorySegment second) {
         long firstMismatchByte = first.mismatch(second);
 
         if (firstMismatchByte == -1) {
             return 0;
+        }
+
+        if (firstMismatchByte == first.byteSize()) {
+            return -1;
+        }
+        if (firstMismatchByte == second.byteSize()) {
+            return 1;
         }
 
         byte firstByte = MemoryAccess.getByteAtOffset(first, firstMismatchByte);
