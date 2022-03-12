@@ -9,7 +9,6 @@ import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 
 @DaoFactory(stage = 3, week = 1)
