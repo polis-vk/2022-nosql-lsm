@@ -4,46 +4,60 @@ import ru.mail.polis.BaseEntry;
 
 import java.nio.ByteBuffer;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.NavigableSet;
 import java.util.NoSuchElementException;
-import java.util.TreeSet;
+import java.util.PriorityQueue;
+import java.util.Queue;
 
-public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
-
-    private final Map<Iterator<BaseEntry<ByteBuffer>>, BaseEntry<ByteBuffer>> curMap;
-    private final NavigableSet<Iterator<BaseEntry<ByteBuffer>>> iteratorsSet;
+class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
+    private final Queue<PeekingIterator> queue;
+    private static final Comparator<PeekingIterator> comparator = Comparator.comparing(i -> i.peek().key());
+    private static final Comparator<BaseEntry<ByteBuffer>> entryComparator = Comparator.comparing(BaseEntry::key);
+    private BaseEntry<ByteBuffer> prev;
 
     public MergeIterator(List<Iterator<BaseEntry<ByteBuffer>>> iterators) {
-        this.curMap = new HashMap<>();
-        this.iteratorsSet = new TreeSet<>(Comparator.comparing(i -> this.curMap.get(i).key()));
-        for (Iterator<BaseEntry<ByteBuffer>> iter : iterators) {
-            if (iter.hasNext()) {
-                curMap.put(iter, iter.next());
-                this.iteratorsSet.add(iter);
+        queue = new PriorityQueue<>(iterators.size(),
+                comparator.thenComparing(PeekingIterator::getPriority));
+        for (int i = 0; i < iterators.size(); i++) {
+            Iterator<BaseEntry<ByteBuffer>> iterator = iterators.get(i);
+            if (iterator.hasNext()) {
+                queue.add(new PeekingIterator(iterator, i));
             }
         }
     }
 
-    @Override
     public boolean hasNext() {
-        return !iteratorsSet.isEmpty();
+        if (queue.isEmpty()) {
+            return false;
+        }
+        PeekingIterator nextIter = queue.remove();
+        while (prev != null && nextIter.hasNext() && entryComparator.compare(nextIter.peek(), prev) == 0) {
+            nextIter.next();
+            if (nextIter.hasNext()) {
+                queue.add(nextIter);
+            }
+            if (queue.isEmpty()) {
+                return false;
+            } else {
+                nextIter = queue.remove();
+            }
+        }
+        if (nextIter.hasNext()) {
+            queue.add(nextIter);
+        }
+        return !queue.isEmpty();
     }
 
-    @Override
     public BaseEntry<ByteBuffer> next() {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        Iterator<BaseEntry<ByteBuffer>> iter = iteratorsSet.pollFirst();
-        BaseEntry<ByteBuffer> res = curMap.get(iter);
-        if (iter != null && iter.hasNext()) {
-            curMap.put(iter, iter.next());
-            iteratorsSet.add(iter);
+        PeekingIterator nextIter = queue.remove();
+        prev = nextIter.next();
+        if (nextIter.hasNext()) {
+            queue.add(nextIter);
         }
-        return res;
+        return prev;
     }
 }
