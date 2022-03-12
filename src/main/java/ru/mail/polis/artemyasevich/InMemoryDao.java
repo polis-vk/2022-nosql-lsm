@@ -4,7 +4,7 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.*;;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
@@ -25,8 +25,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final List<long[]> offsets;
 
     private int fileToWrite;
-    private int maxValueSize;
-    private byte[] valueBuffer;
 
     public InMemoryDao(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
@@ -39,11 +37,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     public InMemoryDao() {
-        this.pathToDirectory = null;
+        pathToDirectory = null;
         offsets = null;
     }
 
-    private Iterator<BaseEntry<String>> getIterator(String from, String to) {
+    private Iterator<BaseEntry<String>> getDataMapIterator(String from, String to) {
         Map<String, BaseEntry<String>> subMap;
         if (from == null && to == null) {
             subMap = dataMap;
@@ -57,7 +55,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return subMap.values().iterator();
     }
 
-    private BaseEntry<String> findFirstValid(String from, String to, RandomAccessFile reader, long[] offsets, byte[] buffer, int fileNumber, int[] entryToRead) throws IOException {
+    private BaseEntry<String> findFirstValid(String from, String to, RandomAccessFile reader, long[] offsets, int fileNumber, int[] entryToRead) throws IOException {
         int left = 0;
         int middle;
         int right = offsets.length - 2;
@@ -70,10 +68,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             long pos = offsets[middle];
             reader.seek(pos);
             String key = reader.readUTF();
-            int valueSize = (int) (offsets[middle + 1] - pos) - key.getBytes(StandardCharsets.UTF_8).length - Short.BYTES;
-            reader.read(buffer, 0, valueSize);
-            String value = new String(buffer, 0, valueSize, StandardCharsets.UTF_8);
-
+            String value = reader.readUTF();
             int comparison = from.compareTo(key);
             if (comparison == 0) {
                 entryToRead[fileNumber] = middle + 1;
@@ -110,9 +105,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void upsert(BaseEntry<String> entry) {
-        if (entry.value().length() > maxValueSize) {
-            maxValueSize = entry.value().length();
-        }
         dataMap.put(entry.key(), entry);
     }
 
@@ -137,13 +129,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
              ))) {
             long currentOffset = 0;
             metaStream.writeInt(dataMap.size());
-            metaStream.writeInt(maxValueSize);
             for (BaseEntry<String> entry : dataMap.values()) {
                 dataStream.writeUTF(entry.key());
-                dataStream.writeBytes(entry.value());
+                dataStream.writeUTF(entry.value());
                 metaStream.writeLong(currentOffset);
                 currentOffset += entry.key().getBytes(StandardCharsets.UTF_8).length
-                        + entry.value().getBytes(StandardCharsets.UTF_8).length + 2;
+                        + entry.value().getBytes(StandardCharsets.UTF_8).length + Short.BYTES * 2;
             }
             metaStream.writeLong(currentOffset);
             fileToWrite++;
@@ -155,10 +146,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         for (int fileNumber = fileToWrite - 1; fileNumber >= 0; fileNumber--) {
             Path pathToData = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
             if (offsets.get(fileNumber) == null) {
-                int size = proceedMetaFile(fileNumber);
-                if (valueBuffer == null || valueBuffer.length < size) {
-                    valueBuffer = new byte[size];
-                }
+                offsets.set(fileNumber, readOffsets(fileNumber));
             }
             try (RandomAccessFile reader = new RandomAccessFile(pathToData.toFile(), "r")) {
                 int left = 0;
@@ -172,9 +160,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     String entryKey = reader.readUTF();
                     int comparison = key.compareTo(entryKey);
                     if (comparison == 0) {
-                        int valueSize = (int) (offsets.get(fileNumber)[middle + 1] - pos) - entryKey.getBytes().length - Short.BYTES;
-                        reader.read(valueBuffer, 0, valueSize);
-                        String entryValue = new String(valueBuffer, 0, valueSize, StandardCharsets.UTF_8);
+                        String entryValue = reader.readUTF();
                         res = new BaseEntry<>(entryKey, entryValue);
                         break;
                     } else if (comparison > 0) {
@@ -191,18 +177,17 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return res;
     }
 
-    private int proceedMetaFile(int fileNumber) throws IOException {
-        int maxValueSize;
+    private long[] readOffsets(int fileNumber) throws IOException {
+        long[] fileOffsets;
         try (DataInputStream dataInputStream = new DataInputStream(new BufferedInputStream(
                 Files.newInputStream(pathToDirectory.resolve(META_FILE + fileNumber + FILE_EXTENSION))))) {
             int dataSize = dataInputStream.readInt();
-            offsets.set(fileNumber, new long[dataSize + 1]);
-            maxValueSize = dataInputStream.readInt();
+            fileOffsets = new long[dataSize + 1];
             for (int i = 0; i < dataSize + 1; i++) {
-                offsets.get(fileNumber)[i] = dataInputStream.readLong();
+                fileOffsets[i] = dataInputStream.readLong();
             }
         }
-        return maxValueSize;
+        return fileOffsets;
     }
 
     private class MergeIterator implements Iterator<BaseEntry<String>> {
@@ -214,16 +199,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
         public MergeIterator(String from, String to) throws IOException {
             this.to = to;
-            this.iterator = getIterator(from, to);
-            int bufferSize = proceedMeta();
-            if (valueBuffer == null || valueBuffer.length < bufferSize) {
-                valueBuffer = new byte[bufferSize];
-            }
+            this.iterator = getDataMapIterator(from, to);
+            proceedMeta();
             for (int fileNumber = 0; fileNumber < fileToWrite; fileNumber++) {
                 Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
                 readers.add(new RandomAccessFile(path.toFile(), "r"));
                 if (from != null) {
-                    BaseEntry<String> closest = findFirstValid(from, to, readers.get(fileNumber), offsets.get(fileNumber), valueBuffer, fileNumber, entryToRead);
+                    BaseEntry<String> closest = findFirstValid(from, to, readers.get(fileNumber), offsets.get(fileNumber), fileNumber, entryToRead);
                     currents.add(closest);
                 } else {
                     currents.add(readEntry(fileNumber));
@@ -278,18 +260,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return next;
         }
 
-        private int proceedMeta() throws IOException {
-            int maxSize = 0;
+        private void proceedMeta() throws IOException {
             for (int i = 0; i < fileToWrite; i++) {
                 if (offsets.get(i) != null) {
                     continue;
                 }
-                int size = proceedMetaFile(i);
-                if (size > maxSize) {
-                    maxSize = size;
-                }
+                offsets.set(i, readOffsets(i));
             }
-            return maxSize;
         }
 
         private BaseEntry<String> readEntry(int fileNumber) throws IOException {
@@ -308,9 +285,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 reader.close();
                 return null;
             }
-            int valueSize = (int) (curOffsets[entryToRead[fileNumber] + 1] - reader.getFilePointer());
-            reader.read(valueBuffer, 0, valueSize);
-            String value = new String(valueBuffer, 0, valueSize);
+            String value = reader.readUTF();
             entryToRead[fileNumber]++;
             return new BaseEntry<>(key, value);
         }
