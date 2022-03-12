@@ -4,27 +4,24 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     private static final Logger LOGGER = Logger.getLogger(InMemoryDao.class.getName());
 
-    private static final String KEY_VALUE_SEPARATOR = " ";
-    private static final String LINE_SEPARATOR = "\n";
     private static final int FLUSH_THRESHOLD = 100_000;
     private static final String SUFFIX = ".dat";
 
@@ -75,7 +72,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             try {
                 flush();
             } catch (IOException e) {
-                LOGGER.log(Level.SEVERE, e.toString());
+                LOGGER.throwing(InMemoryDao.class.getName(), "upsert", e);
             }
         }
     }
@@ -88,19 +85,17 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             Files.createFile(newFilePath);
         }
 
-        StringBuilder builder = new StringBuilder();
-        try (BufferedWriter writer = Files.newBufferedWriter(newFilePath)) {
+        try (FileChannel channel = FileChannel.open(newFilePath, StandardOpenOption.WRITE)) {
             for (BaseEntry<byte[]> entry : storage.values()) {
-                builder.setLength(0);
-                builder.append(new String(entry.key(), UTF_8))
-                        .append(KEY_VALUE_SEPARATOR)
-                        .append(new String(entry.value(), UTF_8))
-                        .append(LINE_SEPARATOR);
-                writer.write(builder.toString());
+                channel.write(ByteBuffer.allocate(Integer.BYTES).putInt(entry.key().length).rewind());
+                channel.write(ByteBuffer.allocate(entry.key().length).put(entry.key()).rewind());
+                channel.write(ByteBuffer.allocate(Integer.BYTES).putInt(entry.value().length).rewind());
+                channel.write(ByteBuffer.allocate(entry.value().length).put(entry.value()).rewind());
             }
-            generation++;
+            channel.write(ByteBuffer.allocate(Integer.BYTES).putInt(storage.values().size()).rewind());
         }
 
+        generation++;
         storage.clear();
     }
 
@@ -110,23 +105,43 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     private BaseEntry<byte[]> getFromFile(byte[] requiredKey) throws IOException {
+        ByteBuffer buffer;
+        int valueLength;
+        int keyLength;
         Path filePath;
-        String line;
-        String[] lineParts;
-        byte[] key;
         byte[] value;
+        byte[] key;
 
         for (int i = generation - 1; i >= 0; i--) {
             filePath = this.path.resolve(i + SUFFIX);
 
-            try (BufferedReader reader = Files.newBufferedReader(filePath)) {
-                while ((line = reader.readLine()) != null) {
-                    lineParts = line.split(KEY_VALUE_SEPARATOR);
-                    key = lineParts[0].getBytes(UTF_8);
+            try (FileChannel channel = FileChannel.open(filePath, StandardOpenOption.READ)) {
+                buffer = ByteBuffer.allocate(Integer.BYTES);
+                channel.read(buffer, channel.size() - Integer.BYTES);
+                int numOfRows = buffer.rewind().getInt();
+
+                for (int j = 0; j < numOfRows; j++) {
+                    buffer = ByteBuffer.allocate(Integer.BYTES);
+                    channel.read(buffer);
+                    keyLength = buffer.rewind().getInt();
+
+                    buffer = ByteBuffer.allocate(keyLength);
+                    channel.read(buffer);
+                    key = buffer.array();
+
+                    buffer = ByteBuffer.allocate(Integer.BYTES);
+                    channel.read(buffer);
+                    valueLength = buffer.rewind().getInt();
+
                     if (Arrays.compare(requiredKey, key) == 0) {
-                        value = lineParts[1].getBytes(UTF_8);
-                        return new BaseEntry<>(requiredKey, value);
+                        buffer = ByteBuffer.allocate(valueLength);
+                        channel.read(buffer);
+                        value = buffer.array();
+
+                        return new BaseEntry<>(key, value);
                     }
+
+                    channel.position(channel.position() + valueLength);
                 }
             }
         }
