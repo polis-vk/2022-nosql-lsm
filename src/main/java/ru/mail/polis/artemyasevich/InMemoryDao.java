@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -52,7 +51,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
-        return new MergeIterator(from, to);
+        processAllMeta();
+        return new MergeIterator(from, to, numberOfFiles, getDataMapIterator(from, to), pathToDirectory, offsets);
     }
 
     @Override
@@ -62,15 +62,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return entry;
         }
         for (int fileNumber = numberOfFiles - 1; fileNumber >= 0; fileNumber--) {
-            Path pathToData = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
             if (offsets.get(fileNumber) == null) {
                 offsets.set(fileNumber, readOffsets(fileNumber));
             }
-            try (RandomAccessFile reader = new RandomAccessFile(pathToData.toFile(), "r")) {
-                entry = findValidClosest(key, null, reader, fileNumber, null);
-                if (entry != null) {
-                    break;
-                }
+            entry = getFromFile(key, fileNumber);
+            if (entry != null) {
+                break;
             }
         }
         return entry;
@@ -106,41 +103,32 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return subMap.values().iterator();
     }
 
-    private BaseEntry<String> findValidClosest(String from, String to, RandomAccessFile reader,
-                                               int fileNumber, int[] nextEntryToRead) throws IOException {
-        int left = 0;
-        int middle;
-        int right = offsets.get(fileNumber).length - 2;
-        boolean accurately = nextEntryToRead == null;
-        String goodKey = null;
-        String goodValue = null;
+    private BaseEntry<String> getFromFile(String key, int fileNumber) throws IOException {
+        Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
+        BaseEntry<String> res = null;
+        try (RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r")) {
+            int left = 0;
+            int middle;
+            int right = offsets.get(fileNumber).length - 2;
 
-        while (left <= right) {
-            middle = (right - left) / 2 + left;
-            long pos = offsets.get(fileNumber)[middle];
-            reader.seek(pos);
-            String key = reader.readUTF();
-            int comparison = from.compareTo(key);
-            if (comparison <= 0) {
-                String value = reader.readUTF();
-                if (!accurately) {
-                    nextEntryToRead[fileNumber] = middle + 1;
-                }
+            while (left <= right) {
+                middle = (right - left) / 2 + left;
+                long pos = offsets.get(fileNumber)[middle];
+                reader.seek(pos);
+                String entryKey = reader.readUTF();
+                int comparison = key.compareTo(entryKey);
                 if (comparison == 0) {
-                    return new BaseEntry<>(key, value);
+                    String entryValue = reader.readUTF();
+                    res = new BaseEntry<>(entryKey, entryValue);
+                    break;
+                } else if (comparison > 0) {
+                    left = middle + 1;
                 } else {
                     right = middle - 1;
-                    goodKey = key;
-                    goodValue = value;
                 }
-            } else {
-                left = middle + 1;
             }
         }
-        if (accurately || goodKey == null) {
-            return null;
-        }
-        return to != null && goodKey.compareTo(to) >= 0 ? null : new BaseEntry<>(goodKey, goodValue);
+        return res;
     }
 
     private void savaData() throws IOException {
@@ -178,109 +166,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return fileOffsets;
     }
 
-    private class MergeIterator implements Iterator<BaseEntry<String>> {
-        private final List<RandomAccessFile> readers = new ArrayList<>(numberOfFiles);
-        private final List<BaseEntry<String>> currents = new ArrayList<>(numberOfFiles + 1);
-        private final int[] nextEntryToRead = new int[numberOfFiles];
-        private final Iterator<BaseEntry<String>> dataMapIterator;
-        private final String to;
-
-        public MergeIterator(String from, String to) throws IOException {
-            this.to = to;
-            this.dataMapIterator = getDataMapIterator(from, to);
-            proceedMeta();
-            for (int fileNumber = 0; fileNumber < numberOfFiles; fileNumber++) {
-                Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
-                RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r");
-                readers.add(reader);
-                if (from == null) {
-                    currents.add(readEntry(fileNumber));
-                    continue;
-                }
-                BaseEntry<String> closest = findValidClosest(from, to, reader, fileNumber, nextEntryToRead);
-                currents.add(closest);
-                if (closest == null) {
-                    reader.close();
-                    readers.set(fileNumber, null);
-                }
+    private void processAllMeta() throws IOException {
+        for (int i = 0; i < numberOfFiles; i++) {
+            if (offsets.get(i) != null) {
+                continue;
             }
-            currents.add(dataMapIterator.hasNext() ? dataMapIterator.next() : null);
-        }
-
-        @Override
-        public boolean hasNext() {
-            return currents.stream().anyMatch(Objects::nonNull);
-        }
-
-        @Override
-        public BaseEntry<String> next() {
-            String minKey = "";
-            int minI = 0;
-            for (int i = numberOfFiles; i >= 0; i--) {
-                BaseEntry<String> current = currents.get(i);
-                if (current != null) {
-                    minKey = current.key();
-                    minI = i;
-                    break;
-                }
-            }
-
-            for (int i = minI - 1; i >= 0; i--) {
-                BaseEntry<String> current = currents.get(i);
-                if (current == null) {
-                    continue;
-                }
-                if (current.key().compareTo(minKey) < 0) {
-                    minKey = current.key();
-                    minI = i;
-                }
-            }
-            BaseEntry<String> next = currents.get(minI);
-            try {
-                currents.set(minI, readEntry(minI));
-                for (int i = 0; i < numberOfFiles + 1; i++) {
-                    BaseEntry<String> current = currents.get(i);
-                    if (current == null) {
-                        continue;
-                    }
-                    if (current.key().equals(minKey)) {
-                        currents.set(i, readEntry(i));
-                    }
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            return next;
-        }
-
-        private void proceedMeta() throws IOException {
-            for (int i = 0; i < numberOfFiles; i++) {
-                if (offsets.get(i) != null) {
-                    continue;
-                }
-                offsets.set(i, readOffsets(i));
-            }
-        }
-
-        private BaseEntry<String> readEntry(int fileNumber) throws IOException {
-            if (fileNumber == numberOfFiles) {
-                return dataMapIterator.hasNext() ? dataMapIterator.next() : null;
-            }
-            RandomAccessFile reader = readers.get(fileNumber);
-            long[] curOffsets = offsets.get(fileNumber);
-            reader.seek(curOffsets[nextEntryToRead[fileNumber]]);
-            if (reader.getFilePointer() == curOffsets[curOffsets.length - 1]) {
-                reader.close();
-                return null;
-            }
-            String key = reader.readUTF();
-            if (to != null && key.compareTo(to) >= 0) {
-                reader.close();
-                return null;
-            }
-            String value = reader.readUTF();
-            nextEntryToRead[fileNumber]++;
-            return new BaseEntry<>(key, value);
+            offsets.set(i, readOffsets(i));
         }
     }
 }
