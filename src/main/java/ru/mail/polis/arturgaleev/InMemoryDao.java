@@ -9,7 +9,6 @@ import ru.mail.polis.test.arturgaleev.FileDBWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -18,10 +17,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> dataBase = new ConcurrentSkipListMap<>();
     private final Config config;
-
-    public InMemoryDao() {
-        config = new Config(Paths.get("tmp/temp" + Math.random()));
-    }
 
     public InMemoryDao(Config config) throws IOException {
         this.config = config;
@@ -53,7 +48,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (!Files.exists(config.basePath().resolve("1.txt"))) {
             return null;
         }
-        try (FileDBReader reader = new FileDBReader(config.basePath() + "/1.txt")) {
+        try (FileDBReader reader = new FileDBReader(config.basePath().resolve("1.txt").toString())) {
             reader.readArrayLinks();
             return reader.getByKey(key);
         }
