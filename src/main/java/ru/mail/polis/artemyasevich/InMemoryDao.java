@@ -11,7 +11,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
@@ -32,12 +31,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final ConcurrentNavigableMap<String, BaseEntry<String>> dataMap = new ConcurrentSkipListMap<>();
     private final Path pathToDirectory;
     private int fileToWrite;
-    private int lastReadFile = -1;
-    private int maxKeySize;
-    private int maxValueSize;
     private int lastDataSize;
+    private int lastReadFile = -1;
+    private int maxValueSize;
+    private byte[] valueBuffer;
     private long[] offsetsOfLastFile;
-    private byte[] buffer;
 
     public InMemoryDao(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
@@ -76,9 +74,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void upsert(BaseEntry<String> entry) {
-        if (entry.key().length() > maxKeySize) {
-            maxKeySize = entry.key().length();
-        }
         if (entry.value().length() > maxValueSize) {
             maxValueSize = entry.value().length();
         }
@@ -106,7 +101,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
              ))) {
             long currentOffset = 0;
             metaStream.writeInt(dataMap.size());
-            metaStream.writeShort(maxKeySize);
             metaStream.writeInt(maxValueSize);
             for (BaseEntry<String> entry : dataMap.values()) {
                 dataStream.writeUTF(entry.key());
@@ -130,9 +124,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                         Files.newInputStream(pathToMeta)))) {
                     lastDataSize = dataInputStream.readInt();
                     offsetsOfLastFile = new long[lastDataSize + 1];
-                    maxKeySize = dataInputStream.readShort();
                     maxValueSize = dataInputStream.readInt();
-                    buffer = new byte[Math.max(maxKeySize, maxValueSize)];
+                    valueBuffer = new byte[maxValueSize];
                     for (int i = 0; i < lastDataSize + 1; i++) {
                         offsetsOfLastFile[i] = dataInputStream.readLong();
                     }
@@ -148,16 +141,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     middle = (right - left) / 2 + left;
                     long pos = offsetsOfLastFile[middle];
                     reader.seek(pos);
-                    reader.read(buffer, 0, 2);
-                    short keySize = ByteBuffer.wrap(buffer, 0, 2).getShort();
-                    reader.read(buffer, 0, keySize);
-                    String entryKey = new String(buffer, 0, keySize, StandardCharsets.UTF_8);
-
+                    String entryKey = reader.readUTF();
                     int comparison = key.compareTo(entryKey);
+
                     if (comparison == 0) {
-                        int valueSize = (int) (offsetsOfLastFile[middle + 1] - pos) - keySize - 2;
-                        reader.read(buffer, 0, valueSize);
-                        String entryValue = new String(buffer, 0, valueSize, StandardCharsets.UTF_8);
+                        int valueSize = (int) (offsetsOfLastFile[middle + 1] - pos)
+                                - entryKey.getBytes(StandardCharsets.UTF_8).length - 2;
+                        reader.read(valueBuffer, 0, valueSize);
+                        String entryValue = new String(valueBuffer, 0, valueSize, StandardCharsets.UTF_8);
                         res = new BaseEntry<>(entryKey, entryValue);
                         break;
                     } else if (comparison > 0) {
