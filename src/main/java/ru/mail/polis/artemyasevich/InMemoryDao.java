@@ -51,7 +51,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
-        processAllMeta();
+        if (from != null) {
+            processAllMeta();
+        }
         return new MergeIterator(from, to, numberOfFiles, getDataMapIterator(from, to), pathToDirectory, offsets);
     }
 

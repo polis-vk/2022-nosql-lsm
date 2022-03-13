@@ -4,6 +4,7 @@ import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -14,6 +15,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
     private static final String DATA_FILE = "data";
     private static final String FILE_EXTENSION = ".txt";
     private final int numberOfFiles;
+    private final Path pathToDirectory;
     private final List<RandomAccessFile> readers;
     private final List<BaseEntry<String>> currents;
     private final List<long[]> offsets;
@@ -26,6 +28,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         this.to = to;
         this.dataMapIterator = dataMapIterator;
         this.offsets = offsets;
+        this.pathToDirectory = pathToDirectory;
         readers = new ArrayList<>(this.numberOfFiles);
         currents = new ArrayList<>(this.numberOfFiles + 1);
         for (int fileNumber = 0; fileNumber < this.numberOfFiles; fileNumber++) {
@@ -130,7 +133,9 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         }
         RandomAccessFile reader = readers.get(fileNumber);
         long[] curOffsets = offsets.get(fileNumber);
-        if (reader.getFilePointer() == curOffsets[curOffsets.length - 1]) {
+        long fileSize = curOffsets == null ? Files.size(pathToDirectory.resolve(DATA_FILE + fileNumber + ".txt"))
+                : curOffsets[curOffsets.length - 1];
+        if (reader.getFilePointer() == fileSize) {
             reader.close();
             return null;
         }
