@@ -22,7 +22,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
-    private static final DaoUtils daoUtils = new DaoUtils();
     private static int fileCounter = 1;
     private static final int BUFFER_FLUSH_LIMIT = 256;
     private static final OpenOption[] writeOptions = new OpenOption[]{
@@ -62,13 +61,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 } catch (NoSuchFileException e) {
                     continue;
                 }
-                String fileMinKey = daoUtils.readKey(bufferedReader);
-                String fileMaxKey = daoUtils.readKey(bufferedReader);
+                String fileMinKey = DaoUtils.readKey(bufferedReader);
+                String fileMaxKey = DaoUtils.readKey(bufferedReader);
                 BaseEntry<String> firstEntry = null;
                 if (isFromNull) {
-                    firstEntry = daoUtils.readEntry(bufferedReader);
+                    firstEntry = DaoUtils.readEntry(bufferedReader);
                 } else if (from.compareTo(fileMaxKey) <= 0) {
-                    firstEntry = daoUtils.ceilKey(path, bufferedReader, from);
+                    firstEntry = DaoUtils.ceilKey(path, bufferedReader, from);
                 }
                 if (firstEntry != null && (isToNull || to.compareTo(fileMinKey) >= 0)) {
                     tempData.put(firstEntry.key(), firstEntry);
@@ -98,7 +97,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             try {
                 for (Map.Entry<BufferedReader, String> readerWithLastElemPair : filesReadMap.values()) {
                     if (readerWithLastElemPair.getValue().equals(firstEntry.key())) {
-                        BaseEntry<String> newEntry = daoUtils.readEntry(readerWithLastElemPair.getKey());
+                        BaseEntry<String> newEntry = DaoUtils.readEntry(readerWithLastElemPair.getKey());
                         if (newEntry != null) {
                             tempData.put(newEntry.key(), newEntry);
                             readerWithLastElemPair.setValue(newEntry.key());
@@ -144,7 +143,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         for (int i = fileCounter - 1; i >= 1; i--) {
             Path path = config.basePath().resolve(DATA_FILE_NAME + i + DATA_FILE_EXTENSION);
-            BaseEntry<String> entry = daoUtils.searchInFile(path, key);
+            BaseEntry<String> entry = DaoUtils.searchInFile(path, key);
             if (entry != null) {
                 return entry;
             }
@@ -167,16 +166,16 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             int bufferedEntriesCounter = 0;
             String fileMinKey = data.firstKey();
             String fileMaxKey = data.lastKey();
-            bufferedFileWriter.write(daoUtils.intToCharArray(fileMinKey.length()));
+            bufferedFileWriter.write(DaoUtils.intToCharArray(fileMinKey.length()));
             bufferedFileWriter.write(fileMinKey);
-            bufferedFileWriter.write(daoUtils.intToCharArray(fileMaxKey.length()));
+            bufferedFileWriter.write(DaoUtils.intToCharArray(fileMaxKey.length()));
             bufferedFileWriter.write(fileMaxKey);
-            bufferedFileWriter.write(daoUtils.intToCharArray(0));
+            bufferedFileWriter.write(DaoUtils.intToCharArray(0));
             for (BaseEntry<String> baseEntry : data.values()) {
-                bufferedFileWriter.write(daoUtils.intToCharArray(baseEntry.key().length()));
+                bufferedFileWriter.write(DaoUtils.intToCharArray(baseEntry.key().length()));
                 bufferedFileWriter.write(baseEntry.key());
                 bufferedFileWriter.write(baseEntry.value() + '\n');
-                bufferedFileWriter.write(daoUtils.intToCharArray(
+                bufferedFileWriter.write(DaoUtils.intToCharArray(
                         Integer.BYTES + Integer.BYTES
                                 + baseEntry.key().length() + baseEntry.value().length() + 1));
                 bufferedEntriesCounter++;
