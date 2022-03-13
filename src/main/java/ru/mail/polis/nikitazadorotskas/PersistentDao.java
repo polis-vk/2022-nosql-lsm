@@ -7,29 +7,48 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory
             = new ConcurrentSkipListMap<>(this::compareMemorySegment);
     private final AtomicLong storageSizeInBytes = new AtomicLong(0);
-    private final MemorySegmentReader reader;
+    private final MemorySegmentReader[] readers;
     private final Utils utils;
     private final ResourceScope scope = ResourceScope.newSharedScope();
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final int numberOfFiles;
 
     public PersistentDao(Config config) throws IOException {
-        MemorySegmentReader tmpReader;
         utils = new Utils(config);
-        try {
-            tmpReader = new MemorySegmentReader(utils, scope);
-        } catch (NoSuchFileException e) {
-            tmpReader = null;
+
+        numberOfFiles = getNumberOfFiles(config);
+        readers = new MemorySegmentReader[numberOfFiles];
+
+        for (int i = 0; i < numberOfFiles; i++) {
+            readers[i] = new MemorySegmentReader(utils, scope, i);
         }
-        reader = tmpReader;
+    }
+
+    private int getNumberOfFiles(Config config) throws IOException {
+        if (config == null) {
+            return 0;
+        }
+
+        try {
+            return (int) Files.list(config.basePath()).count() / 2;
+        } catch (NoSuchFileException e) {
+            return 0;
+        }
     }
 
     private int compareMemorySegment(MemorySegment first, MemorySegment second) {
@@ -37,8 +56,23 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     }
 
     @Override
-    public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
-        return getMap(from, to).values().iterator();
+    public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
+        lock.readLock().lock();
+        try {
+            return new MergedIterator(getIterators(from, to), utils);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private List<Iterator<BaseEntry<MemorySegment>>> getIterators(MemorySegment from, MemorySegment to) {
+        List<Iterator<BaseEntry<MemorySegment>>> iterators = new ArrayList<>();
+        for (MemorySegmentReader reader : readers) {
+            iterators.add(reader.getFromDisk(from, to));
+        }
+        iterators.add(getMap(from, to).values().iterator());
+
+        return iterators;
     }
 
     private ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> getMap(
@@ -61,17 +95,29 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
 
     @Override
     public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
-        BaseEntry<MemorySegment> result = memory.get(key);
+        lock.readLock().lock();
+        try {
+            BaseEntry<MemorySegment> result = memory.get(key);
 
-        if (result != null) {
-            return result;
-        }
+            if (result != null) {
+                return result;
+            }
 
-        if (reader == null) {
+            if (readers.length == 0) {
+                return null;
+            }
+
+            for (int i = readers.length - 1; i >= 0; i--) {
+                BaseEntry<MemorySegment> res = readers[i].getFromDisk(key);
+                if (res != null) {
+                    return res;
+                }
+            }
+
             return null;
+        } finally {
+            lock.readLock().unlock();
         }
-
-        return reader.getFromDisk(key);
     }
 
     @Override
@@ -81,8 +127,13 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
-        storageSizeInBytes.addAndGet(entry.key().byteSize() + entry.value().byteSize());
-        memory.put(entry.key(), entry);
+        lock.readLock().lock();
+        try {
+            storageSizeInBytes.addAndGet(entry.key().byteSize() + entry.value().byteSize());
+            memory.put(entry.key(), entry);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     @Override
@@ -92,13 +143,21 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
         }
         scope.close();
 
+        lock.writeLock().lock();
         try (ResourceScope confinedScope = ResourceScope.newConfinedScope()) {
-            utils.createFilesIfNotExist();
-            MemorySegmentWriter segmentWriter
-                    = new MemorySegmentWriter(memory.size(), storageSizeInBytes.get(), utils, confinedScope);
+            utils.createFilesIfNotExist(numberOfFiles);
+            MemorySegmentWriter segmentWriter = new MemorySegmentWriter(
+                    memory.size(),
+                    storageSizeInBytes.get(),
+                    utils,
+                    confinedScope,
+                    numberOfFiles
+            );
             for (BaseEntry<MemorySegment> entry : memory.values()) {
                 segmentWriter.writeEntry(entry);
             }
+        } finally {
+            lock.writeLock().unlock();
         }
 
         memory.clear();

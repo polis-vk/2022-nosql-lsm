@@ -2,6 +2,7 @@ package ru.mail.polis.nikitazadorotskas;
 
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
+import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 
 import java.io.IOException;
@@ -10,27 +11,24 @@ import java.nio.file.Path;
 
 class Utils {
     private static final String STORAGE_FILE_NAME = "storage";
-    private static final String INDEXES_FILE_NAME = "sizes";
-    private final Path storagePath;
-    private final Path indexesPath;
+    private static final String INDEXES_FILE_NAME = "indexes";
+    private final Path basePath;
 
     Utils(Config config) {
         if (config != null) {
-            storagePath = config.basePath().resolve(STORAGE_FILE_NAME);
-            indexesPath = config.basePath().resolve(INDEXES_FILE_NAME);
+            basePath = config.basePath();
             return;
         }
 
-        storagePath = null;
-        indexesPath = null;
+        basePath = null;
     }
 
-    public Path getStoragePath() {
-        return storagePath;
+    public Path getStoragePath(int number) {
+        return basePath.resolve(STORAGE_FILE_NAME + number);
     }
 
-    public Path getIndexesPath() {
-        return indexesPath;
+    public Path getIndexesPath(int number) {
+        return basePath.resolve(INDEXES_FILE_NAME + number);
     }
 
     public int compareMemorySegment(MemorySegment first, MemorySegment second) {
@@ -53,9 +51,13 @@ class Utils {
         return Byte.compare(firstByte, secondByte);
     }
 
-    public void createFilesIfNotExist() throws IOException {
-        createFileIfNotExist(indexesPath);
-        createFileIfNotExist(storagePath);
+    public int compareBaseEntries(BaseEntry<MemorySegment> first, BaseEntry<MemorySegment> second) {
+        return compareMemorySegment(first.key(), second.key());
+    }
+
+    public void createFilesIfNotExist(int number) throws IOException {
+        createFileIfNotExist(getIndexesPath(number));
+        createFileIfNotExist(getStoragePath(number));
     }
 
     private void createFileIfNotExist(Path path) throws IOException {

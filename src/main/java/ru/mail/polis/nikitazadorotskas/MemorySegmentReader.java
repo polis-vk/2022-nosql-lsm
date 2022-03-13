@@ -8,6 +8,7 @@ import ru.mail.polis.BaseEntry;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Iterator;
 
 import static java.nio.channels.FileChannel.MapMode.READ_ONLY;
 
@@ -16,11 +17,14 @@ class MemorySegmentReader {
     private MemorySegment mappedSegmentForData;
     private final Utils utils;
     private final ResourceScope scope;
+    private final int number;
     private long lastIndex;
+    private long lastIndexFoundInBinarySearch;
 
-    MemorySegmentReader(Utils utils, ResourceScope scope) throws IOException {
+    MemorySegmentReader(Utils utils, ResourceScope scope, int number) throws IOException {
         this.utils = utils;
         this.scope = scope;
+        this.number = number;
         createMappedForData();
         createMappedForIndexes();
     }
@@ -30,14 +34,14 @@ class MemorySegmentReader {
     }
 
     private void createMappedForIndexes() throws IOException {
-        long fileSize = Files.size(utils.getIndexesPath());
+        long fileSize = Files.size(utils.getIndexesPath(number));
         lastIndex = fileSize / Long.BYTES - 3;
-        mappedSegmentForIndexes = createMappedSegment(utils.getIndexesPath(), fileSize);
+        mappedSegmentForIndexes = createMappedSegment(utils.getIndexesPath(number), fileSize);
     }
 
     private void createMappedForData() throws IOException {
-        long fileSize = Files.size(utils.getStoragePath());
-        mappedSegmentForData = createMappedSegment(utils.getStoragePath(), fileSize);
+        long fileSize = Files.size(utils.getStoragePath(number));
+        mappedSegmentForData = createMappedSegment(utils.getStoragePath(number), fileSize);
     }
 
     private MemorySegment createMappedSegment(Path path, long size) throws IOException {
@@ -63,12 +67,14 @@ class MemorySegmentReader {
             if (compare > 0) {
                 low = mid + 2;
             } else if (compare == 0) {
+                lastIndexFoundInBinarySearch = mid;
                 return new BaseEntry<>(currentKey, getMemorySegment(mid + 1));
             } else {
                 high = mid;
             }
         }
 
+        lastIndexFoundInBinarySearch = low;
         MemorySegment currentMemorySegment = getMemorySegment(low);
 
         if (utils.compareMemorySegment(key, currentMemorySegment) == 0) {
@@ -90,5 +96,38 @@ class MemorySegmentReader {
         long byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, index);
         long byteSize = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, index + 1) - byteOffset;
         return mappedSegmentForData.asSlice(byteOffset, byteSize);
+    }
+
+    public Iterator<BaseEntry<MemorySegment>> getFromDisk(MemorySegment from, MemorySegment to) {
+        long start = getIndex(from, 0);
+        long end = getIndex(to, lastIndex + 2);
+
+        if (end < start) {
+            throw new IllegalArgumentException("from is bigger than to");
+        }
+
+        return new Iterator<>() {
+            long next = start;
+            final long last = end;
+
+            @Override
+            public boolean hasNext() {
+                return next < last;
+            }
+
+            @Override
+            public BaseEntry<MemorySegment> next() {
+                return new BaseEntry<>(getMemorySegment(next++), getMemorySegment(next++));
+            }
+        };
+    }
+
+    private long getIndex(MemorySegment key, long defaultIndex) {
+        if (key == null) {
+            return defaultIndex;
+        }
+
+        binarySearch(key);
+        return lastIndexFoundInBinarySearch;
     }
 }
