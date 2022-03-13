@@ -168,10 +168,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private void processAllMeta() throws IOException {
         for (int i = 0; i < numberOfFiles; i++) {
-            if (offsets.get(i) != null) {
-                continue;
+            if (offsets.get(i) == null) {
+                offsets.set(i, readOffsets(i));
             }
-            offsets.set(i, readOffsets(i));
         }
     }
 }

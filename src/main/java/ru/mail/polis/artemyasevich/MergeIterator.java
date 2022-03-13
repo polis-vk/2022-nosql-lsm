@@ -16,7 +16,6 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
     private final int numberOfFiles;
     private final List<RandomAccessFile> readers;
     private final List<BaseEntry<String>> currents;
-    private final int[] nextEntryToRead;
     private final List<long[]> offsets;
     private final Iterator<BaseEntry<String>> dataMapIterator;
     private final String to;
@@ -29,7 +28,6 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         this.offsets = offsets;
         readers = new ArrayList<>(this.numberOfFiles);
         currents = new ArrayList<>(this.numberOfFiles + 1);
-        nextEntryToRead = new int[this.numberOfFiles];
         for (int fileNumber = 0; fileNumber < this.numberOfFiles; fileNumber++) {
             Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
             RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r");
@@ -38,7 +36,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
                 currents.add(readEntry(fileNumber));
                 continue;
             }
-            BaseEntry<String> closest = findValidClosest(from, to, reader, fileNumber, nextEntryToRead);
+            BaseEntry<String> closest = findValidClosest(from, to, reader, fileNumber);
             currents.add(closest);
             if (closest == null) {
                 reader.close();
@@ -94,12 +92,11 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         return next;
     }
 
-    private BaseEntry<String> findValidClosest(String from, String to, RandomAccessFile reader,
-                                               int fileNumber, int[] nextEntryToRead) throws IOException {
+    private BaseEntry<String> findValidClosest(String from, String to,
+                                               RandomAccessFile reader, int fileNumber) throws IOException {
         int left = 0;
         int middle;
         int right = offsets.get(fileNumber).length - 2;
-        boolean accurately = nextEntryToRead == null;
         String goodKey = null;
         String goodValue = null;
         while (left <= right) {
@@ -110,9 +107,6 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
             int comparison = from.compareTo(key);
             if (comparison <= 0) {
                 String value = reader.readUTF();
-                if (!accurately) {
-                    nextEntryToRead[fileNumber] = middle + 1;
-                }
                 if (comparison == 0) {
                     return new BaseEntry<>(key, value);
                 } else {
@@ -124,7 +118,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
                 left = middle + 1;
             }
         }
-        if (accurately || goodKey == null) {
+        if (goodKey == null) {
             return null;
         }
         return to != null && goodKey.compareTo(to) >= 0 ? null : new BaseEntry<>(goodKey, goodValue);
@@ -136,7 +130,6 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         }
         RandomAccessFile reader = readers.get(fileNumber);
         long[] curOffsets = offsets.get(fileNumber);
-        reader.seek(curOffsets[nextEntryToRead[fileNumber]]);
         if (reader.getFilePointer() == curOffsets[curOffsets.length - 1]) {
             reader.close();
             return null;
@@ -147,7 +140,6 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
             return null;
         }
         String value = reader.readUTF();
-        nextEntryToRead[fileNumber]++;
         return new BaseEntry<>(key, value);
     }
 }
