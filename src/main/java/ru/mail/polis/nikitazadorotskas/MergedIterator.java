@@ -8,7 +8,7 @@ import java.util.Iterator;
 import java.util.List;
 
 public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
-    private int emptyIterators = 0;
+    private int emptyIterators;
     private final List<Iterator<BaseEntry<MemorySegment>>> iterators;
     private final List<BaseEntry<MemorySegment>> currentEntries;
     private final List<Integer> indexesWithSameKey = new ArrayList<>();
