@@ -4,6 +4,7 @@ import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -102,6 +103,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         int right = offsets.get(fileNumber).length - 2;
         String goodKey = null;
         String goodValue = null;
+        long goodPos = 0;
         while (left <= right) {
             middle = (right - left) / 2 + left;
             long pos = offsets.get(fileNumber)[middle];
@@ -116,6 +118,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
                     right = middle - 1;
                     goodKey = key;
                     goodValue = value;
+                    goodPos = pos;
                 }
             } else {
                 left = middle + 1;
@@ -124,6 +127,8 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         if (goodKey == null) {
             return null;
         }
+        reader.seek(goodPos + goodKey.getBytes(StandardCharsets.UTF_8).length
+                + goodValue.getBytes(StandardCharsets.UTF_8).length + Short.BYTES * 2);
         return to != null && goodKey.compareTo(to) >= 0 ? null : new BaseEntry<>(goodKey, goodValue);
     }
 

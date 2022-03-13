@@ -141,16 +141,27 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
                      Files.newOutputStream(pathToOffsets, writeOptions)
              ))) {
-            long currentOffset = 0;
+            if (dataMap.isEmpty()) {
+                return;
+            }
+            int currentLength = calculateEntryLength(dataMap.firstEntry().getValue());
+            int current = 0;
             metaStream.writeInt(dataMap.size());
             for (BaseEntry<String> entry : dataMap.values()) {
                 dataStream.writeUTF(entry.key());
                 dataStream.writeUTF(entry.value());
-                metaStream.writeLong(currentOffset);
-                currentOffset += entry.key().getBytes(StandardCharsets.UTF_8).length
-                        + entry.value().getBytes(StandardCharsets.UTF_8).length + Short.BYTES * 2;
+                int length = calculateEntryLength(entry);
+                if (length != currentLength) {
+                    metaStream.writeInt(current);
+                    metaStream.writeInt(currentLength);
+                    currentLength = length;
+                    current = 1;
+                    continue;
+                }
+                current++;
             }
-            metaStream.writeLong(currentOffset);
+            metaStream.writeInt(current);
+            metaStream.writeInt(currentLength);
             numberOfFiles++;
         }
     }
@@ -161,8 +172,18 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 Files.newInputStream(pathToDirectory.resolve(META_FILE + fileNumber + FILE_EXTENSION))))) {
             int dataSize = dataInputStream.readInt();
             fileOffsets = new long[dataSize + 1];
-            for (int i = 0; i < dataSize + 1; i++) {
-                fileOffsets[i] = dataInputStream.readLong();
+
+            long currentOffset = 0;
+            fileOffsets[0] = currentOffset;
+            int i = 1;
+            while (dataInputStream.available() > 0) {
+                int numberOfEntries = dataInputStream.readInt();
+                int entryLength = dataInputStream.readInt();
+                for (int j = 0; j < numberOfEntries; j++) {
+                    currentOffset += entryLength + Short.BYTES * 2;
+                    fileOffsets[i] = currentOffset;
+                    i++;
+                }
             }
         }
         return fileOffsets;
@@ -175,4 +196,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             }
         }
     }
+
+    private int calculateEntryLength(BaseEntry<String> entry) {
+        return entry.key().getBytes(StandardCharsets.UTF_8).length + entry.value().getBytes(StandardCharsets.UTF_8).length;
+    }
+
 }
