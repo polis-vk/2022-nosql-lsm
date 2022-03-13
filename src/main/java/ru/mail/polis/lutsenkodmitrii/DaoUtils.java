@@ -9,30 +9,11 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static ru.mail.polis.lutsenkodmitrii.InMemoryDao.readKey;
 
 public final class DaoUtils {
 
     private DaoUtils(){
-    }
-
-    public static BaseEntry<String> readEntry(BufferedReader bufferedReader) throws IOException {
-        bufferedReader.skip(Integer.BYTES);
-        int keyLength = readUnsignedInt(bufferedReader);
-        if (keyLength == -1) {
-            return null;
-        }
-        char[] keyChars = new char[keyLength];
-        bufferedReader.read(keyChars);
-        return new BaseEntry<>(new String(keyChars), bufferedReader.readLine());
-    }
-
-    public static String readKey(BufferedReader bufferedReader) throws IOException {
-        char[] keyChars;
-        int keyLength;
-        keyLength = readUnsignedInt(bufferedReader);
-        keyChars = new char[keyLength];
-        bufferedReader.read(keyChars);
-        return new String(keyChars);
     }
 
     public static char[] intToCharArray(int k) {

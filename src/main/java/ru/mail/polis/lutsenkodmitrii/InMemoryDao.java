@@ -19,8 +19,10 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.*;
-
+import static ru.mail.polis.lutsenkodmitrii.DaoUtils.ceilKey;
+import static ru.mail.polis.lutsenkodmitrii.DaoUtils.intToCharArray;
+import static ru.mail.polis.lutsenkodmitrii.DaoUtils.readUnsignedInt;
+import static ru.mail.polis.lutsenkodmitrii.DaoUtils.searchInFile;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
@@ -163,7 +165,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (data.isEmpty() || config == null) {
             return;
         }
-        Path dataFilePath = generateNextFilePath();
+        Path dataFilePath = generateNextFilePath(config);
         try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(dataFilePath, UTF_8, writeOptions)) {
             int bufferedEntriesCounter = 0;
             String fileMinKey = data.firstKey();
@@ -202,7 +204,27 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return data.subMap(from, true, to, false).values().iterator();
     }
 
-    private Path generateNextFilePath() {
+    public static BaseEntry<String> readEntry(BufferedReader bufferedReader) throws IOException {
+        bufferedReader.skip(Integer.BYTES);
+        int keyLength = readUnsignedInt(bufferedReader);
+        if (keyLength == -1) {
+            return null;
+        }
+        char[] keyChars = new char[keyLength];
+        bufferedReader.read(keyChars);
+        return new BaseEntry<>(new String(keyChars), bufferedReader.readLine());
+    }
+
+    public static String readKey(BufferedReader bufferedReader) throws IOException {
+        char[] keyChars;
+        int keyLength;
+        keyLength = readUnsignedInt(bufferedReader);
+        keyChars = new char[keyLength];
+        bufferedReader.read(keyChars);
+        return new String(keyChars);
+    }
+
+    private static Path generateNextFilePath(Config config) {
         return config.basePath().resolve(DATA_FILE_NAME + fileCounter++ + DATA_FILE_EXTENSION);
     }
 }
