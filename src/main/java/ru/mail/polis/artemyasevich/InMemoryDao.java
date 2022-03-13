@@ -198,7 +198,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private int calculateEntryLength(BaseEntry<String> entry) {
-        return entry.key().getBytes(StandardCharsets.UTF_8).length + entry.value().getBytes(StandardCharsets.UTF_8).length;
+        return entry.key().getBytes(StandardCharsets.UTF_8).length
+                + entry.value().getBytes(StandardCharsets.UTF_8).length;
     }
 
 }
