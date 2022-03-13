@@ -19,13 +19,10 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.ceilKey;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.intToCharArray;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.readUnsignedInt;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.searchInFile;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
+    private static final DaoUtils daoUtils = new DaoUtils();
     private static int fileCounter = 1;
     private static final int BUFFER_FLUSH_LIMIT = 256;
     private static final OpenOption[] writeOptions = new OpenOption[]{
@@ -65,13 +62,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 } catch (NoSuchFileException e) {
                     continue;
                 }
-                String fileMinKey = readKey(bufferedReader);
-                String fileMaxKey = readKey(bufferedReader);
+                String fileMinKey = daoUtils.readKey(bufferedReader);
+                String fileMaxKey = daoUtils.readKey(bufferedReader);
                 BaseEntry<String> firstEntry = null;
                 if (isFromNull) {
-                    firstEntry = readEntry(bufferedReader);
+                    firstEntry = daoUtils.readEntry(bufferedReader);
                 } else if (from.compareTo(fileMaxKey) <= 0) {
-                    firstEntry = ceilKey(path, bufferedReader, from);
+                    firstEntry = daoUtils.ceilKey(path, bufferedReader, from);
                 }
                 if (firstEntry != null && (isToNull || to.compareTo(fileMinKey) >= 0)) {
                     tempData.put(firstEntry.key(), firstEntry);
@@ -101,7 +98,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             try {
                 for (Map.Entry<BufferedReader, String> readerWithLastElemPair : filesReadMap.values()) {
                     if (readerWithLastElemPair.getValue().equals(firstEntry.key())) {
-                        BaseEntry<String> newEntry = readEntry(readerWithLastElemPair.getKey());
+                        BaseEntry<String> newEntry = daoUtils.readEntry(readerWithLastElemPair.getKey());
                         if (newEntry != null) {
                             tempData.put(newEntry.key(), newEntry);
                             readerWithLastElemPair.setValue(newEntry.key());
@@ -147,7 +144,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         for (int i = fileCounter - 1; i >= 1; i--) {
             Path path = config.basePath().resolve(DATA_FILE_NAME + i + DATA_FILE_EXTENSION);
-            BaseEntry<String> entry = searchInFile(path, key);
+            BaseEntry<String> entry = daoUtils.searchInFile(path, key);
             if (entry != null) {
                 return entry;
             }
@@ -170,16 +167,16 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             int bufferedEntriesCounter = 0;
             String fileMinKey = data.firstKey();
             String fileMaxKey = data.lastKey();
-            bufferedFileWriter.write(intToCharArray(fileMinKey.length()));
+            bufferedFileWriter.write(daoUtils.intToCharArray(fileMinKey.length()));
             bufferedFileWriter.write(fileMinKey);
-            bufferedFileWriter.write(intToCharArray(fileMaxKey.length()));
+            bufferedFileWriter.write(daoUtils.intToCharArray(fileMaxKey.length()));
             bufferedFileWriter.write(fileMaxKey);
-            bufferedFileWriter.write(intToCharArray(0));
+            bufferedFileWriter.write(daoUtils.intToCharArray(0));
             for (BaseEntry<String> baseEntry : data.values()) {
-                bufferedFileWriter.write(intToCharArray(baseEntry.key().length()));
+                bufferedFileWriter.write(daoUtils.intToCharArray(baseEntry.key().length()));
                 bufferedFileWriter.write(baseEntry.key());
                 bufferedFileWriter.write(baseEntry.value() + '\n');
-                bufferedFileWriter.write(intToCharArray(
+                bufferedFileWriter.write(daoUtils.intToCharArray(
                         Integer.BYTES + Integer.BYTES
                                 + baseEntry.key().length() + baseEntry.value().length() + 1));
                 bufferedEntriesCounter++;
@@ -202,26 +199,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return data.tailMap(from, true).values().iterator();
         }
         return data.subMap(from, true, to, false).values().iterator();
-    }
-
-    public static BaseEntry<String> readEntry(BufferedReader bufferedReader) throws IOException {
-        bufferedReader.skip(Integer.BYTES);
-        int keyLength = readUnsignedInt(bufferedReader);
-        if (keyLength == -1) {
-            return null;
-        }
-        char[] keyChars = new char[keyLength];
-        bufferedReader.read(keyChars);
-        return new BaseEntry<>(new String(keyChars), bufferedReader.readLine());
-    }
-
-    public static String readKey(BufferedReader bufferedReader) throws IOException {
-        char[] keyChars;
-        int keyLength;
-        keyLength = readUnsignedInt(bufferedReader);
-        keyChars = new char[keyLength];
-        bufferedReader.read(keyChars);
-        return new String(keyChars);
     }
 
     private static Path generateNextFilePath(Config config) {

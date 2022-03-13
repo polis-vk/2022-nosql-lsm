@@ -9,14 +9,10 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static ru.mail.polis.lutsenkodmitrii.InMemoryDao.readKey;
 
 public final class DaoUtils {
 
-    private DaoUtils(){
-    }
-
-    public static char[] intToCharArray(int k) {
+    public char[] intToCharArray(int k) {
         char[] writeBuffer = new char[Integer.BYTES];
         writeBuffer[0] = (char) (k >>> 24);
         writeBuffer[1] = (char) (k >>> 16);
@@ -25,7 +21,7 @@ public final class DaoUtils {
         return writeBuffer;
     }
 
-    public static int readUnsignedInt(BufferedReader bufferedReader) throws IOException {
+    public int readUnsignedInt(BufferedReader bufferedReader) throws IOException {
         int ch1 = bufferedReader.read();
         int ch2 = bufferedReader.read();
         int ch3 = bufferedReader.read();
@@ -36,7 +32,27 @@ public final class DaoUtils {
         return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
     }
 
-    public static BaseEntry<String> ceilKey(Path path, BufferedReader bufferedReader, String key) throws IOException {
+    public String readKey(BufferedReader bufferedReader) throws IOException {
+        char[] keyChars;
+        int keyLength;
+        keyLength = readUnsignedInt(bufferedReader);
+        keyChars = new char[keyLength];
+        bufferedReader.read(keyChars);
+        return new String(keyChars);
+    }
+
+    public BaseEntry<String> readEntry(BufferedReader bufferedReader) throws IOException {
+        bufferedReader.skip(Integer.BYTES);
+        int keyLength = readUnsignedInt(bufferedReader);
+        if (keyLength == -1) {
+            return null;
+        }
+        char[] keyChars = new char[keyLength];
+        bufferedReader.read(keyChars);
+        return new BaseEntry<>(new String(keyChars), bufferedReader.readLine());
+    }
+
+    public BaseEntry<String> ceilKey(Path path, BufferedReader bufferedReader, String key) throws IOException {
         int keyLength;
         int prevEntryLength;
         char[] keyChars;
@@ -87,7 +103,7 @@ public final class DaoUtils {
         return null;
     }
 
-    public static BaseEntry<String> searchInFile(Path path, String key) throws IOException {
+    public BaseEntry<String> searchInFile(Path path, String key) throws IOException {
         try (BufferedReader bufferedReader = Files.newBufferedReader(path, UTF_8)) {
             String fileMinKey = readKey(bufferedReader);
             String fileMaxKey = readKey(bufferedReader);
