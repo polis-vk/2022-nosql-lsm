@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Objects;
 
 public class MergeIterator implements Iterator<BaseEntry<String>> {
-    private static final String DATA_FILE = "data";
+    private static final String DATA_FILE_NAME = "data";
     private static final String FILE_EXTENSION = ".txt";
     private final int numberOfFiles;
     private final List<RandomAccessFile> readers;
@@ -29,7 +29,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         readers = new ArrayList<>(this.numberOfFiles);
         currents = new ArrayList<>(this.numberOfFiles + 1);
         for (int fileNumber = 0; fileNumber < this.numberOfFiles; fileNumber++) {
-            Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
+            Path path = pathToDirectory.resolve(DATA_FILE_NAME + fileNumber + FILE_EXTENSION);
             RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r");
             readers.add(reader);
             if (from == null) {
