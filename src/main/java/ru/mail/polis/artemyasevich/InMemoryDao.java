@@ -96,11 +96,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return subMap.values().iterator();
     }
 
-    private BaseEntry<String> findValidClosest(String from, String to, RandomAccessFile reader, int fileNumber, int[] entryToRead) throws IOException {
+    private BaseEntry<String> findValidClosest(String from, String to, RandomAccessFile reader, int fileNumber, int[] nextEntryToRead) throws IOException {
         int left = 0;
         int middle;
         int right = offsets.get(fileNumber).length - 2;
-        boolean accurately = entryToRead == null;
+        boolean accurately = nextEntryToRead == null;
         String goodKey = null;
         String goodValue = null;
 
@@ -113,14 +113,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             if (comparison <= 0) {
                 String value = reader.readUTF();
                 if (!accurately) {
-                    entryToRead[fileNumber] = middle + 1;
+                    nextEntryToRead[fileNumber] = middle + 1;
                 }
                 if (comparison == 0) {
                     return new BaseEntry<>(key, value);
                 } else {
+                    right = middle - 1;
                     goodKey = key;
                     goodValue = value;
-                    right = middle - 1;
                 }
             } else {
                 left = middle + 1;
@@ -170,25 +170,30 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private class MergeIterator implements Iterator<BaseEntry<String>> {
         private final List<RandomAccessFile> readers = new ArrayList<>(numberOfFiles);
         private final List<BaseEntry<String>> currents = new ArrayList<>(numberOfFiles + 1);
-        private final int[] entryToRead = new int[numberOfFiles];
-        private final Iterator<BaseEntry<String>> iterator;
+        private final int[] nextEntryToRead = new int[numberOfFiles];
+        private final Iterator<BaseEntry<String>> dataMapIterator;
         private final String to;
 
         public MergeIterator(String from, String to) throws IOException {
             this.to = to;
-            this.iterator = getDataMapIterator(from, to);
+            this.dataMapIterator = getDataMapIterator(from, to);
             proceedMeta();
             for (int fileNumber = 0; fileNumber < numberOfFiles; fileNumber++) {
                 Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
-                readers.add(new RandomAccessFile(path.toFile(), "r"));
+                RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r");
+                readers.add(reader);
                 if (from != null) {
-                    BaseEntry<String> closest = findValidClosest(from, to, readers.get(fileNumber), fileNumber, entryToRead);
+                    BaseEntry<String> closest = findValidClosest(from, to, reader, fileNumber, nextEntryToRead);
                     currents.add(closest);
+                    if (closest == null) {
+                        reader.close();
+                        readers.set(fileNumber, null);
+                    }
                 } else {
                     currents.add(readEntry(fileNumber));
                 }
             }
-            currents.add(iterator.hasNext() ? iterator.next() : null);
+            currents.add(dataMapIterator.hasNext() ? dataMapIterator.next() : null);
         }
 
         @Override
@@ -248,11 +253,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
         private BaseEntry<String> readEntry(int fileNumber) throws IOException {
             if (fileNumber == numberOfFiles) {
-                return iterator.hasNext() ? iterator.next() : null;
+                return dataMapIterator.hasNext() ? dataMapIterator.next() : null;
             }
             RandomAccessFile reader = readers.get(fileNumber);
             long[] curOffsets = offsets.get(fileNumber);
-            reader.seek(curOffsets[entryToRead[fileNumber]]);
+            reader.seek(curOffsets[nextEntryToRead[fileNumber]]);
             if (reader.getFilePointer() == curOffsets[curOffsets.length - 1]) {
                 reader.close();
                 return null;
@@ -263,7 +268,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 return null;
             }
             String value = reader.readUTF();
-            entryToRead[fileNumber]++;
+            nextEntryToRead[fileNumber]++;
             return new BaseEntry<>(key, value);
         }
     }
