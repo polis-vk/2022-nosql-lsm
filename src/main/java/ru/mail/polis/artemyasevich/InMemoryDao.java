@@ -4,13 +4,23 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -96,7 +106,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return subMap.values().iterator();
     }
 
-    private BaseEntry<String> findValidClosest(String from, String to, RandomAccessFile reader, int fileNumber, int[] nextEntryToRead) throws IOException {
+    private BaseEntry<String> findValidClosest(String from, String to, RandomAccessFile reader,
+                                               int fileNumber, int[] nextEntryToRead) throws IOException {
         int left = 0;
         int middle;
         int right = offsets.get(fileNumber).length - 2;
@@ -182,15 +193,15 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
                 RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r");
                 readers.add(reader);
-                if (from != null) {
-                    BaseEntry<String> closest = findValidClosest(from, to, reader, fileNumber, nextEntryToRead);
-                    currents.add(closest);
-                    if (closest == null) {
-                        reader.close();
-                        readers.set(fileNumber, null);
-                    }
-                } else {
+                if (from == null) {
                     currents.add(readEntry(fileNumber));
+                    continue;
+                }
+                BaseEntry<String> closest = findValidClosest(from, to, reader, fileNumber, nextEntryToRead);
+                currents.add(closest);
+                if (closest == null) {
+                    reader.close();
+                    readers.set(fileNumber, null);
                 }
             }
             currents.add(dataMapIterator.hasNext() ? dataMapIterator.next() : null);
