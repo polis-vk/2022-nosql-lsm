@@ -10,7 +10,10 @@ import java.nio.file.Path;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public class DaoUtils {
+public final class DaoUtils {
+
+    private DaoUtils(){
+    }
 
     public static BaseEntry<String> readEntry(BufferedReader bufferedReader) throws IOException {
         bufferedReader.skip(Integer.BYTES);

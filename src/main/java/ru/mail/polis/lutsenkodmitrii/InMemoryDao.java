@@ -19,11 +19,8 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.ceilKey;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.intToCharArray;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.readEntry;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.readKey;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.searchInFile;
+import static ru.mail.polis.lutsenkodmitrii.DaoUtils.*;
+
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
