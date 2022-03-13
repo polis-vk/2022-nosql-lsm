@@ -7,7 +7,7 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.lutsenkodmitrii.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
-@DaoFactory(stage = 2, week = 1)
+@DaoFactory(stage = 3, week = 1)
 public class StringDaoFactory implements DaoFactory.Factory<String, BaseEntry<String>> {
 
     @Override
