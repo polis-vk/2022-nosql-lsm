@@ -33,7 +33,8 @@ public final class Utils {
 
     public static Entry<MemorySegment> binarySearch(MemorySegment key, MemorySegment mapFile, MemorySegment mapIndex) {
         long l = 0;
-        long r = mapIndex.byteSize() / Long.BYTES;
+        long rb = mapIndex.byteSize() / Long.BYTES;
+        long r = rb;
         while (l <= r) {
             long middle = (l + r) >>> 1;
             Entry<MemorySegment> middleEntry = getByIndex(mapFile, mapIndex, middle);
@@ -45,6 +46,9 @@ public final class Utils {
                 l = middle + 1;
             } else {
                 r = middle - 1;
+            }
+            if (l == rb) {
+                return null;
             }
         }
         return null;
