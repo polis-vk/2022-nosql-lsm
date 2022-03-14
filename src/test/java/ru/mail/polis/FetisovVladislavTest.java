@@ -18,6 +18,7 @@ public class FetisovVladislavTest extends BaseTest {
 
         dao = DaoFactory.Factory.reopen(dao);
         assertSame(dao.get("k1"), entry("k1", "v1"));
+
         assertSame(dao.get("k10"), entry("k10", "v10"));
         assertSame(dao.get("k11"), entry("k11", "v11"));
         assertSame(dao.get("k2"), entry("k2", "v2"));
