@@ -23,6 +23,7 @@ public final class SSTable {
     private final MemorySegment mapIndex;
 
     private SSTable(Path tableName, Path indexName) throws IOException {
+
         mapFile = Utils.map(tableName, Files.size(tableName), FileChannel.MapMode.READ_ONLY);
         mapIndex = Utils.map(indexName, Files.size(indexName), FileChannel.MapMode.READ_ONLY);
     }
