@@ -15,7 +15,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private final List<SSTable> tables = new ArrayList<>();
     private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage = getStorage();
 
-    public InMemoryDao(Config config) throws IOException {
+    public InMemoryDao(Config config) {
         this.config = config;
         tables.addAll(SSTable.getAllSSTables(config.basePath()));
     }
@@ -23,13 +23,13 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         Iterator<Entry<MemorySegment>> memory = fromMemory(from, to);
-        Iterator<Entry<MemorySegment>> disc = SSTablesRange(from, to);
+        Iterator<Entry<MemorySegment>> disc = tablesRange(from, to);
 
         return CustomIterators.mergeTwo(new CustomIterators.PeekingIterator<>(disc),
                 new CustomIterators.PeekingIterator<>(memory));
     }
 
-    private Iterator<Entry<MemorySegment>> SSTablesRange(MemorySegment from, MemorySegment to) {
+    private Iterator<Entry<MemorySegment>> tablesRange(MemorySegment from, MemorySegment to) {
         List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(tables.size());
         for (SSTable table : tables) {
             iterators.add(table.range(from, to));
@@ -85,12 +85,12 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public void flush() throws IOException {
-        writeSSTable();
+        tables.add(writeSSTable());
     }
 
-    private void writeSSTable() throws IOException {
+    private SSTable writeSSTable() throws IOException {
         Path tableName = config.basePath().resolve(String.valueOf(tables.size()));
-        SSTable.writeTable(tableName, storage.values());
+        return SSTable.writeTable(tableName, storage.values());
     }
 
     private ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> getStorage() {

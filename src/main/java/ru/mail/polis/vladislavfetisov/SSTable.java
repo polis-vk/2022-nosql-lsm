@@ -9,9 +9,7 @@ import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Stream;
 
 public class SSTable {
@@ -19,21 +17,17 @@ public class SSTable {
     public static final String INDEX = "_i";
     private final MemorySegment mapFile;
     private final MemorySegment mapIndex;
-    private final Path tableName;
-    private final Path indexName;
 
     private SSTable(Path tableName, Path indexName) throws IOException {
-        this.tableName = tableName;
-        this.indexName = indexName;
 
         mapFile = Utils.map(tableName, Files.size(tableName), FileChannel.MapMode.READ_ONLY);
         mapIndex = Utils.map(indexName, Files.size(indexName), FileChannel.MapMode.READ_ONLY);
     }
 
-    public static List<SSTable> getAllSSTables(Path dir) throws IOException {
+    public static List<SSTable> getAllSSTables(Path dir)  {
         try (Stream<Path> files = Files.list(dir)) {
             return files
-                    .filter((path -> !path.endsWith(INDEX)))
+                    .filter(path -> !path.toString().endsWith(INDEX))
                     .sorted((p1, p2) -> {
                         int first = Integer.parseInt(p1.getFileName().toString());
                         int second = Integer.parseInt(p2.getFileName().toString());
@@ -49,7 +43,8 @@ public class SSTable {
                         }
                     })
                     .toList();
-
+        } catch (IOException e) {
+            return Collections.emptyList();
         }
     }
 
@@ -93,6 +88,39 @@ public class SSTable {
     }
 
     public Iterator<Entry<MemorySegment>> range(MemorySegment from, MemorySegment to) {
-        return null;
+        MemorySegment readOnlyFile = mapFile.asReadOnly();
+        MemorySegment readOnlyIndex = mapIndex.asReadOnly();
+        long li;
+        if (from == null) {
+            li = 0;
+        } else {
+            li = Utils.binarySearch(from, readOnlyFile, readOnlyIndex, true);
+            if (li == -1) {
+                return Collections.emptyIterator();
+            }
+        }
+        long ri;
+        if (to == null) {
+            ri = readOnlyIndex.byteSize() / Long.BYTES;
+        } else {
+            ri = Utils.binarySearch(to, readOnlyFile, readOnlyIndex, false);
+            if (ri == -1) {
+                return Collections.emptyIterator();
+            }
+        }
+        return new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                return li < ri;
+            }
+
+            @Override
+            public Entry<MemorySegment> next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                return Utils.getByIndex(readOnlyFile, readOnlyIndex, li);
+            }
+        };
     }
 }

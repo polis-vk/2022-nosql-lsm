@@ -51,14 +51,27 @@ public final class Utils {
             }
             if (res < 0) {
                 l = middle + 1;
-            } else {
+            }
+            else {
                 r = middle - 1;
             }
+            if (l == rb) {
+                if (fromSearch) {
+                    return -1;
+                }
+                return rb;
+            }
         }
-        return -1;
+        if (r == -1) {
+            if (fromSearch) {
+                return 0;
+            }
+            return -1;
+        }
+        return l;
     }
 
-    private static Entry<MemorySegment> getByIndex(MemorySegment mapFile, MemorySegment mapIndex, long index) {
+    public static Entry<MemorySegment> getByIndex(MemorySegment mapFile, MemorySegment mapIndex, long index) {
         long offset = getLength(mapIndex, index * Long.BYTES);
 
         long keyLength = getLength(mapFile, offset);
@@ -114,4 +127,6 @@ public final class Utils {
         MemoryAccess.setByteAtOffset(next, size - 1, incrementedLastByte);
         return next;
     }
+
+
 }
