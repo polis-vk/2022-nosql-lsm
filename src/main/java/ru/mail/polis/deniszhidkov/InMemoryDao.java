@@ -5,28 +5,27 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
-import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private static final String FILE_NAME = "storage.txt";
+    private boolean hasFile = true;
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
     private final ConcurrentNavigableMap<String, BaseEntry<String>> storage = new ConcurrentSkipListMap<>();
     private final DaoReader reader;
     private final DaoWriter writer;
 
     public InMemoryDao(Config config) throws IOException {
         Path pathToFile = config.basePath().resolve(FILE_NAME);
-        if (!Files.exists(config.basePath())) {
-            Files.createDirectories(config.basePath());
-        }
-        if (!Files.exists(pathToFile)) {
-            Files.createFile(pathToFile);
-        }
         this.reader = new DaoReader(pathToFile);
         this.writer = new DaoWriter(pathToFile);
     }
@@ -48,23 +47,44 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public BaseEntry<String> get(String key) throws IOException {
-        BaseEntry<String> value;
-        if (storage.containsKey(key)) {
-            value = storage.get(key);
-        } else {
-            value = reader.findEntryByKey(key);
+        if (!hasFile) {
+            return null;
+        }
+        BaseEntry<String> value = storage.get(key);
+        lock.readLock().lock();
+        try {
+            if (value == null) {
+                try {
+                    value = reader.findEntryByKey(key);
+                } catch (NoSuchFileException e) {
+                    hasFile = false;
+                    return null;
+                }
+            }
+        } finally {
+            lock.readLock().unlock();
         }
         return value;
     }
 
     @Override
     public void flush() throws IOException {
-        writer.writeDAO(storage);
-        storage.clear();
+        lock.writeLock().lock();
+        try {
+            writer.writeDAO(storage);
+            storage.clear();
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     @Override
     public void upsert(BaseEntry<String> entry) {
-        storage.put(entry.key(), entry);
+        lock.readLock().lock();
+        try {
+            storage.put(entry.key(), entry);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 }

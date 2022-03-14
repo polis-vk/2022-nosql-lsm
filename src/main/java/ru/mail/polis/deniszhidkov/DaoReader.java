@@ -2,10 +2,12 @@ package ru.mail.polis.deniszhidkov;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 public class DaoReader {
 
@@ -16,18 +18,22 @@ public class DaoReader {
     }
 
     public BaseEntry<String> findEntryByKey(String key) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new FileReader(pathToFile.toString()))) {
-            String value = null;
-            String line = reader.readLine();
-            while (line != null) {
-                String[] entry = line.split(": ");
-                if (key.equals(entry[0])) {
-                    value = entry[1];
+        try (DataInputStream reader =
+                     new DataInputStream(new BufferedInputStream(Files.newInputStream(
+                             pathToFile,
+                             StandardOpenOption.READ
+                     )))) {
+            int size = reader.readInt();
+            String res = null;
+            for (int i = 0; i < size; i++) {
+                String keyOfEntry = reader.readUTF();
+                String valueOfEntry = reader.readUTF();
+                if (key.equals(keyOfEntry)) {
+                    res = valueOfEntry;
                     break;
                 }
-                line = reader.readLine();
             }
-            return value == null ? null : new BaseEntry<>(key, value);
+            return res == null ? null : new BaseEntry<>(key, res);
         }
     }
 }
