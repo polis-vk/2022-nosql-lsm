@@ -38,7 +38,10 @@ public final class Utils {
         return Byte.compare(b1, b2);
     }
 
-    public static long binarySearch(MemorySegment key, MemorySegment mapFile, MemorySegment mapIndex, boolean fromSearch) {
+    public static long binarySearch(MemorySegment key,
+                                    MemorySegment mapFile,
+                                    MemorySegment mapIndex,
+                                    boolean fromSearch) {
         long l = 0;
         long rb = mapIndex.byteSize() / Long.BYTES;
         long r = rb;
@@ -48,11 +51,9 @@ public final class Utils {
             int res = compareMemorySegments(middleEntry.key(), key);
             if (res == 0) {
                 return middle;
-            }
-            if (res < 0) {
+            } else if (res < 0) {
                 l = middle + 1;
-            }
-            else {
+            } else {
                 r = middle - 1;
             }
             if (l == rb) {
@@ -127,6 +128,5 @@ public final class Utils {
         MemoryAccess.setByteAtOffset(next, size - 1, incrementedLastByte);
         return next;
     }
-
 
 }

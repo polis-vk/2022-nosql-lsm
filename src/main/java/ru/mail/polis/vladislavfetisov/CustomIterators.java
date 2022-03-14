@@ -31,7 +31,7 @@ public final class CustomIterators {
     }
 
     public static PeekingIterator<Entry<MemorySegment>> mergeTwo(PeekingIterator<Entry<MemorySegment>> it1,
-                                                                  PeekingIterator<Entry<MemorySegment>> it2) {
+                                                                 PeekingIterator<Entry<MemorySegment>> it2) {
         return new PeekingIterator<>(new Iterator<>() {
 
             @Override
@@ -68,7 +68,6 @@ public final class CustomIterators {
         });
     }
 
-
     public static class PeekingIterator<T> implements Iterator<T> {
         private final Iterator<T> iterator;
         private T current = null;
@@ -76,7 +75,6 @@ public final class CustomIterators {
         public PeekingIterator(Iterator<T> iterator) {
             this.iterator = iterator;
         }
-
 
         public T peek() {
             if (current == null) {
@@ -105,4 +103,5 @@ public final class CustomIterators {
         }
 
     }
+
 }

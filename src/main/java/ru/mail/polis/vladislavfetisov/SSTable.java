@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Stream;
 
-public class SSTable {
+public final class SSTable {
     public static final String TEMP = "_tmp";
     public static final String INDEX = "_i";
     private final MemorySegment mapFile;
@@ -24,7 +24,7 @@ public class SSTable {
         mapIndex = Utils.map(indexName, Files.size(indexName), FileChannel.MapMode.READ_ONLY);
     }
 
-    public static List<SSTable> getAllSSTables(Path dir)  {
+    public static List<SSTable> getAllTables(Path dir)  {
         try (Stream<Path> files = Files.list(dir)) {
             return files
                     .filter(path -> !path.toString().endsWith(INDEX))
@@ -33,18 +33,19 @@ public class SSTable {
                         int second = Integer.parseInt(p2.getFileName().toString());
                         return Integer.compare(first, second);
                     })
-                    .map(path -> {
-                        try {
-                            Path index = Utils.withSuffix(path, INDEX);
-                            return new SSTable(path, index);
-                        } catch (IOException e) {
-                            Thread.currentThread().interrupt();
-                            throw new UncheckedIOException(e);
-                        }
-                    })
+                    .map(SSTable::mapToTable)
                     .toList();
         } catch (IOException e) {
             return Collections.emptyList();
+        }
+    }
+
+    private static SSTable mapToTable(Path path) {
+        try {
+            Path index = Utils.withSuffix(path, INDEX);
+            return new SSTable(path, index);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

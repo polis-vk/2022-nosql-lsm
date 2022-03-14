@@ -7,7 +7,10 @@ import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
@@ -17,7 +20,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     public InMemoryDao(Config config) {
         this.config = config;
-        tables.addAll(SSTable.getAllSSTables(config.basePath()));
+        tables.addAll(SSTable.getAllTables(config.basePath()));
     }
 
     @Override
@@ -50,7 +53,6 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return storage.subMap(from, to).values().iterator();
     }
 
-
     @Override
     public Entry<MemorySegment> get(MemorySegment key) {
         Iterator<Entry<MemorySegment>> singleIterator = get(key, null);
@@ -68,11 +70,9 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return storage.tailMap(from).values().iterator();
     }
 
-
     private Iterator<Entry<MemorySegment>> to(MemorySegment to) {
         return storage.headMap(to).values().iterator();
     }
-
 
     private Iterator<Entry<MemorySegment>> fullStorage() {
         return storage.values().iterator();
