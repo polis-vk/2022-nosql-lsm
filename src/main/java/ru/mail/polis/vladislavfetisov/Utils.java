@@ -2,8 +2,15 @@ package ru.mail.polis.vladislavfetisov;
 
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
+import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
+
+import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 
 public final class Utils {
     private Utils() {
@@ -31,15 +38,16 @@ public final class Utils {
         return Byte.compare(b1, b2);
     }
 
-    public static Entry<MemorySegment> binarySearch(MemorySegment key, MemorySegment mapFile, MemorySegment mapIndex) {
+    public static long binarySearch(MemorySegment key, MemorySegment mapFile, MemorySegment mapIndex, boolean fromSearch) {
         long l = 0;
-        long r = mapIndex.byteSize() / Long.BYTES;
+        long rb = mapIndex.byteSize() / Long.BYTES;
+        long r = rb;
         while (l <= r) {
             long middle = (l + r) >>> 1;
             Entry<MemorySegment> middleEntry = getByIndex(mapFile, mapIndex, middle);
             int res = compareMemorySegments(middleEntry.key(), key);
             if (res == 0) {
-                return middleEntry;
+                return middle;
             }
             if (res < 0) {
                 l = middle + 1;
@@ -47,7 +55,7 @@ public final class Utils {
                 r = middle - 1;
             }
         }
-        return null;
+        return -1;
     }
 
     private static Entry<MemorySegment> getByIndex(MemorySegment mapFile, MemorySegment mapIndex, long index) {
@@ -71,4 +79,39 @@ public final class Utils {
         return MemoryAccess.getLongAtOffset(mapFile, offset);
     }
 
+    public static long writeSegment(MemorySegment segment, MemorySegment fileMap, long fileOffset) {
+        long length = segment.byteSize();
+        MemoryAccess.setLongAtOffset(fileMap, fileOffset, length);
+
+        fileMap.asSlice(fileOffset + Long.BYTES).copyFrom(segment);
+
+        return Long.BYTES + length;
+    }
+
+    public static MemorySegment map(Path table, long length, FileChannel.MapMode mapMode) throws IOException {
+        return MemorySegment.mapFile(table,
+                0,
+                length,
+                mapMode,
+                ResourceScope.globalScope());
+    }
+
+    public static void rename(Path source, Path target) throws IOException {
+        Files.deleteIfExists(target);
+        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+        Files.deleteIfExists(source);
+    }
+
+    public static Path withSuffix(Path path, String suffix) {
+        return path.resolveSibling(path.getFileName() + suffix);
+    }
+
+    public static MemorySegment nextMemorySegment(MemorySegment source) {
+        long size = source.byteSize();
+        MemorySegment next = MemorySegment.allocateNative(source.byteSize(), source.scope());
+        next.copyFrom(source);
+        byte incrementedLastByte = (byte) (MemoryAccess.getByteAtOffset(next, size - 1) + 1);
+        MemoryAccess.setByteAtOffset(next, size - 1, incrementedLastByte);
+        return next;
+    }
 }
