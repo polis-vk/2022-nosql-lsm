@@ -9,7 +9,11 @@ import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.stream.Stream;
 
 public final class SSTable {
@@ -19,12 +23,11 @@ public final class SSTable {
     private final MemorySegment mapIndex;
 
     private SSTable(Path tableName, Path indexName) throws IOException {
-
         mapFile = Utils.map(tableName, Files.size(tableName), FileChannel.MapMode.READ_ONLY);
         mapIndex = Utils.map(indexName, Files.size(indexName), FileChannel.MapMode.READ_ONLY);
     }
 
-    public static List<SSTable> getAllTables(Path dir)  {
+    public static List<SSTable> getAllTables(Path dir) {
         try (Stream<Path> files = Files.list(dir)) {
             return files
                     .filter(path -> !path.toString().endsWith(INDEX))
