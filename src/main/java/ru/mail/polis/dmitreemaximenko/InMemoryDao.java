@@ -8,8 +8,6 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Writer;
-import java.lang.StringBuilder;
-import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -140,22 +138,22 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     static class EntryWriter extends BufferedWriter {
+        final static String separator = System.getProperty("line.separator");
+
         public EntryWriter(Writer out) {
             super(out, BUFFER_SIZE);
         }
 
         void write(BaseEntry<byte[]> e) throws IOException {
-            if (Arrays.toString(e.key()).contains(System.getProperty("line.separator"))
-                    || Arrays.toString(e.value()).contains(System.getProperty("line.separator"))) {
+            if (Arrays.toString(e.key()).contains(separator)
+                    || Arrays.toString(e.value()).contains(separator)) {
                 throw new IllegalArgumentException("Line separator in the entry");
             }
 
-            String entryRepresentation = new StringBuilder()
-                    .append(new String(e.key(), StandardCharsets.UTF_8))
-                    .append(System.getProperty("line.separator"))
-                    .append(new String(e.value(), StandardCharsets.UTF_8))
-                    .append(System.getProperty("line.separator"))
-                    .toString();
+            String entryRepresentation = new String(e.key(), StandardCharsets.UTF_8)
+                    + separator
+                    + new String(e.value(), StandardCharsets.UTF_8)
+                    + separator;
 
             super.write(entryRepresentation);
         }
