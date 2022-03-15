@@ -137,7 +137,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     static class EntryWriter extends BufferedWriter {
-        private final static String SEPARATOR = System.getProperty("line.separator");
+        private static final String SEPARATOR = System.getProperty("line.separator");
 
         public EntryWriter(Writer out) {
             super(out, BUFFER_SIZE);
