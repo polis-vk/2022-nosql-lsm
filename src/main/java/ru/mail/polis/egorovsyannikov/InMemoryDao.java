@@ -19,23 +19,18 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private final Path path;
     private static final String FILE_NAME = "cache";
-    private static final String SEPARATOR = ":";
-    private static final String ENTRY_STRING_START_SYMBOL = "{";
-    private static final String ENTRY_STRING_END_SYMBOL = "}";
-    private static final String EMPTY_STRING = "";
+    private static final String NEW_LINE = "\n";
 
     public InMemoryDao(Config config) throws IOException {
         path = config.basePath().resolve(FILE_NAME);
     }
 
-    public InMemoryDao() {
-        path = null;
-    }
-
     @Override
     public BaseEntry<String> get(String key) throws IOException {
-        if (stringConcurrentSkipListMap.containsKey(key)) {
-            return stringConcurrentSkipListMap.get(key);
+        BaseEntry<String> resultFromMap = stringConcurrentSkipListMap.get(key);
+
+        if(resultFromMap != null) {
+            return resultFromMap;
         }
 
         if (!Files.exists(path)) {
@@ -48,12 +43,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 if (line == null) {
                     return null;
                 }
-                String[] stringEntry = line
-                        .replace(ENTRY_STRING_START_SYMBOL, EMPTY_STRING)
-                        .replace(ENTRY_STRING_END_SYMBOL, EMPTY_STRING)
-                        .split(SEPARATOR);
-                if (stringEntry[0].equals(key)) {
-                    return new BaseEntry<>(stringEntry[0], stringEntry[1]);
+                if (line.equals(key)) {
+                    return new BaseEntry<>(line, reader.readLine());
                 }
             }
         }
@@ -88,11 +79,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             Files.createFile(path);
         }
 
-        List<String> lines = stringConcurrentSkipListMap.values().stream().map(BaseEntry::toString).toList();
-        try {
-            Files.write(path, lines);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        List<String> entries = stringConcurrentSkipListMap
+                .values()
+                .stream()
+                .map(entry -> entry.key() + NEW_LINE + entry.value())
+                .toList();
+        Files.write(path, entries);
     }
 }
