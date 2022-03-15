@@ -1,7 +1,6 @@
 package ru.mail.polis.dmitreemaximenko;
 
 import ru.mail.polis.BaseEntry;
-<<<<<<< HEAD
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
@@ -9,22 +8,20 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Writer;
+import java.lang.StringBuilder;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-=======
-import ru.mail.polis.Dao;
-
->>>>>>> 58b7af70ded1c7be3c9d07c8ba65091ff52723cb
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.NavigableSet;
-<<<<<<< HEAD
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private static final String LOG_NAME = "log";
@@ -41,7 +38,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     public InMemoryDao(Config config) throws IOException {
         if (config != null && Files.isDirectory(config.basePath())) {
-            Path logPath = Path.of(config.basePath() + System.getProperty("file.separator") + LOG_NAME);
+            Path logPath = config.basePath().resolve(LOG_NAME);
 
             if (Files.notExists(logPath)) {
                 Files.createFile(logPath);
@@ -70,24 +67,6 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             return diskReader.getByKey(key);
         }
 
-=======
-import java.util.concurrent.ConcurrentSkipListSet;
-
-public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
-    private final NavigableSet<BaseEntry<byte[]>> data =
-            new ConcurrentSkipListSet<>(new RecordNaturalOrderComparator());
-
-    @Override
-    public BaseEntry<byte[]> get(byte[] key) {
-        Iterator<BaseEntry<byte[]>> iterator = get(key, null);
-        if (!iterator.hasNext()) {
-            return null;
-        }
-        BaseEntry<byte[]> next = iterator.next();
-        if (Arrays.equals(next.key(), key)) {
-            return next;
-        }
->>>>>>> 58b7af70ded1c7be3c9d07c8ba65091ff52723cb
         return null;
     }
 
@@ -103,7 +82,6 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     public void upsert(BaseEntry<byte[]> entry) {
         data.remove(entry);
         data.add(entry);
-<<<<<<< HEAD
 
         if (diskWriter != null) {
             try {
@@ -113,24 +91,25 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             }
 
         }
-=======
->>>>>>> 58b7af70ded1c7be3c9d07c8ba65091ff52723cb
     }
 
     static class BorderedIterator implements Iterator<BaseEntry<byte[]>> {
         private final Iterator<BaseEntry<byte[]>> iterator;
         private final byte[] last;
+        private final Integer lastHash;
         private BaseEntry<byte[]> next;
 
         private BorderedIterator(Iterator<BaseEntry<byte[]>> iterator, byte[] last) {
             this.iterator = iterator;
             next = iterator.hasNext() ? iterator.next() : null;
             this.last = last == null ? null : Arrays.copyOf(last, last.length);
+            this.lastHash = last == null ? null : simpleHashCode(last);
         }
 
         @Override
         public boolean hasNext() {
-            return next != null && !Arrays.equals(next.key(), last);
+            return next != null && simpleHashCode(next.key()) != lastHash
+                    && !Arrays.equals(next.key(), last);
         }
 
         @Override
@@ -139,6 +118,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             next = iterator.hasNext() ? iterator.next() : null;
             return temp;
         }
+
+        private static Integer simpleHashCode(byte[] last) {
+            return Integer.valueOf(last[0]) + Integer.valueOf(last[last.length / 2])
+                    + Integer.valueOf(last[last.length - 1]);
+        }
     }
 
     static class RecordNaturalOrderComparator implements Comparator<BaseEntry<byte[]>> {
@@ -146,7 +130,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         public int compare(BaseEntry<byte[]> e1, BaseEntry<byte[]> e2) {
             byte[] key1 = e1.key();
             byte[] key2 = e2.key();
-            for (int i = 0; i < Math.min(key1.length, key2.length); ++i) {
+            for (int i = 0; i < Math.min(key1.length, key2.length); i++) {
                 if (key1[i] != key2[i]) {
                     return key1[i] - key2[i];
                 }
@@ -154,7 +138,6 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             return key1.length - key2.length;
         }
     }
-<<<<<<< HEAD
 
     static class EntryWriter extends BufferedWriter {
         public EntryWriter(Writer out) {
@@ -162,10 +145,19 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         }
 
         void write(BaseEntry<byte[]> e) throws IOException {
-            super.write(new String(e.key(), StandardCharsets.UTF_8));
-            super.write(System.getProperty("line.separator"));
-            super.write(new String(e.value(), StandardCharsets.UTF_8));
-            super.write(System.getProperty("line.separator"));
+            if (Arrays.toString(e.key()).contains(System.getProperty("line.separator"))
+                    || Arrays.toString(e.value()).contains(System.getProperty("line.separator"))) {
+                throw new IllegalArgumentException("Line separator in the entry");
+            }
+
+            String entryRepresentation = new StringBuilder()
+                    .append(new String(e.key(), StandardCharsets.UTF_8))
+                    .append(System.getProperty("line.separator"))
+                    .append(new String(e.value(), StandardCharsets.UTF_8))
+                    .append(System.getProperty("line.separator"))
+                    .toString();
+
+            super.write(entryRepresentation);
         }
     }
 
@@ -203,6 +195,4 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             diskWriter.close();
         }
     }
-=======
->>>>>>> 58b7af70ded1c7be3c9d07c8ba65091ff52723cb
 }
