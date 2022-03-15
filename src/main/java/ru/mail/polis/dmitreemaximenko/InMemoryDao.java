@@ -1,6 +1,7 @@
 package ru.mail.polis.dmitreemaximenko;
 
 import ru.mail.polis.BaseEntry;
+<<<<<<< HEAD
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
@@ -11,10 +12,15 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+=======
+import ru.mail.polis.Dao;
+
+>>>>>>> 58b7af70ded1c7be3c9d07c8ba65091ff52723cb
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.NavigableSet;
+<<<<<<< HEAD
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.logging.Level;
@@ -64,6 +70,24 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             return diskReader.getByKey(key);
         }
 
+=======
+import java.util.concurrent.ConcurrentSkipListSet;
+
+public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
+    private final NavigableSet<BaseEntry<byte[]>> data =
+            new ConcurrentSkipListSet<>(new RecordNaturalOrderComparator());
+
+    @Override
+    public BaseEntry<byte[]> get(byte[] key) {
+        Iterator<BaseEntry<byte[]>> iterator = get(key, null);
+        if (!iterator.hasNext()) {
+            return null;
+        }
+        BaseEntry<byte[]> next = iterator.next();
+        if (Arrays.equals(next.key(), key)) {
+            return next;
+        }
+>>>>>>> 58b7af70ded1c7be3c9d07c8ba65091ff52723cb
         return null;
     }
 
@@ -79,6 +103,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     public void upsert(BaseEntry<byte[]> entry) {
         data.remove(entry);
         data.add(entry);
+<<<<<<< HEAD
 
         if (diskWriter != null) {
             try {
@@ -88,6 +113,8 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             }
 
         }
+=======
+>>>>>>> 58b7af70ded1c7be3c9d07c8ba65091ff52723cb
     }
 
     static class BorderedIterator implements Iterator<BaseEntry<byte[]>> {
@@ -127,6 +154,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             return key1.length - key2.length;
         }
     }
+<<<<<<< HEAD
 
     static class EntryWriter extends BufferedWriter {
         public EntryWriter(Writer out) {
@@ -175,4 +203,6 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             diskWriter.close();
         }
     }
+=======
+>>>>>>> 58b7af70ded1c7be3c9d07c8ba65091ff52723cb
 }
