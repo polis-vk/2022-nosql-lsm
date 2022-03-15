@@ -3,7 +3,6 @@ package ru.mail.polis;
 import org.junit.jupiter.api.Assertions;
 import ru.mail.polis.test.DaoFactory;
 
-java.nio.Path
 import java.io.IOException;
 import java.time.Clock;
 import java.util.ArrayList;

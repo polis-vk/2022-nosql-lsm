@@ -23,6 +23,8 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.regex.Pattern;
 
+import static ru.mail.polis.artyomscheredin.Utils.readEntry;
+
 public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String DATA_FILE_NAME = "data";
     private static final String INDEXES_FILE_NAME = "indexes";
@@ -32,9 +34,6 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> inMemoryData =
             new ConcurrentSkipListMap<>(ByteBuffer::compareTo);
     private final Config config;
-
-    public record Pair<E>(E dataPath, E indexPath) {
-    }
 
     public PersistentDao(Config config) {
         if (config == null) {
@@ -51,14 +50,20 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
         lock.readLock().lock();
         try {
-            if ((from == null) && (to == null)) {
+            List<Utils.Pair<Path>> paths = getDataPathsToRead();
+            try {
+                return new FileIterator(paths.get(paths.size() - 1), from, to);
+            } catch (IOException e) {
+                return Collections.emptyIterator();
+            }
+         /*   if ((from == null) && (to == null)) {
                 return inMemoryData.values().iterator();
             } else if (from == null) {
                 return inMemoryData.headMap(to).values().iterator();
             } else if (to == null) {
                 return inMemoryData.tailMap(from).values().iterator();
             }
-            return inMemoryData.subMap(from, to).values().iterator();
+            return inMemoryData.subMap(from, to).values().iterator();*/
         } finally {
             lock.readLock().unlock();
         }
@@ -73,13 +78,13 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 return value;
             }
 
-            List<Pair<Path>> paths = getDataPathsToRead();
+            List<Utils.Pair<Path>> paths = getDataPathsToRead();
             if (paths == null) {
                 return null;
             }
 
-            Pair<Path> curPath;
-            ListIterator<Pair<Path>> listIterator = paths.listIterator(paths.size());
+            Utils.Pair<Path> curPath;
+            ListIterator<Utils.Pair<Path>> listIterator = paths.listIterator(paths.size());
             while (listIterator.hasPrevious()) {
                 curPath = listIterator.previous();
                 BaseEntry<ByteBuffer> entry = getEntryIfExists(curPath, key);
@@ -91,11 +96,10 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         } finally {
             lock.readLock().unlock();
         }
-
     }
 
-    private List<Pair<Path>> getDataPathsToRead() {
-        List<Pair<Path>> list = new LinkedList<>();
+    private List<Utils.Pair<Path>> getDataPathsToRead() {
+        List<Utils.Pair<Path>> list = new LinkedList<>();
         File[] files = config.basePath().toFile().listFiles();
         if ((files == null) || (files.length == 0)) {
             return null;
@@ -106,7 +110,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             if (pattern.matcher(el.getName()).matches()) {
                 int index = getIndex(el);
                 Path indexPath = config.basePath().resolve(INDEXES_FILE_NAME + index + EXTENSION);
-                Pair curPaths = new Pair(el.toPath(), indexPath);
+                Utils.Pair<Path> curPaths = new Utils.Pair<Path>(el.toPath(), indexPath);
                 list.add(curPaths);
             }
         }
@@ -149,39 +153,24 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
     }
 
-    private BaseEntry<ByteBuffer> getEntryIfExists(Pair<Path> paths, ByteBuffer key) throws IOException {
+    private BaseEntry<ByteBuffer> getEntryIfExists(Utils.Pair<Path> paths, ByteBuffer key) throws IOException {
         ByteBuffer indexBuffer;
         ByteBuffer dataBuffer;
-        try (FileChannel dataChannel = FileChannel.open(paths.dataPath);
-             FileChannel indexChannel = FileChannel.open(paths.indexPath)) {
+        try (FileChannel dataChannel = FileChannel.open(paths.dataPath());
+             FileChannel indexChannel = FileChannel.open(paths.indexPath())) {
             indexBuffer = indexChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexChannel.size());
             dataBuffer = dataChannel.map(FileChannel.MapMode.READ_ONLY, 0, dataChannel.size());
         } catch (NoSuchFileException e) {
             return null;
         }
 
-        int low = 0;
-        int high = indexBuffer.remaining() / Integer.BYTES - 1;
-        while (low <= high) {
-            int mid = low + ((high - low) / 2);
-            int offset = indexBuffer.getInt(mid * Integer.BYTES);
-            int keySize = dataBuffer.getInt(offset);
-            offset += Integer.BYTES;
-
-            ByteBuffer curKey = dataBuffer.slice(offset,  keySize);
-            if (curKey.compareTo(key) < 0) {
-                low = mid + 1;
-            } else if (curKey.compareTo(key) > 0) {
-                high = mid - 1;
-            } else if (curKey.compareTo(key) == 0) {
-                offset += keySize;
-                int valueSize = dataBuffer.getInt(offset);
-                offset += Integer.BYTES;
-                ByteBuffer curValue = dataBuffer.slice(offset,  valueSize);
-                return new BaseEntry<ByteBuffer>(key, curValue);
-            }
+        int offset = Utils.findOffset(indexBuffer, dataBuffer, key, Utils.Strategy.ACCURATE_KEY_REQUIRED);
+        if (offset == -1) {
+            return null;
         }
-        return null;
+
+        return readEntry(dataBuffer, offset);
+
 /*
         int offset = 0;
         while (dataBuffer.remaining() > 0) {
@@ -210,6 +199,8 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
         return null;*/
     }
+
+
 
     private int getFreeIndex() {
         File[] files = config.basePath().toFile().listFiles();
