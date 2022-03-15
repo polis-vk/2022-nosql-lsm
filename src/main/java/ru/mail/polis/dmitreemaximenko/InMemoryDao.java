@@ -22,7 +22,7 @@ import java.util.logging.Logger;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private static final String LOG_NAME = "log";
-    private static final int BUFFER_SIZE = 1024 * 1024 * 8; //8 MB
+    private static final int BUFFER_SIZE = 1024 * 1024 * 8;           //8 MB
     private final NavigableSet<BaseEntry<byte[]>> data =
             new ConcurrentSkipListSet<>(new RecordNaturalOrderComparator());
     private final EntryWriter diskWriter;
