@@ -20,7 +20,6 @@ import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private static final String LOG_NAME = "log";
     private static final int BUFFER_SIZE = 1024 * 1024 * 8; //8 MB
@@ -138,22 +137,22 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     static class EntryWriter extends BufferedWriter {
-        final static String separator = System.getProperty("line.separator");
+        private final static String SEPARATOR = System.getProperty("line.separator");
 
         public EntryWriter(Writer out) {
             super(out, BUFFER_SIZE);
         }
 
         void write(BaseEntry<byte[]> e) throws IOException {
-            if (Arrays.toString(e.key()).contains(separator)
-                    || Arrays.toString(e.value()).contains(separator)) {
+            if (Arrays.toString(e.key()).contains(SEPARATOR)
+                    || Arrays.toString(e.value()).contains(SEPARATOR)) {
                 throw new IllegalArgumentException("Line separator in the entry");
             }
 
             String entryRepresentation = new String(e.key(), StandardCharsets.UTF_8)
-                    + separator
+                    + SEPARATOR
                     + new String(e.value(), StandardCharsets.UTF_8)
-                    + separator;
+                    + SEPARATOR;
 
             super.write(entryRepresentation);
         }
