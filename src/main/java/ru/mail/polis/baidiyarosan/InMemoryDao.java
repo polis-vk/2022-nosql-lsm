@@ -65,7 +65,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private BaseEntry<ByteBuffer> searchFile(ByteBuffer key) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw");
              FileChannel in = raf.getChannel()) {
-            long size = 0L;
+            long size = 0;
             ByteBuffer temp = ByteBuffer.allocate(Integer.BYTES);
             while (size < in.size()) {
                 int keySize = readInt(in, temp);
