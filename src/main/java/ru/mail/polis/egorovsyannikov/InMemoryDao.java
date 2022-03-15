@@ -29,7 +29,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     public BaseEntry<String> get(String key) throws IOException {
         BaseEntry<String> resultFromMap = stringConcurrentSkipListMap.get(key);
 
-        if(resultFromMap != null) {
+        if (resultFromMap != null) {
             return resultFromMap;
         }
 
