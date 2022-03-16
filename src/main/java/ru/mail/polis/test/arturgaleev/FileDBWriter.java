@@ -2,26 +2,27 @@ package ru.mail.polis.test.arturgaleev;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ConcurrentNavigableMap;
 
-public class FileDBWriter extends FileOutputStream {
+public class FileDBWriter implements AutoCloseable {
+    private final FileChannel dataChannel;
 
-    private final byte[] writeBuffer = new byte[4];
-
-    public FileDBWriter(String name) throws FileNotFoundException {
-        super(name);
+    public FileDBWriter(Path path, int size) throws IOException {
+        dataChannel = FileChannel.open(path,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+                StandardOpenOption.TRUNCATE_EXISTING);
     }
 
-    protected final void writeInt(int v) throws IOException {
-        writeBuffer[0] = (byte) (v >>> 24);
-        writeBuffer[1] = (byte) (v >>> 16);
-        writeBuffer[2] = (byte) (v >>> 8);
-        writeBuffer[3] = (byte) (v);
-        super.write(writeBuffer, 0, 4);
+    private final void writeInt(int in) throws IOException {
+        ByteBuffer buff = ByteBuffer.allocate(4);
+        buff.putInt(in);
+        buff.flip();
+        dataChannel.write(buff);
     }
 
     protected final void writeEntry(BaseEntry<ByteBuffer> baseEntry) throws IOException {
@@ -31,19 +32,32 @@ public class FileDBWriter extends FileOutputStream {
         buff.putInt(baseEntry.value().array().length);
         buff.put(baseEntry.key().array());
         buff.put(baseEntry.value().array());
-        super.write(buff.array());
+        buff.flip();
+        dataChannel.write(buff);
+//        page.putInt(baseEntry.key().array().length);
+//        page.putInt(baseEntry.value().array().length);
+//        page.put(baseEntry.key());
+//        page.put(baseEntry.value());
     }
 
     public void writeMap(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map) throws IOException {
         int position = 0;
         writeInt(map.size());
+//        page.putInt(map.size());
         for (BaseEntry<ByteBuffer> entry : map.values()) {
             writeInt(position);
+//            page.putInt(position);
             position += entry.key().array().length + entry.value().array().length + Integer.BYTES * 2;
         }
         for (BaseEntry<ByteBuffer> entry : map.values()) {
             writeEntry(entry);
         }
+    }
+
+    @Override
+    public void close() throws Exception {
+        dataChannel.force(true);
+        dataChannel.close();
     }
 }
 

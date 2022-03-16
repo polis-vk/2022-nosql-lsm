@@ -2,69 +2,55 @@ package ru.mail.polis.test.arturgaleev;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ConcurrentNavigableMap;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.nio.file.Path;
 
-public class FileDBReader implements Closeable {
+public class FileDBReader implements AutoCloseable {
 
     private final RandomAccessFile reader;
     private int size;
-    private int[] positions;
     private final FileChannel channel;
-    ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
+    private MappedByteBuffer pageData;
+    private MappedByteBuffer pageLinks;
+    private MappedByteBuffer page;
 
-    public FileDBReader(String name) throws IOException {
-        reader = new RandomAccessFile(name, "r");
+
+    public FileDBReader(Path path) throws IOException {
+        reader = new RandomAccessFile(path.toFile(), "r");
         channel = reader.getChannel();
+
     }
 
-    public void readArrayLinks() throws IOException {
-        size = readInt();
-        int mapBeginPos = (size + 1) * Integer.BYTES;
-        positions = new int[size];
-        for (int i = 0; i < size; i++) {
-            positions[i] = mapBeginPos + readInt();
+    private void unmap(MappedByteBuffer nmap) throws IOException {
+        if (nmap == null) {
+            return;
         }
     }
 
-    protected int readInt() throws IOException {
-        buffer.clear();
-        channel.read(buffer);
-        buffer.rewind();
-        return buffer.getInt();
+    public void open() throws IOException {
+        long fileSize = channel.size();
+        page = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize);
+        page.load();
+        this.size = page.getInt(0);
+
+        pageData = page.slice(Integer.BYTES * (1 + this.size), page.limit() - Integer.BYTES * (1 + this.size));
+        pageLinks = page.slice(Integer.BYTES, Integer.BYTES * this.size);
     }
 
     protected BaseEntry<ByteBuffer> readEntry() throws IOException {
-        int keyLength = readInt();
-        int valueLength = readInt();
-        ByteBuffer keyBuffer = ByteBuffer.allocate(keyLength);
-        channel.read(keyBuffer);
-        ByteBuffer valueBuffer = ByteBuffer.allocate(valueLength);
-        channel.read(valueBuffer);
-        keyBuffer.rewind();
-        valueBuffer.rewind();
-        return new BaseEntry<>(keyBuffer, valueBuffer);
-    }
-
-    public ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> readMap() throws IOException {
-        ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
-        channel.position(positions[0]);
-        BaseEntry<ByteBuffer> entry;
-        for (int i = 0; i < size; i++) {
-            entry = readEntry();
-            map.put(entry.key(), entry);
-        }
-        return map;
+        int keyLength = pageData.getInt();
+        int valueLength = pageData.getInt();
+        return new BaseEntry<>(pageData.slice(pageData.position(), keyLength), pageData.slice(pageData.position(pageData.position() + keyLength).position(), valueLength));
     }
 
     public BaseEntry<ByteBuffer> getByPos(int pos) throws IOException {
-        channel.position(positions[pos]);
+        pageData.position(pageLinks.slice(pos * Integer.BYTES, Integer.BYTES).getInt());
         return readEntry();
     }
 
@@ -86,13 +72,17 @@ public class FileDBReader implements Closeable {
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() throws IOException, ClassNotFoundException, NoSuchFieldException, IllegalAccessException, NoSuchMethodException, InvocationTargetException {
+
+
         channel.close();
         reader.close();
     }
 
-    public String toString(ByteBuffer data) {
-        return data == null ? null : new String(data.array(),
-                data.arrayOffset() + data.position(), data.remaining(), StandardCharsets.UTF_8);
+    public String toString(ByteBuffer in) {
+        ByteBuffer data = in.asReadOnlyBuffer();
+        byte[] bytes = new byte[data.remaining()];
+        data.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 }
