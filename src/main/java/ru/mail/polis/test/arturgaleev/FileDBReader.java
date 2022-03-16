@@ -4,7 +4,6 @@ import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -14,33 +13,22 @@ import java.nio.file.Path;
 public class FileDBReader implements AutoCloseable {
 
     private final RandomAccessFile reader;
-    private int size;
+    private final int size;
     private final FileChannel channel;
-    private MappedByteBuffer pageData;
-    private MappedByteBuffer pageLinks;
-    private MappedByteBuffer page;
-
+    private final MappedByteBuffer page;
+    private final MappedByteBuffer pageData;
+    private final MappedByteBuffer pageLinks;
+    ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
 
     public FileDBReader(Path path) throws IOException {
         reader = new RandomAccessFile(path.toFile(), "r");
         channel = reader.getChannel();
-
-    }
-
-    private void unmap(MappedByteBuffer nmap) throws IOException {
-        if (nmap == null) {
-            return;
-        }
-    }
-
-    public void open() throws IOException {
-        long fileSize = channel.size();
-        page = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize);
+        page = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
         page.load();
-        this.size = page.getInt(0);
+        size = page.getInt(0);
 
-        pageData = page.slice(Integer.BYTES * (1 + this.size), page.limit() - Integer.BYTES * (1 + this.size));
-        pageLinks = page.slice(Integer.BYTES, Integer.BYTES * this.size);
+        pageData = page.slice(Integer.BYTES * (1 + size), page.limit() - Integer.BYTES * (1 + size));
+        pageLinks = page.slice(Integer.BYTES, Integer.BYTES * size);
     }
 
     protected BaseEntry<ByteBuffer> readEntry() throws IOException {
@@ -72,9 +60,7 @@ public class FileDBReader implements AutoCloseable {
     }
 
     @Override
-    public void close() throws IOException, ClassNotFoundException, NoSuchFieldException, IllegalAccessException, NoSuchMethodException, InvocationTargetException {
-
-
+    public void close() throws IOException {
         channel.close();
         reader.close();
     }

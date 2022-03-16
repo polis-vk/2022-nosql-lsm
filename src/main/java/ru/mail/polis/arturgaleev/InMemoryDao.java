@@ -7,7 +7,6 @@ import ru.mail.polis.test.arturgaleev.FileDBReader;
 import ru.mail.polis.test.arturgaleev.FileDBWriter;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.util.Iterator;
@@ -66,24 +65,11 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 return null;
             }
             try (FileDBReader reader = new FileDBReader(config.basePath().resolve("1.txt"))) {
-                reader.open();
-                //reader.readArrayLinks();
                 return reader.getByKey(key);
-            } catch (NoSuchFieldException e) {
-                e.printStackTrace();
-            } catch (ClassNotFoundException e) {
-                e.printStackTrace();
-            } catch (InvocationTargetException e) {
-                e.printStackTrace();
-            } catch (IllegalAccessException e) {
-                e.printStackTrace();
-            } catch (NoSuchMethodException e) {
-                e.printStackTrace();
             }
         } finally {
             lock.readLock().unlock();
         }
-        return null;
     }
 
     @Override
