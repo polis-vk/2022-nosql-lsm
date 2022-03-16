@@ -4,26 +4,28 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
+
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private final ConcurrentNavigableMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
-    private final String path;
-    private static final String SEPARATOR = " ";
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final Path path;
+    private boolean fileIsNotExists = true;
 
     public InMemoryDao(Config config) throws IOException {
-        path = config.basePath().resolve("data.txt").toString();
+        this.path = config.basePath().resolve("data.dat");
     }
 
     @Override
@@ -47,46 +49,46 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public BaseEntry<String> get(String key) throws IOException {
-        if (data.containsKey(key)) {
-            return data.get(key);
+        BaseEntry<String> entry = data.get(key);
+        if (entry != null) {
+            return entry;
         }
-        if (Files.exists(Path.of(path))) {
-            try (BufferedReader reader = Files.newBufferedReader(Path.of(path))) {
-                String line = reader.readLine();
-                while (line != null) {
-                    String[] entry = line.split(SEPARATOR, -1);
-                    if (entry[0].equals(key)) {
-                        return new BaseEntry<>(entry[0], entry[1]);
-                    }
-                    line = reader.readLine();
-                }
-            } catch (Exception de) {
-                throw new IOException(de);
+        if (fileIsNotExists) {
+            return null;
+        }
+        lock.readLock().lock();
+        try {
+            BaseEntry<String> readEntry = WriterReaderInDao.readInDao(path, key);
+            if (readEntry != null) {
+                return readEntry;
             }
+        } catch (NoSuchFileException de) {
+            fileIsNotExists = false;
+            return null;
+        } finally {
+            lock.readLock().unlock();
         }
         return null;
     }
 
     @Override
     public void upsert(BaseEntry<String> entry) {
-        data.put(entry.key(), entry);
+        lock.readLock().lock();
+        try {
+            data.put(entry.key(), entry);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     @Override
     public void flush() throws IOException {
-        try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(path), StandardCharsets.UTF_8)) {
-            if (Files.notExists(Path.of(path))) {
-                Files.createFile(Path.of(path));
-            }
-            for (Map.Entry<String, BaseEntry<String>> entry : data.entrySet()) {
-                String builder = entry.getKey()
-                        + SEPARATOR
-                        + entry.getValue().value()
-                        + "\n";
-                writer.write(builder);
-            }
-        } catch (Exception de) {
-            throw new IOException(de);
+        lock.writeLock().lock();
+        try {
+            WriterReaderInDao.writeInDao(path, data);
+            data.clear();
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 }
