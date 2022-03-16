@@ -209,9 +209,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                     iterator.next();
                 }
             }
-//            if (minIter != null) {
-//                minIter.next();
-//            }
+
             return nextEntry;
         }
     }
