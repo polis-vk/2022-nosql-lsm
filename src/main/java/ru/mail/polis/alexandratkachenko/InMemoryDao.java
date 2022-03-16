@@ -4,10 +4,12 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.IOException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.ReadableByteChannel;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Collections;
@@ -15,20 +17,23 @@ import java.util.Iterator;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String DATA_FILENAME = "dao_data.txt";
     private final Path dataPath;
+
     private final ConcurrentSkipListMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
 
-    public InMemoryDao(Config config) throws IOException {
-        Objects.requireNonNull(config, "Invalid argument in constructor.\n");
+    public InMemoryDao(Config config) {
+        Objects.requireNonNull(config, "Invalid argument.\n");
         dataPath = config.basePath().resolve(DATA_FILENAME);
     }
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        Objects.requireNonNull(key, "Invalid argument in get().\n");
+        Objects.requireNonNull(key, "Invalid argument.\n");
         BaseEntry<ByteBuffer> value = map.get(key);
         return (value == null) ? search(key) : value;
     }
@@ -37,40 +42,21 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (Files.exists(dataPath)) {
             try (FileChannel channel = FileChannel.open(dataPath)) {
                 while (true) {
-                    ByteBuffer value = getByteBufferBaseEntry(keySearch, channel);
-                    if (value != null) {
+                    ByteBuffer key = readComponent(channel);
+                    if (key == null) {
+                        return null;
+                    }
+                    ByteBuffer value = readComponent(channel);
+                    if (value == null) {
+                        return null;
+                    }
+                    if (keySearch.equals(key)) {
                         return new BaseEntry<>(keySearch, value);
                     }
                 }
             }
         }
         return null;
-    }
-
-    private ByteBuffer getByteBufferBaseEntry(ByteBuffer keySearch, FileChannel fileChannel) throws IOException {
-        ByteBuffer size = ByteBuffer.allocate(Integer.BYTES);
-        if (fileChannel.read(size) > 0) {
-            ByteBuffer key = readComponent(fileChannel, size);
-            if (size.getInt() >= 0 && keySearch.equals(key)) {
-                return readComponent(fileChannel, size);
-            }
-        }
-        return null;
-    }
-
-    private ByteBuffer readComponent(FileChannel fileChannel, ByteBuffer size) throws IOException {
-        extracted(fileChannel, size);
-        ByteBuffer value = ByteBuffer.allocate(size.getInt());
-        extracted(fileChannel, value);
-        return value;
-    }
-
-    private void extracted(FileChannel fileChannel, ByteBuffer value) throws IOException {
-        value.position(0);
-        while (value.position() != value.capacity()) {
-            fileChannel.read(value);
-        }
-        value.position(0);
     }
 
     @Override
@@ -80,22 +66,34 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private void write() throws IOException {
-        try (FileChannel fileChannel = FileChannel.open(dataPath, StandardOpenOption.CREATE,
+        try (FileChannel channel = FileChannel.open(dataPath, StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE)) {
-            ByteBuffer size = ByteBuffer.allocate(Integer.BYTES);
             for (BaseEntry<ByteBuffer> iterator : map.values()) {
-                writeComponent(iterator.key(), fileChannel, size);
-                writeComponent(iterator.value(), fileChannel, size);
+                writeComponent(iterator.key(), channel);
+                writeComponent(iterator.value(), channel);
             }
         }
     }
 
-    private void writeComponent(ByteBuffer value, FileChannel channel, ByteBuffer buffer) throws IOException {
-        buffer.rewind();
-        buffer.putInt(value.remaining());
-        buffer.rewind();
-        channel.write(buffer);
-        channel.write(value);
+    private ByteBuffer readComponent(FileChannel fileChannel) throws IOException {
+        ByteBuffer size_buf = ByteBuffer.allocate(Integer.BYTES);
+        if (fileChannel.read(size_buf) != Integer.BYTES) {
+            throw new RuntimeException("Reading.");
+        }
+        size_buf.flip();
+        int size = size_buf.getInt();
+        ByteBuffer component = ByteBuffer.allocate(size);
+        fileChannel.read(component);
+        component.flip();
+        return component;
+    }
+
+    private void writeComponent(ByteBuffer component, FileChannel channel) throws IOException {
+        ByteBuffer size = ByteBuffer.allocate(Integer.BYTES);
+        size.putInt(component.remaining());
+        size.flip();
+        channel.write(size);
+        channel.write(component);
     }
 
     @Override
@@ -118,7 +116,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
-        Objects.requireNonNull(entry, "Invalid argument in upsert().\n");
+        Objects.requireNonNull(entry, "Invalid argument.\n");
         map.put(entry.key(), entry);
     }
 }
