@@ -56,7 +56,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         try (RandomAccessFile input = new RandomAccessFile(dataPath.toString(), "r");
              RandomAccessFile indexInput = new RandomAccessFile(indexPath.toString(), "r")) {
             input.seek(0);
-            String line;
             int size = input.readInt();
             long left = 0;
             long right = size;
@@ -65,17 +64,10 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 mid = left + (right - left) / 2;
                 indexInput.seek(mid * Long.BYTES);
                 input.seek(indexInput.readLong());
-                line = input.readUTF();
-                int delimiterIndex = line.indexOf(' ');
-                if (delimiterIndex == -1) {
-                    continue;
-                }
-                int keyLength = Integer.parseInt(line, 0, delimiterIndex, 10);
-                int entryDelimiter = delimiterIndex + keyLength + 1;
-                String currentKey = line.substring(delimiterIndex + 1, entryDelimiter);
+                String currentKey = input.readUTF();
                 int keyComparing = key.compareTo(currentKey);
                 if (keyComparing == 0) {
-                    return new BaseEntry<>(currentKey, line.substring(entryDelimiter));
+                    return new BaseEntry<>(currentKey, input.readUTF());
                 } else if (keyComparing < 0) {
                     right = mid;
                 } else {
@@ -156,16 +148,14 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
         try (RandomAccessFile output = new RandomAccessFile(file.toString(), "rw");
              RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
-             RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw");
+             RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw")
         ) {
             output.seek(0);
-            StringBuilder result = new StringBuilder();
             output.writeInt(data.size());
             for (Entry<String> value : data.values()) {
-                result.append(value.key().length()).append(' ').append(value.key()).append(value.value());
                 indexOut.writeLong(output.getFilePointer());
-                output.writeUTF(result.toString());
-                result.setLength(0);
+                output.writeUTF(value.key());
+                output.writeUTF(value.value());
             }
 
             allFilesOut.setLength(0);
@@ -177,14 +167,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         commit = true;
     }
 
-    private static class MergeIterator implements Iterator<Entry<String>> {
-
-        private final List<ExtendedIterator> iterators;
-        private Entry<String> nextEntry;
-
-        public MergeIterator(List<ExtendedIterator> iterators) {
-            this.iterators = iterators;
-        }
+    private record MergeIterator(List<ExtendedIterator> iterators) implements Iterator<Entry<String>> {
 
         @Override
         public boolean hasNext() {
@@ -197,18 +180,19 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             if (!hasNext()) {
                 throw new NoSuchElementException();
             }
-            nextEntry = null;
+            Entry<String> nextEntry = null;
             for (ExtendedIterator iterator : iterators) {
                 if (nextEntry == null || iterator.peek().key().compareTo(nextEntry.key()) < 0) {
                     nextEntry = iterator.peek();
                 }
             }
-            for (ExtendedIterator iterator : iterators) {
-                if (iterator.peek().key().compareTo(nextEntry.key()) == 0) {
-                    iterator.next();
+            if (nextEntry != null) {
+                for (ExtendedIterator iterator : iterators) {
+                    if (iterator.peek().key().compareTo(nextEntry.key()) == 0) {
+                        iterator.next();
+                    }
                 }
             }
-
             return nextEntry;
         }
     }
@@ -223,10 +207,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         }
 
         public Entry<String> peek() {
-            if (currentEntry == null) {
-                if (iterator.hasNext()) {
-                    currentEntry = iterator.next();
-                }
+            if (currentEntry == null && iterator.hasNext()) {
+                currentEntry = iterator.next();
             }
             return currentEntry;
         }
@@ -255,7 +237,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     private static class FileIterator implements Iterator<Entry<String>> {
         private final Path basePath;
-        String from, to;
+        String from;
+        String to;
         private RandomAccessFile raf;
         private Entry<String> nextEntry = null;
 
@@ -278,7 +261,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         private void findFloorEntry(String name) throws IOException {
             try (RandomAccessFile index = new RandomAccessFile(basePath.resolve(name + INDEX_EXT).toString(), "r")) {
                 raf.seek(0);
-                String line;
                 int size = raf.readInt();
                 long left = 0;
                 long right = size;
@@ -288,20 +270,13 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                     index.seek(mid * Long.BYTES);
                     long entryPos = index.readLong();
                     raf.seek(entryPos);
-                    line = raf.readUTF();
-                    int delimiterIndex = line.indexOf(' ');
-                    if (delimiterIndex == -1) {
-                        continue;
-                    }
-                    int keyLength = Integer.parseInt(line, 0, delimiterIndex, 10);
-                    int entryDelimiter = delimiterIndex + keyLength + 1;
-                    String currentKey = line.substring(delimiterIndex + 1, entryDelimiter);
+                    String currentKey = raf.readUTF();
                     int keyComparing = currentKey.compareTo(from);
                     if (keyComparing == 0) {
-                        this.nextEntry = new BaseEntry<>(currentKey, line.substring(entryDelimiter));
+                        this.nextEntry = new BaseEntry<>(currentKey, raf.readUTF());
                         break;
                     } else if (keyComparing > 0) {
-                        this.nextEntry = new BaseEntry<>(currentKey, line.substring(entryDelimiter));
+                        this.nextEntry = new BaseEntry<>(currentKey, raf.readUTF());
                         right = mid;
                     } else {
                         left = mid;
@@ -321,16 +296,9 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 throw new NoSuchElementException();
             }
             Entry<String> retval = nextEntry;
-            String line;
             try {
-                line = raf.readUTF();
-                int delimiterIndex = line.indexOf(' ');
-                if (delimiterIndex != -1) {
-                    int keyLength = Integer.parseInt(line, 0, delimiterIndex, 10);
-                    int entryDelimiter = delimiterIndex + keyLength + 1;
-                    String currentKey = line.substring(delimiterIndex + 1, entryDelimiter);
-                    nextEntry = new BaseEntry<>(currentKey, line.substring(entryDelimiter));
-                }
+                String currentKey = raf.readUTF();
+                nextEntry = new BaseEntry<>(currentKey, raf.readUTF());
             } catch (EOFException e) {
                 nextEntry = null;
             } catch (IOException e) {
