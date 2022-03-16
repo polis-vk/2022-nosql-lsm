@@ -93,8 +93,8 @@ class MemorySegmentReader {
         return low + ((high - low) / 2);
     }
 
-    private MemorySegment getMemorySegment(long index, boolean isValue) {
-        long segmentIndex = index * 2;
+    private MemorySegment getMemorySegment(long entityIndex, boolean isValue) {
+        long segmentIndex = entityIndex * 2;
         if (isValue) {
             segmentIndex++;
         }
