@@ -17,13 +17,13 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private static final String DATA_FILENAME = "dao_data.txt";
+    private static final String DATA_FILENAME = "data.txt";
     private final Path dataPath;
 
     private final ConcurrentSkipListMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
 
     public InMemoryDao(Config config) {
-        Objects.requireNonNull(config, "Invalid argument - config.\n");
+        Objects.requireNonNull(config, "Invalid argument in constructor.\n");
         dataPath = config.basePath().resolve(DATA_FILENAME);
     }
 
