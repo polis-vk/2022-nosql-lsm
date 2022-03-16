@@ -17,6 +17,7 @@ import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
+        if (to != null && to.equals(from)) {
+            return Collections.emptyIterator();
+        }
         if (from != null) {
             processAllMeta();
         }
