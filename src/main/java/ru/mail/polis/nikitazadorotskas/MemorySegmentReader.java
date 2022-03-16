@@ -98,6 +98,7 @@ class MemorySegmentReader {
         if (isValue) {
             segmentIndex++;
         }
+
         long byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex);
         long byteSize = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex + 1) - byteOffset;
         return mappedSegmentForData.asSlice(byteOffset, byteSize);
