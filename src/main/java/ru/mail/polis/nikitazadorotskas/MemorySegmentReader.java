@@ -25,6 +25,7 @@ class MemorySegmentReader {
         this.utils = utils;
         this.scope = scope;
         this.number = number;
+
         createMappedForData();
         createMappedForIndexes();
     }
