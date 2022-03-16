@@ -242,7 +242,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         private RandomAccessFile raf;
         private Entry<String> nextEntry = null;
 
-
         public FileIterator(Path basePath, String name, String from, String to) throws IOException {
             this.from = from;
             this.to = to;
