@@ -27,13 +27,11 @@ public class StringDao implements Dao<String, Entry<String>> {
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
-    private final Config config;
     private final Path data;
 
     private boolean maybeHasFile = true;
 
     public StringDao(Config config) {
-        this.config = config;
         this.data = config.basePath().resolve("data.dat");
     }
 
