@@ -4,9 +4,7 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Iterator;
@@ -21,11 +19,15 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private final ConcurrentNavigableMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final Path path;
     private boolean fileIsNotExists = true;
 
+    private final ReaderInDao reader;
+    private final WriterInDao writer;
+
     public InMemoryDao(Config config) throws IOException {
-        this.path = config.basePath().resolve("data.dat");
+        Path path = config.basePath().resolve("data.dat");
+        this.reader = new ReaderInDao(path);
+        this.writer = new WriterInDao(path);
     }
 
     @Override
@@ -58,7 +60,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         lock.readLock().lock();
         try {
-            BaseEntry<String> readEntry = WriterReaderInDao.readInDao(path, key);
+            BaseEntry<String> readEntry = reader.readInDao(key);
             if (readEntry != null) {
                 return readEntry;
             }
@@ -85,7 +87,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     public void flush() throws IOException {
         lock.writeLock().lock();
         try {
-            WriterReaderInDao.writeInDao(path, data);
+            writer.writeInDao(data);
             data.clear();
         } finally {
             lock.writeLock().unlock();

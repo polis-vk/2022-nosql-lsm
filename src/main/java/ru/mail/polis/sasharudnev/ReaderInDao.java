@@ -1,17 +1,21 @@
 package ru.mail.polis.sasharudnev;
 
-
 import ru.mail.polis.BaseEntry;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Map;
 
-class WriterReaderInDao {
+class ReaderInDao {
 
-    static BaseEntry<String> readInDao(Path path, String key) throws IOException {
+    private final Path path;
+
+    ReaderInDao (Path path) {
+        this.path = path;
+    }
+
+    public BaseEntry<String> readInDao(String key) throws IOException {
         try (DataInputStream reader = new DataInputStream(new BufferedInputStream(Files.newInputStream(
                 path,
                 StandardOpenOption.READ
@@ -25,20 +29,6 @@ class WriterReaderInDao {
                 }
             }
             return null;
-        }
-    }
-
-    static void writeInDao(Path path, Map<String, BaseEntry<String>> map) throws IOException {
-        try (DataOutputStream writer = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(
-                path,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE)))) {
-            writer.writeInt(map.size());
-            for (BaseEntry<String> entry : map.values()) {
-                writer.writeUTF(entry.key());
-                writer.writeUTF(entry.value());
-            }
         }
     }
 }
