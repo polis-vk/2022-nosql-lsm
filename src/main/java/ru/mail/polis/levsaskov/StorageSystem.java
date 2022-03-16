@@ -212,7 +212,8 @@ public class StorageSystem {
      * @param memFileP         path of memFile
      * @return base entry with given key or null if there is no such key in file
      */
-    private static BaseEntry<ByteBuffer> searchInMemFile(ByteBuffer key, ByteBuffer bufferForIndexes, Path memFileP) throws IOException {
+    private static BaseEntry<ByteBuffer> searchInMemFile(
+            ByteBuffer key, ByteBuffer bufferForIndexes, Path memFileP) throws IOException {
         BaseEntry<ByteBuffer> res;
         try (
                 RandomAccessFile daoMemfile = new RandomAccessFile(memFileP.toFile(), "rw");
