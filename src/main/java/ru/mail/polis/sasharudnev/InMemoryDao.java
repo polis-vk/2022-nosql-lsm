@@ -14,12 +14,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private final ConcurrentNavigableMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private boolean fileIsNotExists = true;
+    private boolean fileIsNotExists = false;
 
     private final ReaderInDao reader;
     private final WriterInDao writer;

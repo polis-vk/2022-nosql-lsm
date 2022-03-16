@@ -2,7 +2,9 @@ package ru.mail.polis.sasharudnev;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.*;
+import java.io.BufferedOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -12,7 +14,7 @@ class WriterInDao {
 
     private final Path path;
 
-    WriterInDao (Path path) {
+    WriterInDao(Path path) {
         this.path = path;
     }
 

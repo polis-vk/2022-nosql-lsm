@@ -2,7 +2,9 @@ package ru.mail.polis.sasharudnev;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -11,7 +13,7 @@ class ReaderInDao {
 
     private final Path path;
 
-    ReaderInDao (Path path) {
+    ReaderInDao(Path path) {
         this.path = path;
     }
 
