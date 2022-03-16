@@ -240,6 +240,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         String from;
         String to;
         private RandomAccessFile raf;
+        private long lastPos;
         private Entry<String> nextEntry = null;
 
         public FileIterator(Path basePath, String name, String from, String to) throws IOException {
@@ -261,21 +262,24 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             try (RandomAccessFile index = new RandomAccessFile(basePath.resolve(name + INDEX_EXT).toString(), "r")) {
                 raf.seek(0);
                 int size = raf.readInt();
-                long left = 0;
+                long left = -1;
                 long right = size;
                 long mid;
-                while (left < right) {
+                while (left < right - 1) {
                     mid = left + (right - left) / 2;
                     index.seek(mid * Long.BYTES);
                     long entryPos = index.readLong();
                     raf.seek(entryPos);
                     String currentKey = raf.readUTF();
+                    String currentValue = raf.readUTF();
                     int keyComparing = currentKey.compareTo(from);
                     if (keyComparing == 0) {
-                        this.nextEntry = new BaseEntry<>(currentKey, raf.readUTF());
+                        lastPos = raf.getFilePointer();
+                        this.nextEntry = new BaseEntry<>(currentKey, currentValue);
                         break;
                     } else if (keyComparing > 0) {
-                        this.nextEntry = new BaseEntry<>(currentKey, raf.readUTF());
+                        lastPos = raf.getFilePointer();
+                        this.nextEntry = new BaseEntry<>(currentKey, currentValue);
                         right = mid;
                     } else {
                         left = mid;
@@ -286,7 +290,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
         @Override
         public boolean hasNext() {
-            return nextEntry != null && !nextEntry.key().equals(to);
+            return (to == null && nextEntry != null) || (nextEntry != null && nextEntry.key().compareTo(to) < 0);
         }
 
         @Override
@@ -296,8 +300,10 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             }
             Entry<String> retval = nextEntry;
             try {
+                raf.seek(lastPos);
                 String currentKey = raf.readUTF();
                 nextEntry = new BaseEntry<>(currentKey, raf.readUTF());
+                lastPos = raf.getFilePointer();
             } catch (EOFException e) {
                 nextEntry = null;
             } catch (IOException e) {
