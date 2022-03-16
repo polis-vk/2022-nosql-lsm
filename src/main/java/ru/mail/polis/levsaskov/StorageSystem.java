@@ -7,7 +7,8 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.NavigableMap;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -21,9 +22,8 @@ public class StorageSystem {
     private static final String INDEX_FILENAME = "daoIndex.bin";
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private int dataBasePartsC = 0;
+    private int dataBasePartsC;
     private Path location;
-
 
     public boolean init(Path location) {
         if (!location.toFile().exists()) {
@@ -61,7 +61,8 @@ public class StorageSystem {
     }
 
     public ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> getMergedEntrys(
-            ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> localEntrys, ByteBuffer from, ByteBuffer to) throws IOException {
+            ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> localEntrys, ByteBuffer from, ByteBuffer to)
+            throws IOException {
         ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> res = new ConcurrentSkipListMap<>();
         lock.readLock().lock();
         try {
@@ -176,8 +177,8 @@ public class StorageSystem {
      * @param memFileP         path of memFile
      * @return map with range
      */
-    private static NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> getRangeInMemFile(ByteBuffer from, ByteBuffer to,
-                                                                                     ByteBuffer bufferForIndexes, Path memFileP) throws IOException {
+    private static NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> getRangeInMemFile(
+            ByteBuffer from, ByteBuffer to, ByteBuffer bufferForIndexes, Path memFileP) throws IOException {
         NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> res = new TreeMap<>();
         try (
                 RandomAccessFile daoMemfile = new RandomAccessFile(memFileP.toFile(), "rw");
@@ -288,7 +289,6 @@ public class StorageSystem {
 
         return new BaseEntry<>(ByteBuffer.wrap(key), ByteBuffer.wrap(value));
     }
-
 
     private static BaseEntry<ByteBuffer> getEntry(ByteBuffer bufferForIndexes, FileChannel memChannel,
                                                   int entryNum) throws IOException {

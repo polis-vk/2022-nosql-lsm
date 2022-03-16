@@ -10,7 +10,6 @@ import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> entrys = new ConcurrentSkipListMap<>();
@@ -52,7 +51,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             local = entrys.subMap(from, to);
         }
 
-        return storageSystem == null ? local.values().iterator() : storageSystem.getMergedEntrys(local, from, to).values().iterator();
+        return storageSystem == null ? local.values().iterator() :
+                storageSystem.getMergedEntrys(local, from, to).values().iterator();
     }
 
     @Override
