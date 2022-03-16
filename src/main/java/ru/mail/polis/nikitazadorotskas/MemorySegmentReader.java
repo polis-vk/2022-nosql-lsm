@@ -35,7 +35,7 @@ class MemorySegmentReader {
 
     private void createMappedForIndexes() throws IOException {
         long fileSize = Files.size(utils.getIndexesPath(number));
-        lastIndex = fileSize / Long.BYTES - 3;
+        lastIndex = fileSize / (Long.BYTES * 2) - 1;
         mappedSegmentForIndexes = createMappedSegment(utils.getIndexesPath(number), fileSize);
     }
 
@@ -61,51 +61,51 @@ class MemorySegmentReader {
         while (low < high) {
             long mid = countMid(low, high);
 
-            MemorySegment currentKey = getMemorySegment(mid);
+            MemorySegment currentKey = getMemorySegment(mid, false);
             int compare = utils.compareMemorySegment(key, currentKey);
 
             if (compare > 0) {
-                low = mid + 2;
+                low = mid + 1;
             } else if (compare == 0) {
                 lastIndexFoundInBinarySearch = mid;
-                return new BaseEntry<>(currentKey, getMemorySegment(mid + 1));
+                return new BaseEntry<>(currentKey, getMemorySegment(mid, true));
             } else {
-                high = mid - 2;
+                high = mid - 1;
             }
         }
 
         lastIndexFoundInBinarySearch = low;
-        MemorySegment currentMemorySegment = getMemorySegment(low);
+        MemorySegment currentMemorySegment = getMemorySegment(low, false);
 
         int compare = utils.compareMemorySegment(key, currentMemorySegment);
         if (compare == 0) {
-            return new BaseEntry<>(currentMemorySegment, getMemorySegment(low + 1));
+            return new BaseEntry<>(currentMemorySegment, getMemorySegment(low, true));
         }
 
         if (compare > 0) {
-            lastIndexFoundInBinarySearch = low + 2;
+            lastIndexFoundInBinarySearch = low + 1;
         }
 
         return null;
     }
 
     private long countMid(long low, long high) {
-        long mid = low + ((high - low) / 2); // Аналогично (low + high) / 2, но так не будет переполнения
-        if (mid % 2 == 1) { // Делаю так, потому что по нечетным индексам находятся значения, а не ключи
-            mid--;
-        }
-        return mid;
+        return low + ((high - low) / 2);
     }
 
-    private MemorySegment getMemorySegment(long index) {
-        long byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, index);
-        long byteSize = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, index + 1) - byteOffset;
+    private MemorySegment getMemorySegment(long index, boolean isValue) {
+        long segmentIndex = index * 2;
+        if (isValue) {
+            segmentIndex++;
+        }
+        long byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex);
+        long byteSize = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex + 1) - byteOffset;
         return mappedSegmentForData.asSlice(byteOffset, byteSize);
     }
 
     public Iterator<BaseEntry<MemorySegment>> getFromDisk(MemorySegment from, MemorySegment to) {
         long start = getIndex(from, 0);
-        long end = getIndex(to, lastIndex + 2);
+        long end = getIndex(to, lastIndex + 1);
 
         if (end < start) {
             throw new IllegalArgumentException("from is bigger than to");
@@ -122,7 +122,7 @@ class MemorySegmentReader {
 
             @Override
             public BaseEntry<MemorySegment> next() {
-                return new BaseEntry<>(getMemorySegment(next++), getMemorySegment(next++));
+                return new BaseEntry<>(getMemorySegment(next, false), getMemorySegment(next++, true));
             }
         };
     }
