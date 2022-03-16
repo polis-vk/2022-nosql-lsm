@@ -18,7 +18,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private final ConcurrentNavigableMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private boolean fileIsNotExists = false;
+    private boolean fileIsNotExists;
 
     private final ReaderInDao reader;
     private final WriterInDao writer;
