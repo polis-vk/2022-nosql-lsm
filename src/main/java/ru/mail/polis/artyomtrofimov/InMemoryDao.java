@@ -11,9 +11,10 @@ import java.io.RandomAccessFile;
 import java.io.UncheckedIOException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Random;
@@ -21,16 +22,14 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<String, Entry<String>> {
-    private static final String FILENAME = "db.dat";
     private static final String ALL_FILES = "files.fl";
-    private static final String INDEX_FILE_NAME = "index.ind";
     private static final String DATA_EXT = ".dat";
     private static final String INDEX_EXT = ".ind";
     private static final Random rnd = new Random();
     private final ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
     private final Path basePath;
     private volatile boolean commit;
-    private final Deque<String> filesList = new LinkedList<>();
+    private final Deque<String> filesList = new ArrayDeque<>();
 
     public InMemoryDao(Config config) throws IOException {
         if (config == null) {
@@ -104,7 +103,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             dataIterator = data.subMap(from, to).values().iterator();
         }
 
-        List<ExtendedIterator> iterators = new LinkedList<>();
+        List<ExtendedIterator> iterators = new ArrayList<>();
         iterators.add(new ExtendedIterator(dataIterator));
         for (String file : filesList) {
             iterators.add(new ExtendedIterator(new FileIterator(basePath, file, from, to)));
@@ -258,8 +257,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         private final Path basePath;
         String from, to;
         private RandomAccessFile raf;
-        private long pos = 0;
-        private boolean open = false;
         private Entry<String> nextEntry = null;
 
 
@@ -273,9 +270,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                     this.from = "";
                 }
                 findFloorEntry(name);
-                open = true;
             } catch (FileNotFoundException | EOFException e) {
-                open = false;
+                nextEntry = null;
             }
         }
 
@@ -302,11 +298,9 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                     String currentKey = line.substring(delimiterIndex + 1, entryDelimiter);
                     int keyComparing = currentKey.compareTo(from);
                     if (keyComparing == 0) {
-                        pos = entryPos;
                         this.nextEntry = new BaseEntry<>(currentKey, line.substring(entryDelimiter));
                         break;
                     } else if (keyComparing > 0) {
-                        pos = entryPos;
                         this.nextEntry = new BaseEntry<>(currentKey, line.substring(entryDelimiter));
                         right = mid;
                     } else {
@@ -337,7 +331,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                     String currentKey = line.substring(delimiterIndex + 1, entryDelimiter);
                     nextEntry = new BaseEntry<>(currentKey, line.substring(entryDelimiter));
                 }
-                pos = raf.getFilePointer();
             } catch (EOFException e) {
                 nextEntry = null;
             } catch (IOException e) {
