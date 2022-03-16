@@ -70,15 +70,20 @@ class MemorySegmentReader {
                 lastIndexFoundInBinarySearch = mid;
                 return new BaseEntry<>(currentKey, getMemorySegment(mid + 1));
             } else {
-                high = mid;
+                high = mid - 2;
             }
         }
 
         lastIndexFoundInBinarySearch = low;
         MemorySegment currentMemorySegment = getMemorySegment(low);
 
-        if (utils.compareMemorySegment(key, currentMemorySegment) == 0) {
+        int compare = utils.compareMemorySegment(key, currentMemorySegment);
+        if (compare == 0) {
             return new BaseEntry<>(currentMemorySegment, getMemorySegment(low + 1));
+        }
+
+        if (compare > 0) {
+            lastIndexFoundInBinarySearch = low + 2;
         }
 
         return null;
