@@ -3,6 +3,7 @@ package ru.mail.polis.artemyasevich;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
+import ru.mail.polis.Entry;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -11,7 +12,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
@@ -138,6 +138,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private void savaData() throws IOException {
+        Iterator<BaseEntry<String>> dataIterator = dataMap.values().iterator();
+        if (!dataIterator.hasNext()) {
+            return;
+        }
         Path pathToData = pathToDirectory.resolve(DATA_FILE + numberOfFiles + FILE_EXTENSION);
         Path pathToOffsets = pathToDirectory.resolve(META_FILE + numberOfFiles + FILE_EXTENSION);
         try (DataOutputStream dataStream = new DataOutputStream(new BufferedOutputStream(
@@ -145,27 +149,31 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
                      Files.newOutputStream(pathToOffsets, writeOptions)
              ))) {
-            if (dataMap.isEmpty()) {
-                return;
-            }
-            int currentLength = calculateEntryLength(dataMap.firstEntry().getValue());
-            int current = 0;
+            int bytesWrittenTotal = 0;
+            Entry<String> entry = dataIterator.next();
+            dataStream.writeUTF(entry.key());
+            dataStream.writeUTF(entry.value());
             metaStream.writeInt(dataMap.size());
-            for (BaseEntry<String> entry : dataMap.values()) {
+            int currentBytes = dataStream.size() - bytesWrittenTotal;
+            int currentRepeats = 1;
+            bytesWrittenTotal = dataStream.size();
+            while (dataIterator.hasNext()) {
+                entry = dataIterator.next();
                 dataStream.writeUTF(entry.key());
                 dataStream.writeUTF(entry.value());
-                int length = calculateEntryLength(entry);
-                if (length != currentLength) {
-                    metaStream.writeInt(current);
-                    metaStream.writeInt(currentLength);
-                    currentLength = length;
-                    current = 1;
-                    continue;
+                int bytesWritten = dataStream.size() - bytesWrittenTotal;
+                if (bytesWritten == currentBytes) {
+                    currentRepeats++;
+                } else {
+                    metaStream.writeInt(currentRepeats);
+                    metaStream.writeInt(currentBytes);
+                    currentBytes = bytesWritten;
+                    currentRepeats = 1;
                 }
-                current++;
+                bytesWrittenTotal = dataStream.size();
             }
-            metaStream.writeInt(current);
-            metaStream.writeInt(currentLength);
+            metaStream.writeInt(currentRepeats);
+            metaStream.writeInt(currentBytes);
             numberOfFiles++;
         }
     }
@@ -182,9 +190,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             int i = 1;
             while (dataInputStream.available() > 0) {
                 int numberOfEntries = dataInputStream.readInt();
-                int entryLength = dataInputStream.readInt();
+                int entryBytesSize = dataInputStream.readInt();
                 for (int j = 0; j < numberOfEntries; j++) {
-                    currentOffset += entryLength + Short.BYTES * 2;
+                    currentOffset += entryBytesSize;
                     fileOffsets[i] = currentOffset;
                     i++;
                 }
@@ -200,10 +208,4 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             }
         }
     }
-
-    private int calculateEntryLength(BaseEntry<String> entry) {
-        return entry.key().getBytes(StandardCharsets.UTF_8).length
-                + entry.value().getBytes(StandardCharsets.UTF_8).length;
-    }
-
 }

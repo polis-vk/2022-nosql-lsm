@@ -4,7 +4,6 @@ import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -40,7 +39,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
                 currents.add(readEntry(fileNumber));
                 continue;
             }
-            BaseEntry<String> closest = findValidClosest(from, to, reader, fileNumber);
+            BaseEntry<String> closest = findValidClosest(from, to, reader, offsets.get(fileNumber));
             currents.add(closest);
             if (closest == null) {
                 reader.close();
@@ -97,17 +96,16 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
     }
 
     private BaseEntry<String> findValidClosest(String from, String to,
-                                               RandomAccessFile reader, int fileNumber) throws IOException {
+                                               RandomAccessFile reader, long[] offsets) throws IOException {
         int left = 0;
         int middle;
-        int right = offsets.get(fileNumber).length - 2;
-        String goodKey = null;
-        String goodValue = null;
-        long goodPos = 0;
+        int right = offsets.length - 2;
+        String validKey = null;
+        String validValue = null;
+        int validEntryIndex = 0;
         while (left <= right) {
             middle = (right - left) / 2 + left;
-            long pos = offsets.get(fileNumber)[middle];
-            reader.seek(pos);
+            reader.seek(offsets[middle]);
             String key = reader.readUTF();
             int comparison = from.compareTo(key);
             if (comparison <= 0) {
@@ -116,20 +114,19 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
                     return new BaseEntry<>(key, value);
                 } else {
                     right = middle - 1;
-                    goodKey = key;
-                    goodValue = value;
-                    goodPos = pos;
+                    validKey = key;
+                    validValue = value;
+                    validEntryIndex = middle;
                 }
             } else {
                 left = middle + 1;
             }
         }
-        if (goodKey == null) {
+        if (validKey == null) {
             return null;
         }
-        reader.seek(goodPos + goodKey.getBytes(StandardCharsets.UTF_8).length
-                + goodValue.getBytes(StandardCharsets.UTF_8).length + Short.BYTES * 2);
-        return to != null && goodKey.compareTo(to) >= 0 ? null : new BaseEntry<>(goodKey, goodValue);
+        reader.seek(offsets[validEntryIndex + 1]);
+        return to != null && validKey.compareTo(to) >= 0 ? null : new BaseEntry<>(validKey, validValue);
     }
 
     private BaseEntry<String> readEntry(int fileNumber) throws IOException {
