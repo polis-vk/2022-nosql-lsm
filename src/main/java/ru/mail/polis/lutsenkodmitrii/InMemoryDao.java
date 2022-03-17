@@ -16,7 +16,6 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -29,13 +28,15 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     };
     private static final String DATA_FILE_NAME = "daoData";
     private static final String DATA_FILE_EXTENSION = ".txt";
-    private static final Map<Config, Integer> configs = new ConcurrentHashMap<>();
+    private static final Map<Config, Integer> configs = new HashMap<>();
     private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
     private final Config config;
+    private int currentFileNumber;
 
     public InMemoryDao(Config config) {
         this.config = config;
         configs.putIfAbsent(config, 1);
+        currentFileNumber = configs.get(config);
     }
 
     public class MergeIterator implements Iterator<BaseEntry<String>> {
@@ -53,7 +54,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             this.to = to;
             isFromNull = from == null;
             isToNull = to == null;
-            for (int i = 1; i < configs.get(config); i++) {
+            for (int i = 1; i < currentFileNumber; i++) {
                 Path path = config.basePath().resolve(DATA_FILE_NAME + i + DATA_FILE_EXTENSION);
                 BufferedReader bufferedReader;
                 bufferedReader = Files.newBufferedReader(path);
@@ -160,7 +161,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (data.containsKey(key)) {
             return data.get(key);
         }
-        for (int i = configs.get(config) - 1; i >= 1; i--) {
+        for (int i = currentFileNumber - 1; i >= 1; i--) {
             Path path = config.basePath().resolve(DATA_FILE_NAME + i + DATA_FILE_EXTENSION);
             BaseEntry<String> entry = DaoUtils.searchInFile(path, key);
             if (entry != null) {
@@ -220,8 +221,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private Path generateNextFilePath() {
-        int currentFileNumber = configs.get(config);
-        configs.put(config, currentFileNumber + 1);
-        return config.basePath().resolve(DATA_FILE_NAME + currentFileNumber + DATA_FILE_EXTENSION);
+        configs.put(config, ++currentFileNumber);
+        return config.basePath().resolve(DATA_FILE_NAME + (currentFileNumber - 1) + DATA_FILE_EXTENSION);
     }
 }
