@@ -9,7 +9,8 @@ public final class SearchUtility {
 
     public static int floorOffset(MappedByteBuffer readDataPage, MappedByteBuffer readIndexPage, ByteBuffer to) {
         int low = 0;
-        int high = readIndexPage.capacity() / Integer.BYTES - 1;
+        int max = readIndexPage.capacity() / Integer.BYTES - 1;
+        int high = max;
         boolean isLower = false;
         int offset = 0;
         int mid;
@@ -33,15 +34,20 @@ public final class SearchUtility {
             }
         }
         if (isLower) {
-            readIndexPage.position(high * Integer.BYTES);
-            offset = readIndexPage.getInt();
+            if (low > max) {
+                offset = readDataPage.capacity();
+            } else {
+                readIndexPage.position(low * Integer.BYTES);
+                offset = readIndexPage.getInt();
+            }
         }
         return offset;
     }
 
     public static int ceilOffset(MappedByteBuffer readDataPage, MappedByteBuffer readIndexPage, ByteBuffer from) {
         int low = 0;
-        int high = readIndexPage.capacity() / Integer.BYTES - 1;
+        int max = readIndexPage.capacity() / Integer.BYTES - 1;
+        int high = max;
         boolean isLower = false;
         int offset = 0;
         int mid = 0;
@@ -66,9 +72,13 @@ public final class SearchUtility {
                 return offset;
             }
         }
-        if (!isLower) {
-            readIndexPage.position(mid * Integer.BYTES);
-            offset = readIndexPage.getInt();
+        if (isLower) {
+            if (low > max) {
+                offset = readDataPage.capacity();
+            } else {
+                readIndexPage.position(low * Integer.BYTES);
+                offset = readIndexPage.getInt();
+            }
         }
         return offset;
     }
