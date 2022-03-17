@@ -42,38 +42,48 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        ByteBuffer minKey = null; //finding min key
-        for (BaseEntry<ByteBuffer> entry : buffer) {
-            if ((entry != null) && ((minKey == null) || (entry.key().compareTo(minKey) < 0))) {
-                minKey = entry.key();
+        ByteBuffer minKey = findMinKeyInBuffer();
+        BaseEntry<ByteBuffer> result = findNewestValueForKey(minKey);
+        refreshBuffer(minKey);
+
+        return result;
+    }
+
+    private void refreshBuffer(ByteBuffer minKey) {
+        for (int i = 0; i < buffer.size(); i++) {
+            if ((buffer.get(i) != null) && buffer.get(i).key().equals(minKey)) {
+                Iterator<BaseEntry<ByteBuffer>> it = iterators.get(i);
+                BaseEntry<ByteBuffer> entry = null;
+
+                while (it.hasNext()) {
+                    entry = it.next();
+                    if (!entry.key().equals(minKey)) {
+                        break;
+                    }
+                }
+                buffer.set(i, entry);
             }
         }
+    }
 
-        BaseEntry<ByteBuffer> result = null; //finding the freshest value that matches min key
+    private BaseEntry<ByteBuffer> findNewestValueForKey(ByteBuffer minKey) {
+        BaseEntry<ByteBuffer> result = null;
         for (BaseEntry<ByteBuffer> entry : buffer) {
             if ((entry != null) && entry.key().equals(minKey)) {
                 result = entry;
                 break;
             }
         }
-
-        for (int i = 0; i < buffer.size(); i++) { //removing all outdated values from the buffer
-            if ((buffer.get(i) != null) && buffer.get(i).key().equals(minKey)) {
-                Iterator<BaseEntry<ByteBuffer>> it = iterators.get(i);
-                BaseEntry<ByteBuffer> entry;
-                buffer.set(i, null);
-
-                while (it.hasNext()) {
-                    entry = it.next();
-
-                    if (!entry.key().equals(minKey)) {
-                        buffer.set(i, entry);
-                        break;
-                    }
-                }
-            }
-        }
         return result;
     }
 
+    private ByteBuffer findMinKeyInBuffer() {
+        ByteBuffer minKey = null;
+        for (BaseEntry<ByteBuffer> entry : buffer) {
+            if ((entry != null) && ((minKey == null) || (entry.key().compareTo(minKey) < 0))) {
+                minKey = entry.key();
+            }
+        }
+        return minKey;
+    }
 }

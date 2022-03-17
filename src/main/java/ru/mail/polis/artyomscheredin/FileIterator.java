@@ -1,7 +1,6 @@
 package ru.mail.polis.artyomscheredin;
 
 import ru.mail.polis.BaseEntry;
-import static ru.mail.polis.artyomscheredin.Utils.readEntry;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -11,9 +10,9 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
-    ByteBuffer dataBuffer;
-    ByteBuffer indexBuffer;
-    int upperBound;
+    private final ByteBuffer dataBuffer;
+    private final ByteBuffer indexBuffer;
+    private final int upperBound;
 
     public FileIterator(Utils.Pair<Path> paths, ByteBuffer from, ByteBuffer to) throws IOException {
         try (FileChannel dataChannel = FileChannel.open(paths.dataPath());
@@ -36,18 +35,18 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
             int offset = indexBuffer.getInt(mid * Integer.BYTES);
             int keySize = dataBuffer.getInt(offset);
 
-            ByteBuffer curKey = dataBuffer.slice(offset + Integer.BYTES,  keySize);
+            ByteBuffer curKey = dataBuffer.slice(offset + Integer.BYTES, keySize);
             if (curKey.compareTo(key) < 0) {
                 low = ++mid;
             } else if (curKey.compareTo(key) > 0) {
                 high = mid - 1;
             } else if (curKey.compareTo(key) == 0) {
-                return mid*Integer.BYTES;
+                return mid * Integer.BYTES;
             }
         }
         indexBuffer.rewind();
         dataBuffer.rewind();
-        return mid*Integer.BYTES;
+        return mid * Integer.BYTES;
     }
 
     @Override
@@ -60,6 +59,6 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        return readEntry(dataBuffer, indexBuffer.getInt());
+        return Utils.readEntry(dataBuffer, indexBuffer.getInt());
     }
 }

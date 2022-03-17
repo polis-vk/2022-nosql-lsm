@@ -156,34 +156,6 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
 
         return readEntry(dataBuffer, offset);
-
-/*
-        int offset = 0;
-        while (dataBuffer.remaining() > 0) {
-            int keySize = dataBuffer.getInt();
-            offset += Integer.BYTES;
-
-            if (keySize != key.remaining()) {
-                dataBuffer.position(offset + keySize);
-                int valueSize = dataBuffer.getInt();
-                dataBuffer.position(offset + valueSize);
-                continue;
-            }
-
-            ByteBuffer curKey = dataBuffer.slice(offset, keySize);
-            dataBuffer.position(offset + keySize);
-            offset += keySize;
-
-            int valueSize = dataBuffer.getInt();
-            offset += Integer.BYTES;
-            if (curKey.compareTo(key) == 0) {
-                ByteBuffer curValue = dataBuffer.slice(offset, valueSize);
-                return new BaseEntry<>(curKey, curValue);
-            }
-            dataBuffer.position(offset + valueSize);
-            offset += valueSize;
-        }
-        return null;*/
     }
 
     private int findOffset(ByteBuffer indexBuffer, ByteBuffer dataBuffer, ByteBuffer key) {
@@ -258,20 +230,9 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
         }
 
-        try (RandomAccessFile file = new RandomAccessFile(config.basePath().resolve(META_INFO_FILE_NAME + EXTENSION).toFile(), "rw")) {
+        try (RandomAccessFile file = new RandomAccessFile(config.basePath()
+                .resolve(META_INFO_FILE_NAME + EXTENSION).toFile(), "rw")) {
             file.writeInt(index);
-        }
-    }
-
-    private void writeCurrentIndex(int index) throws IOException {
-        Path pathToReadMetaInfo = config.basePath().resolve(META_INFO_FILE_NAME + EXTENSION);
-        try (FileChannel infoChannel = FileChannel.open(pathToReadMetaInfo,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.READ,
-                StandardOpenOption.WRITE,
-                StandardOpenOption.TRUNCATE_EXISTING)) {
-            ByteBuffer writeInfoBuffer = infoChannel.map(FileChannel.MapMode.READ_WRITE, 0, Integer.BYTES);
-            writeInfoBuffer.putInt(index);
         }
     }
 
