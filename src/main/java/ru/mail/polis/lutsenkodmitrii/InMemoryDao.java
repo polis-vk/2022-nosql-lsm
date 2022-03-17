@@ -74,7 +74,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 }
             }
             inMemoryIterator = getInMemoryDataIterator(from, to);
-            if (inMemoryIterator.hasNext()) {
+            if (inMemoryIterator.hasNext() && !filesList.isEmpty()) {
                 BaseEntry<String> entry = inMemoryIterator.next();
                 tempData.put(entry.key(), entry);
                 tempDataPriorities.put(entry.key(), Integer.MAX_VALUE);
@@ -84,11 +84,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
         @Override
         public boolean hasNext() {
-            return !tempData.isEmpty();
+            return !tempData.isEmpty() || inMemoryIterator.hasNext();
         }
 
         @Override
         public BaseEntry<String> next() {
+            if (filesList.isEmpty()) {
+                return inMemoryIterator.next();
+            }
             BaseEntry<String> firstEntry = tempData.pollFirstEntry().getValue();
             try {
                 BaseEntry<String> newEntry;
