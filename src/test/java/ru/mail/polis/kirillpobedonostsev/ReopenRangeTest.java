@@ -1,5 +1,10 @@
-package ru.mail.polis;
+package ru.mail.polis.kirillpobedonostsev;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.BaseTest;
+import ru.mail.polis.Dao;
+import ru.mail.polis.DaoTest;
+import ru.mail.polis.Entry;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
@@ -146,50 +151,26 @@ public class ReopenRangeTest extends BaseTest {
         assertSame(dao.all(), entries2);
     }
 
-    /**
-     * <p>
-     * This test check iterator correctness.
-     * <br/>
-     * Such files will be created for
-     * entriesPerFile = 4, numberOfFiles = 4, offsetIncrease = 2
-     * </p>
-     * file 0: <br>
-     * K 0 1 2 3 <br/>
-     * V 0 1 2 3 <br/>
-     * File 1: <br/>
-     * K 2 3 4 5 <br/>
-     * V 0 1 2 3 <br/>
-     * file 0: <br/>
-     * K 4 5 6 7 <br/>
-     * V 0 1 2 3 <br/>
-     * File 1: <br/>
-     * K 6 7 8 9 <br/>
-     * V 0 1 2 3 <br/>
-     *
-     * @param dao - Dao implementation
-     */
     @DaoTest(stage = 3)
     void testManyFiles(Dao<String, Entry<String>> dao) throws IOException {
-        int offset = 0;
-        int entriesPerFile = 100;
-        int numberOfFiles = 100;
-        int offsetIncrease = 50;
+        int entriesPerFile = 4;
+        int numberOfFiles = 4;
         List<Entry<String>> entries;
-        for (int i = 0; i < numberOfFiles; i++) {
-            entries = entries(entriesPerFile, offset);
+        for (int i = 0; i < numberOfFiles / 2; i++) {
+            entries = entries("k", "old", entriesPerFile, i * entriesPerFile);
             entries.forEach(dao::upsert);
             dao.close();
-            offset += offsetIncrease;
             dao = DaoFactory.Factory.reopen(dao);
         }
 
-        entries = entries(offsetIncrease, offset);
-        entries.forEach(dao::upsert);
-        dao.close();
+        for (int i = 0; i < numberOfFiles / 2; i++) {
+            entries = entries("k", "new", entriesPerFile, i * entriesPerFile);
+            entries.forEach(dao::upsert);
+            dao.close();
+            dao = DaoFactory.Factory.reopen(dao);
+        }
 
-        dao = DaoFactory.Factory.reopen(dao);
-        entries = entries(numberOfFiles * (entriesPerFile - offsetIncrease) + offsetIncrease, 0, offsetIncrease);
-
+        entries = entries("k", "new", entriesPerFile * numberOfFiles / 2);
         assertSame(dao.all(), entries);
     }
 
@@ -199,10 +180,10 @@ public class ReopenRangeTest extends BaseTest {
             public Entry<String> get(int index) {
                 checkInterrupted();
                 if (index >= count || index < 0) {
-                    throw new IndexOutOfBoundsException("Index is " + index + ", size is " + count);
+                    throw new IndexOutOfBoundsException("Index is " + (index + offset) + ", size is " + count);
                 }
                 String paddedIdx = String.format("%010d", index + offset);
-                String value = String.format("%010d", index);
+                String value = String.format("%010d", index + offset);
                 return new BaseEntry<>(keyPrefix + paddedIdx, valuePrefix + value);
             }
 
@@ -211,30 +192,6 @@ public class ReopenRangeTest extends BaseTest {
                 return count;
             }
         };
-    }
-
-    public List<Entry<String>> entries(String keyPrefix, String valuePrefix, int count, int offset, int period) {
-        return new AbstractList<>() {
-            @Override
-            public Entry<String> get(int index) {
-                checkInterrupted();
-                if (index >= count || index < 0) {
-                    throw new IndexOutOfBoundsException("Index is " + index + ", size is " + count);
-                }
-                String paddedIdx = String.format("%010d", index);
-                String value = String.format("%010d", (index + offset) % period);
-                return new BaseEntry<>(keyPrefix + paddedIdx, valuePrefix + value);
-            }
-
-            @Override
-            public int size() {
-                return count;
-            }
-        };
-    }
-
-    public List<Entry<String>> entries(int count, int offset, int period) {
-        return entries("k", "v", count, offset, period);
     }
 
     public List<Entry<String>> entries(int count, int offset) {
