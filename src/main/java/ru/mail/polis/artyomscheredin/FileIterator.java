@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 import static ru.mail.polis.artyomscheredin.Utils.readEntry;
 
@@ -25,7 +27,7 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
         int lowerBound = (from == null) ? 0 : findOffset(indexBuffer, dataBuffer, from);
         upperBound = (to == null) ? indexBuffer.limit() : findOffset(indexBuffer, dataBuffer, to);
-        pointer = indexBuffer.getInt(lowerBound);
+        indexBuffer.position(lowerBound);
     }
 
     private static int findOffset(ByteBuffer indexBuffer, ByteBuffer dataBuffer, ByteBuffer key) {
@@ -39,7 +41,7 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
             ByteBuffer curKey = dataBuffer.slice(offset + Integer.BYTES,  keySize);
             if (curKey.compareTo(key) < 0) {
-                low = mid + 1;
+                low = ++mid;
             } else if (curKey.compareTo(key) > 0) {
                 high = mid - 1;
             } else if (curKey.compareTo(key) == 0) {
@@ -53,13 +55,14 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
     @Override
     public boolean hasNext() {
-        return pointer > upperBound;
+        return indexBuffer.position() < upperBound;
     }
 
     @Override
     public BaseEntry<ByteBuffer> next() {
-        BaseEntry<ByteBuffer> temp = readEntry(dataBuffer, pointer);
-        pointer = indexBuffer.getInt();
-        return temp;
+        if (!hasNext()) {
+            throw new NoSuchElementException();
+        }
+        return readEntry(dataBuffer, indexBuffer.getInt());
     }
 }

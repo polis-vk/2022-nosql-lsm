@@ -58,7 +58,7 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         }
 
         for (int i = 0; i < buffer.size(); i++) { //removing all outdated values from the buffer
-            if (buffer.get(i).key().equals(minKey)) {
+            if ((buffer.get(i) != null) && buffer.get(i).key().equals(minKey)) {
                 Iterator<BaseEntry<ByteBuffer>> it = iterators.get(i);
                 BaseEntry<ByteBuffer> entry;
                 buffer.set(i, null);
