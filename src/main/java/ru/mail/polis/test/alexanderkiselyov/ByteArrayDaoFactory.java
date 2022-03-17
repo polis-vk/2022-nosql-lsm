@@ -1,20 +1,18 @@
 package ru.mail.polis.test.alexanderkiselyov;
 
 import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.alexanderkiselyov.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 2, week = 1)
+@DaoFactory
 public class ByteArrayDaoFactory implements DaoFactory.Factory<byte[], BaseEntry<byte[]>> {
     @Override
-    public Dao<byte[], BaseEntry<byte[]>> createDao(Config config) throws IOException {
-        return new InMemoryDao(config);
+    public Dao<byte[], BaseEntry<byte[]>> createDao() {
+        return new InMemoryDao();
     }
 
     @Override
