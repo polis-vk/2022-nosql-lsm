@@ -159,7 +159,13 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
             Files.deleteIfExists(getDataPath());
             Files.createFile(getDataPath());
-            MemorySegment page = MemorySegment.mapFile(getDataPath(), 0, size, FileChannel.MapMode.READ_WRITE, writeScope);
+            MemorySegment page =
+                        MemorySegment.mapFile(
+                                getDataPath(),
+                                0,
+                                size,
+                                FileChannel.MapMode.READ_WRITE,
+                                writeScope);
 
             long offset = 0;
             for (Entry<MemorySegment> value : storage.values()) {
