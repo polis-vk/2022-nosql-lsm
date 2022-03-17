@@ -1,22 +1,19 @@
 package ru.mail.polis.artyomscheredin;
 
 import ru.mail.polis.BaseEntry;
+import static ru.mail.polis.artyomscheredin.Utils.readEntry;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
-
-import static ru.mail.polis.artyomscheredin.Utils.readEntry;
 
 public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
     ByteBuffer dataBuffer;
     ByteBuffer indexBuffer;
     int upperBound;
-    int pointer = 0;
 
     public FileIterator(Utils.Pair<Path> paths, ByteBuffer from, ByteBuffer to) throws IOException {
         try (FileChannel dataChannel = FileChannel.open(paths.dataPath());
