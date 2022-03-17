@@ -12,9 +12,10 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
@@ -52,7 +53,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             memoryIterator = pairs.subMap(from, to).values().iterator();
         }
         Iterator<BaseEntry<byte[]>> diskIterator = DiskIterator(from, to);
-        return new MergedIterator(memoryIterator, diskIterator);
+        return new MergeIterator(memoryIterator, diskIterator);
     }
 
     @Override
@@ -79,19 +80,13 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (!Files.exists(newIndexPath)) {
             Files.createFile(newIndexPath);
         }
-        LinkedHashMap<byte[], BaseEntry<byte[]>> sortedPairs = pairs
-                .entrySet()
-                .stream()
-                .sorted(NavigableMap.Entry.comparingByKey(Arrays::compare))
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
-        SaveData(newFilePath, sortedPairs);
-        SaveIndexes(newIndexPath, sortedPairs);
+        SaveData(newFilePath, pairs);
+        SaveIndexes(newIndexPath, pairs);
         filesCount++;
-        sortedPairs.clear();
         pairs.clear();
     }
 
-    private void SaveData(Path path, LinkedHashMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
+    private void SaveData(Path path, NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
         ByteBuffer intBuffer = ByteBuffer.allocate(Integer.BYTES);
         try (FileOutputStream fos = new FileOutputStream(String.valueOf(path));
              BufferedOutputStream writer = new BufferedOutputStream(fos, bufferSize)) {
@@ -108,7 +103,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         }
     }
 
-    private void SaveIndexes(Path indexPath, LinkedHashMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
+    private void SaveIndexes(Path indexPath, NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
         long size = 0;
         ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
         try (FileOutputStream fos = new FileOutputStream(String.valueOf(indexPath));
@@ -244,68 +239,6 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
                 BaseEntry<byte[]> current = GetCurrent(j, currentFile, currentIndexFile);
                 diskPairs.putIfAbsent(current.key(), current);
             }
-        }
-    }
-
-    private static class MergedIterator implements Iterator<BaseEntry<byte[]>> {
-        private final Iterator<BaseEntry<byte[]>> memoryIterator;
-        private final Iterator<BaseEntry<byte[]>> diskIterator;
-        private BaseEntry<byte[]> currentMemoryEntry;
-        private BaseEntry<byte[]> currentDiskEntry;
-
-        public MergedIterator(Iterator<BaseEntry<byte[]>> memoryIterator, Iterator<BaseEntry<byte[]>> diskIterator) {
-            this.memoryIterator = memoryIterator;
-            this.diskIterator = diskIterator;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return currentMemoryEntry != null
-                    || currentDiskEntry != null
-                    || memoryIterator.hasNext()
-                    || diskIterator.hasNext();
-        }
-
-        @Override
-        public BaseEntry<byte[]> next() {
-            if (!hasNext()) {
-                throw new NoSuchElementException();
-            }
-            BaseEntry<byte[]> buffer;
-            if (memoryIterator.hasNext() && diskIterator.hasNext()) {
-                if (currentMemoryEntry == null) {
-                    currentMemoryEntry = memoryIterator.next();
-                }
-                if (currentDiskEntry == null) {
-                    currentDiskEntry = diskIterator.next();
-                }
-                if (Arrays.compare(currentMemoryEntry.key(), currentDiskEntry.key()) > 0) {
-                    buffer = currentDiskEntry;
-                    currentDiskEntry = null;
-                } else {
-                    buffer = currentMemoryEntry;
-                    currentMemoryEntry = null;
-                }
-            } else if (memoryIterator.hasNext()) {
-                if (currentMemoryEntry == null) {
-                    currentMemoryEntry = memoryIterator.next();
-                }
-                buffer = currentMemoryEntry;
-                currentMemoryEntry = null;
-            } else if (diskIterator.hasNext()) {
-                if (currentDiskEntry == null) {
-                    currentDiskEntry = diskIterator.next();
-                }
-                buffer = currentDiskEntry;
-                currentDiskEntry = null;
-            } else if (currentMemoryEntry != null) {
-                buffer = currentMemoryEntry;
-                currentMemoryEntry = null;
-            } else {
-                buffer = currentDiskEntry;
-                currentDiskEntry = null;
-            }
-            return buffer;
         }
     }
 }
