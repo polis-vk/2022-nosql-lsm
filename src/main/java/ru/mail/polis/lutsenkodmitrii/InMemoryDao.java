@@ -72,6 +72,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     firstEntry = DaoUtils.ceilKey(path, bufferedReader, from,
                             fileMinKey.length() + fileMaxKey.length());
                 }
+
                 if (firstEntry != null && (isToNull || firstEntry.key().compareTo(to) < 0)) {
                     tempData.put(firstEntry.key(), firstEntry);
                     tempDataPriorities.put(firstEntry.key(), i);
