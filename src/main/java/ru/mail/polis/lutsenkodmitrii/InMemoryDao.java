@@ -96,11 +96,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         public BaseEntry<String> next() {
             BaseEntry<String> firstEntry = tempData.pollFirstEntry().getValue();
             try {
+                BaseEntry<String> newEntry;
                 for (FileInfo fileInfo : filesList) {
                     if (!fileInfo.lastReadElement.equals(firstEntry.key())) {
                         continue;
                     }
-                    BaseEntry<String> newEntry = DaoUtils.readEntry(fileInfo.bufferedReader);
+                    newEntry = DaoUtils.readEntry(fileInfo.bufferedReader);
                     if (newEntry == null) {
                         continue;
                     }
@@ -112,21 +113,25 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     fileInfo.lastReadElement = newEntry.key();
                 }
                 if (inMemoryIterator.hasNext() && inMemoryLastKey.equals(firstEntry.key())) {
-                    BaseEntry<String> newEntry = inMemoryIterator.next();
+                    newEntry = inMemoryIterator.next();
                     tempData.put(newEntry.key(), newEntry);
                     tempDataPriorities.put(newEntry.key(), Integer.MAX_VALUE);
                     inMemoryLastKey = newEntry.key();
                 }
-                if (tempData.isEmpty() || (!isToNull && tempData.firstKey().compareTo(to) >= 0)) {
-                    tempData.clear();
-                    for (FileInfo fileInfo : filesList) {
-                        fileInfo.bufferedReader.close();
-                    }
-                }
+                closeIfHasNoNext();
             } catch (IOException e) {
                 throw new RuntimeException("Reading next fail", e);
             }
             return firstEntry;
+        }
+
+        private void closeIfHasNoNext() throws IOException {
+            if (tempData.isEmpty() || (!isToNull && tempData.firstKey().compareTo(to) >= 0)) {
+                tempData.clear();
+                for (FileInfo fileInfo : filesList) {
+                    fileInfo.bufferedReader.close();
+                }
+            }
         }
     }
 
