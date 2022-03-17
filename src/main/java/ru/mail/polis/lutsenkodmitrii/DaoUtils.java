@@ -16,11 +16,12 @@ public final class DaoUtils {
     }
 
     public static char[] intToCharArray(int k) {
+        k = (k + 1);
         char[] writeBuffer = new char[Integer.BYTES];
         writeBuffer[0] = (char) (k >>> 24);
         writeBuffer[1] = (char) (k >>> 16);
         writeBuffer[2] = (char) (k >>> 8);
-        writeBuffer[3] = (char) (k >>> 0);
+        writeBuffer[3] = (char) (k);
         return writeBuffer;
     }
 
@@ -32,7 +33,7 @@ public final class DaoUtils {
         if (ch1 == -1 || ch2 == -1 || ch3 == -1 || ch4 == -1) {
             return -1;
         }
-        return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
+        return (ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4) - 1;
     }
 
     public static String readKey(BufferedReader bufferedReader) throws IOException {
