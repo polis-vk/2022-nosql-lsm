@@ -149,14 +149,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
                      Files.newOutputStream(pathToOffsets, writeOptions)
              ))) {
-            int bytesWrittenTotal = 0;
             Entry<String> entry = dataIterator.next();
             dataStream.writeUTF(entry.key());
             dataStream.writeUTF(entry.value());
             metaStream.writeInt(dataMap.size());
-            int currentBytes = dataStream.size() - bytesWrittenTotal;
+            int currentBytes = dataStream.size();
             int currentRepeats = 1;
-            bytesWrittenTotal = dataStream.size();
+            int bytesWrittenTotal = dataStream.size();
             while (dataIterator.hasNext()) {
                 entry = dataIterator.next();
                 dataStream.writeUTF(entry.key());
