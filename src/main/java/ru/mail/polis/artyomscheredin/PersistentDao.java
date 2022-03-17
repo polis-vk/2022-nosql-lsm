@@ -5,29 +5,30 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
-import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.regex.Pattern;
 
 import static ru.mail.polis.artyomscheredin.Utils.readEntry;
 
 public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String DATA_FILE_NAME = "data";
     private static final String INDEXES_FILE_NAME = "indexes";
+    private static final String META_INFO_FILE_NAME = "meta";
     private static final String EXTENSION = ".txt";
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -35,38 +36,43 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             new ConcurrentSkipListMap<>(ByteBuffer::compareTo);
     private final Config config;
 
-    public PersistentDao(Config config) {
+    public PersistentDao(Config config) throws IOException {
         if (config == null) {
             throw new IllegalArgumentException();
         }
         this.config = config;
+        readPrevIndex();
     }
 
     @Override
-    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        if (inMemoryData.isEmpty()) {
-            return Collections.emptyIterator();
-        }
-
+    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
         lock.readLock().lock();
         try {
+            List<Iterator<BaseEntry<ByteBuffer>>> iteratorsList = new ArrayList<>();
+
             List<Utils.Pair<Path>> paths = getDataPathsToRead();
-            try {
-                return new FileIterator(paths.get(paths.size() - 1), from, to);
-            } catch (IOException e) {
-                return Collections.emptyIterator();
+            for (Utils.Pair<Path> path : paths) {
+                iteratorsList.add(new FileIterator(path, from, to));
             }
-         /*   if ((from == null) && (to == null)) {
-                return inMemoryData.values().iterator();
-            } else if (from == null) {
-                return inMemoryData.headMap(to).values().iterator();
-            } else if (to == null) {
-                return inMemoryData.tailMap(from).values().iterator();
+            if (!inMemoryData.isEmpty()) {
+                iteratorsList.add(getInMemoryIterator(from, to));
             }
-            return inMemoryData.subMap(from, to).values().iterator();*/
+
+            return new MergeIterator(iteratorsList);
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    private Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(ByteBuffer from, ByteBuffer to) {
+        if ((from == null) && (to == null)) {
+            return inMemoryData.values().iterator();
+        } else if (from == null) {
+            return inMemoryData.headMap(to).values().iterator();
+        } else if (to == null) {
+            return inMemoryData.tailMap(from).values().iterator();
+        }
+        return inMemoryData.subMap(from, to).values().iterator();
     }
 
     @Override
@@ -79,15 +85,10 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
 
             List<Utils.Pair<Path>> paths = getDataPathsToRead();
-            if (paths == null) {
-                return null;
-            }
 
-            Utils.Pair<Path> curPath;
-            ListIterator<Utils.Pair<Path>> listIterator = paths.listIterator(paths.size());
-            while (listIterator.hasPrevious()) {
-                curPath = listIterator.previous();
-                BaseEntry<ByteBuffer> entry = getEntryIfExists(curPath, key);
+            Collections.reverse(paths);
+            for (Utils.Pair<Path> path : paths) {
+                BaseEntry<ByteBuffer> entry = getEntryIfExists(path, key);
                 if (entry != null) {
                     return entry;
                 }
@@ -98,30 +99,15 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
     }
 
-    private List<Utils.Pair<Path>> getDataPathsToRead() {
+    private List<Utils.Pair<Path>> getDataPathsToRead() throws IOException {
+        int index = readPrevIndex();
         List<Utils.Pair<Path>> list = new LinkedList<>();
-        File[] files = config.basePath().toFile().listFiles();
-        if ((files == null) || (files.length == 0)) {
-            return null;
-        }
-
-        Pattern pattern = Pattern.compile(DATA_FILE_NAME + "[0-9]+" + EXTENSION);
-        for (File el : files) {
-            if (pattern.matcher(el.getName()).matches()) {
-                int index = getIndex(el);
-                Path indexPath = config.basePath().resolve(INDEXES_FILE_NAME + index + EXTENSION);
-                Utils.Pair<Path> curPaths = new Utils.Pair<Path>(el.toPath(), indexPath);
-                list.add(curPaths);
-            }
+        for (int i = 1; i <= index; i++) {
+            Utils.Pair<Path> curPaths = new Utils.Pair<Path>(config.basePath().resolve(DATA_FILE_NAME + i + EXTENSION),
+                    config.basePath().resolve(INDEXES_FILE_NAME + i + EXTENSION));
+            list.add(curPaths);
         }
         return list;
-    }
-
-    private int getIndex(File file) {
-        String temp = file.toString();
-        temp = temp.split(DATA_FILE_NAME)[1];
-        temp = temp.split(EXTENSION)[0];
-        return Integer.parseInt(temp);
     }
 
     @Override
@@ -164,7 +150,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return null;
         }
 
-        int offset = Utils.findOffset(indexBuffer, dataBuffer, key, Utils.Strategy.ACCURATE_KEY_REQUIRED);
+        int offset = findOffset(indexBuffer, dataBuffer, key);
         if (offset == -1) {
             return null;
         }
@@ -200,18 +186,42 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         return null;*/
     }
 
+    private int findOffset(ByteBuffer indexBuffer, ByteBuffer dataBuffer, ByteBuffer key) {
+        int offset = 0;
+        int low = 0;
+        int high = indexBuffer.remaining() / Integer.BYTES - 1;
+        while (low <= high) {
+            int mid = low + ((high - low) / 2);
+            offset = indexBuffer.getInt(mid * Integer.BYTES);
+            int keySize = dataBuffer.getInt(offset);
 
-
-    private int getFreeIndex() {
-        File[] files = config.basePath().toFile().listFiles();
-        int counter = 1;
-        Pattern pattern = Pattern.compile(DATA_FILE_NAME + "[0-9]+" + EXTENSION);
-        for (File el : files) {
-            if (pattern.matcher(el.getName()).matches()) {
-                counter++;
+            ByteBuffer curKey = dataBuffer.slice(offset + Integer.BYTES, keySize);
+            if (curKey.compareTo(key) < 0) {
+                low = mid + 1;
+            } else if (curKey.compareTo(key) > 0) {
+                high = mid - 1;
+            } else if (curKey.compareTo(key) == 0) {
+                return offset;
             }
         }
-        return counter;
+        indexBuffer.rewind();
+        dataBuffer.rewind();
+        return -1;
+    }
+
+    private int readPrevIndex() throws IOException {
+        Path pathToReadMetaInfo = config.basePath().resolve(META_INFO_FILE_NAME + EXTENSION);
+        if (!Files.exists(pathToReadMetaInfo)) {
+            return 0;
+        }
+        try (FileChannel infoChannel = FileChannel.open(pathToReadMetaInfo,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.READ)) {
+
+            ByteBuffer infoBuffer = infoChannel.map(FileChannel.MapMode.READ_ONLY, 0, Integer.BYTES);
+            infoChannel.close();
+            return infoBuffer.getInt();
+        }
     }
 
     private void store(SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
@@ -219,9 +229,11 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return;
         }
 
-        int index = getFreeIndex();
+        int index = readPrevIndex() + 1;
+
         Path pathToWriteData = config.basePath().resolve(DATA_FILE_NAME + index + EXTENSION);
         Path pathToWriteIndexes = config.basePath().resolve(INDEXES_FILE_NAME + index + EXTENSION);
+
         try (FileChannel dataChannel = FileChannel.open(pathToWriteData,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.READ,
@@ -245,6 +257,22 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 writeDataBuffer.put(el.value());
             }
         }
+
+        try (RandomAccessFile file = new RandomAccessFile(config.basePath().resolve(META_INFO_FILE_NAME + EXTENSION).toFile(), "rw")) {
+            file.writeInt(index);
+        }
+    }
+
+    private void writeCurrentIndex(int index) throws IOException {
+        Path pathToReadMetaInfo = config.basePath().resolve(META_INFO_FILE_NAME + EXTENSION);
+        try (FileChannel infoChannel = FileChannel.open(pathToReadMetaInfo,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.READ,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.TRUNCATE_EXISTING)) {
+            ByteBuffer writeInfoBuffer = infoChannel.map(FileChannel.MapMode.READ_WRITE, 0, Integer.BYTES);
+            writeInfoBuffer.putInt(index);
+        }
     }
 
     private ByteBuffer mapChannelData(FileChannel channel) throws IOException {
@@ -258,6 +286,6 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     private ByteBuffer mapChannelIndex(FileChannel channel) throws IOException {
-        return channel.map(FileChannel.MapMode.READ_WRITE, 0, inMemoryData.size() * Integer.BYTES);
+        return channel.map(FileChannel.MapMode.READ_WRITE, 0, (long) inMemoryData.size() * Integer.BYTES);
     }
 }
