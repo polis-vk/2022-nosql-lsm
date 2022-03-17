@@ -16,6 +16,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -28,7 +29,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     };
     private static final String DATA_FILE_NAME = "daoData";
     private static final String DATA_FILE_EXTENSION = ".txt";
-    private static final Map<Config, Integer> configs = new HashMap<>();
+    private static final Map<Config, Integer> configs = new ConcurrentHashMap<>();
     private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
     private final Config config;
 
