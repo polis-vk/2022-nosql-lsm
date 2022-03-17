@@ -187,8 +187,15 @@ public class StorageSystem {
         ) {
             int entrysC = bufferForIndexes.capacity() / BYTES_IN_LONG;
 
-            int pos = binarySearch(bufferForIndexes, memChannel, entrysC, from);
+            int pos = binarySearch(bufferForIndexes, memChannel, entrysC - 1, from);
             BaseEntry<ByteBuffer> entry;
+
+            // Граничные случаи с первым и последним элементом
+            if ((pos == 0 || pos == entrysC - 2) && pos + 1 < entrysC && from != null
+                    && getEntry(bufferForIndexes, memChannel, pos).key().compareTo(from) < 0) {
+                pos++;
+            }
+
             if (from == null || getEntry(bufferForIndexes, memChannel, pos).key().compareTo(from) >= 0) {
                 while (pos < entrysC) {
                     entry = getEntry(bufferForIndexes, memChannel, pos);
