@@ -21,7 +21,7 @@ import java.util.stream.Stream;
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
     private final Config config;
-    private static final int bufferSize = 200 * Character.BYTES;
+    private static final int BUFFER_SIZE = 200 * Character.BYTES;
     private static final String FILE_NAME = "myData";
     private static final String FILE_EXTENSION = ".txt";
     private static final String FILE_INDEX_NAME = "myIndex";
@@ -52,7 +52,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         } else {
             memoryIterator = pairs.subMap(from, to).values().iterator();
         }
-        Iterator<BaseEntry<byte[]>> diskIterator = DiskIterator(from, to);
+        Iterator<BaseEntry<byte[]>> diskIterator = diskIterator(from, to);
         return new MergeIterator(memoryIterator, diskIterator);
     }
 
@@ -62,7 +62,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (value != null && Arrays.equals(value.key(), key)) {
             return value;
         }
-        return FindInFiles(key);
+        return findInFiles(key);
     }
 
     @Override
@@ -80,16 +80,16 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (!Files.exists(newIndexPath)) {
             Files.createFile(newIndexPath);
         }
-        SaveData(newFilePath, pairs);
-        SaveIndexes(newIndexPath, pairs);
+        saveData(newFilePath, pairs);
+        saveIndexes(newIndexPath, pairs);
         filesCount++;
         pairs.clear();
     }
 
-    private void SaveData(Path path, NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
+    private void saveData(Path path, NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
         ByteBuffer intBuffer = ByteBuffer.allocate(Integer.BYTES);
         try (FileOutputStream fos = new FileOutputStream(String.valueOf(path));
-             BufferedOutputStream writer = new BufferedOutputStream(fos, bufferSize)) {
+             BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
             for (var pair : sortedPairs.entrySet()) {
                 intBuffer.putInt(pair.getKey().length);
                 writer.write(intBuffer.array());
@@ -103,11 +103,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         }
     }
 
-    private void SaveIndexes(Path indexPath, NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
+    private void saveIndexes(Path indexPath, NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
         long size = 0;
         ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
         try (FileOutputStream fos = new FileOutputStream(String.valueOf(indexPath));
-             BufferedOutputStream writer = new BufferedOutputStream(fos, bufferSize)) {
+             BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
             longBuffer.putLong(sortedPairs.size());
             writer.write(longBuffer.array());
             longBuffer.clear();
@@ -123,15 +123,15 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         }
     }
 
-    private BaseEntry<byte[]> FindInFiles(byte[] key) throws IOException {
+    private BaseEntry<byte[]> findInFiles(byte[] key) throws IOException {
         for (long i = filesCount - 1; i >= 0; i--) {
             Path currentFile = config.basePath().resolve(FILE_NAME + i + FILE_EXTENSION);
             Path currentIndexFile = config.basePath().resolve(FILE_INDEX_NAME + i + FILE_INDEX_EXTENSION);
             long low = 0;
-            long high = IndexSize(currentIndexFile) - 1;
+            long high = indexSize(currentIndexFile) - 1;
             long mid = (low + high) / 2;
             while (low <= high) {
-                BaseEntry<byte[]> current = GetCurrent(mid, currentFile, currentIndexFile);
+                BaseEntry<byte[]> current = getCurrent(mid, currentFile, currentIndexFile);
                 int compare = Arrays.compare(key, current.key());
                 if (compare > 0) {
                     low = mid + 1;
@@ -146,11 +146,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         return null;
     }
 
-    private long IndexSize(Path indexPath) throws IOException {
+    private long indexSize(Path indexPath) throws IOException {
         long size;
         ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
         try (FileInputStream fis = new FileInputStream(String.valueOf(indexPath));
-             BufferedInputStream reader = new BufferedInputStream(fis, bufferSize)) {
+             BufferedInputStream reader = new BufferedInputStream(fis, BUFFER_SIZE)) {
             buffer.put(reader.readNBytes(Long.BYTES));
             buffer.flip();
             size = buffer.getLong();
@@ -158,7 +158,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         return size;
     }
 
-    private BaseEntry<byte[]> GetCurrent(long mid, Path path, Path indexPath) throws IOException {
+    private BaseEntry<byte[]> getCurrent(long mid, Path path, Path indexPath) throws IOException {
         long position;
         ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
         try (FileInputStream fis = new FileInputStream(String.valueOf(indexPath))) {
@@ -185,60 +185,66 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         return new BaseEntry<>(currentKey, currentValue);
     }
 
-    private Iterator<BaseEntry<byte[]>> DiskIterator(byte[] from, byte[] to) throws IOException {
+    private Iterator<BaseEntry<byte[]>> diskIterator(byte[] from, byte[] to) throws IOException {
         NavigableMap<byte[], BaseEntry<byte[]>> diskPairs = new ConcurrentSkipListMap<>(Arrays::compare);
-        AddPairsFromDisk(from, to, diskPairs);
-        return diskPairs.values().iterator();
-    }
-
-    private void AddPairsFromDisk(byte[] from, byte[] to, NavigableMap<byte[], BaseEntry<byte[]>> diskPairs) throws IOException {
         for (long i = filesCount - 1; i >= 0; i--) {
             Path currentFile = config.basePath().resolve(FILE_NAME + i + FILE_EXTENSION);
             Path currentIndexFile = config.basePath().resolve(FILE_INDEX_NAME + i + FILE_INDEX_EXTENSION);
-            long low = 0;
-            long high = IndexSize(currentIndexFile) - 1;
-            long fromIndex = low;
-            long toIndex = high;
-            long mid = (low + high) / 2;
-            if (from != null) {
-                while (low <= high) {
-                    BaseEntry<byte[]> current = GetCurrent(mid, currentFile, currentIndexFile);
-                    int compare = Arrays.compare(from, current.key());
-                    if (compare > 0) {
-                        low = mid + 1;
-                        fromIndex = low;
-                    } else if (compare < 0) {
-                        high = mid - 1;
-                    } else {
-                        fromIndex = mid;
-                        break;
-                    }
-                    mid = (low + high) / 2;
+            addPairsFromDisk(from, to, diskPairs, currentFile, currentIndexFile);
+        }
+        return diskPairs.values().iterator();
+    }
+
+    private void addPairsFromDisk(byte[] from, byte[] to, NavigableMap<byte[], BaseEntry<byte[]>> diskPairs,
+                                  Path currentFile, Path currentIndexFile) throws IOException {
+        long low = 0;
+        long high = indexSize(currentIndexFile) - 1;
+        long fromIndex = low;
+        long toIndex = high;
+        long mid = (low + high) / 2;
+        if (from != null) {
+            while (low <= high) {
+                BaseEntry<byte[]> current = getCurrent(mid, currentFile, currentIndexFile);
+                int compare = Arrays.compare(from, current.key());
+                if (compare > 0) {
+                    low = mid + 1;
+                    fromIndex = low;
+                } else if (compare < 0) {
+                    high = mid - 1;
+                } else {
+                    fromIndex = mid;
+                    break;
                 }
-            }
-            if (to != null) {
-                low = fromIndex;
-                high = toIndex;
                 mid = (low + high) / 2;
-                while (low <= high) {
-                    BaseEntry<byte[]> current = GetCurrent(mid, currentFile, currentIndexFile);
-                    int compare = Arrays.compare(to, current.key());
-                    if (compare > 0) {
-                        low = mid + 1;
-                    } else if (compare < 0) {
-                        high = mid - 1;
-                        toIndex = high;
-                    } else {
-                        toIndex = mid - 1;
-                        break;
-                    }
-                    mid = (low + high) / 2;
+            }
+        }
+        if (to != null) {
+            low = fromIndex;
+            high = toIndex;
+            mid = (low + high) / 2;
+            while (low <= high) {
+                BaseEntry<byte[]> current = getCurrent(mid, currentFile, currentIndexFile);
+                int compare = Arrays.compare(to, current.key());
+                if (compare > 0) {
+                    low = mid + 1;
+                } else if (compare < 0) {
+                    high = mid - 1;
+                    toIndex = high;
+                } else {
+                    toIndex = mid - 1;
+                    break;
                 }
+                mid = (low + high) / 2;
             }
-            for (long j = fromIndex; j <= toIndex; j++) {
-                BaseEntry<byte[]> current = GetCurrent(j, currentFile, currentIndexFile);
-                diskPairs.putIfAbsent(current.key(), current);
-            }
+        }
+        putPairs(fromIndex, toIndex, currentFile, currentIndexFile, diskPairs);
+    }
+
+    private void putPairs(long fromIndex, long toIndex, Path currentFile, Path currentIndexFile,
+                          NavigableMap<byte[], BaseEntry<byte[]>> diskPairs) throws IOException {
+        for (long j = fromIndex; j <= toIndex; j++) {
+            BaseEntry<byte[]> current = getCurrent(j, currentFile, currentIndexFile);
+            diskPairs.putIfAbsent(current.key(), current);
         }
     }
 }
