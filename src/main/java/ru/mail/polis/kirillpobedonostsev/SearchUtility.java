@@ -20,9 +20,6 @@ public final class SearchUtility {
             offset = readIndexPage.getInt();
             readDataPage.position(offset);
             int keySize = readDataPage.getInt();
-            if (keySize != to.remaining()) {
-                continue;
-            }
             ByteBuffer readKey = readDataPage.slice(readDataPage.position(), keySize);
             int compareResult = readKey.compareTo(to);
             if (compareResult >= 0) {
@@ -57,9 +54,6 @@ public final class SearchUtility {
             offset = readIndexPage.getInt();
             readDataPage.position(offset);
             int keySize = readDataPage.getInt();
-            if (keySize != from.remaining()) {
-                continue;
-            }
             ByteBuffer readKey = readDataPage.slice(readDataPage.position(), keySize);
             int compareResult = readKey.compareTo(from);
             if (compareResult > 0) {
