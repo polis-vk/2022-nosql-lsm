@@ -114,11 +114,11 @@ public final class SSTable {
             }
         }
         return new Iterator<>() {
-            long l = li;
+            long left = li;
 
             @Override
             public boolean hasNext() {
-                return l < ri;
+                return left < ri;
             }
 
             @Override
@@ -126,8 +126,8 @@ public final class SSTable {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
                 }
-                Entry<MemorySegment> res = Utils.getByIndex(readOnlyFile, readOnlyIndex, l);
-                l++;
+                Entry<MemorySegment> res = Utils.getByIndex(readOnlyFile, readOnlyIndex, left);
+                left++;
                 return res;
             }
         };
