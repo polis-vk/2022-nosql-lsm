@@ -16,12 +16,12 @@ public final class DaoUtils {
     }
 
     public static char[] intToCharArray(int k) {
-        k = (k + 1);
+        int kk = (k + 1);
         char[] writeBuffer = new char[Integer.BYTES];
-        writeBuffer[0] = (char) (k >>> 24);
-        writeBuffer[1] = (char) (k >>> 16);
-        writeBuffer[2] = (char) (k >>> 8);
-        writeBuffer[3] = (char) (k);
+        writeBuffer[0] = (char) (kk >>> 24);
+        writeBuffer[1] = (char) (kk >>> 16);
+        writeBuffer[2] = (char) (kk >>> 8);
+        writeBuffer[3] = (char) (kk);
         return writeBuffer;
     }
 
