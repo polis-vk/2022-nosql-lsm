@@ -15,8 +15,6 @@ import java.nio.file.StandardOpenOption;
 import java.util.AbstractMap;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -44,7 +42,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     public class MergeIterator implements Iterator<BaseEntry<String>> {
-        private final TreeMap<Integer, Map.Entry<BufferedReader, String>> filesReadMap = new TreeMap<>();
+
+        private final Map<Integer, Map.Entry<BufferedReader, String>> filesReadMap = new TreeMap<>();
         private final ConcurrentSkipListMap<String, BaseEntry<String>> tempData = new ConcurrentSkipListMap<>();
         private final Map<String, Integer> tempDataPriorities = new HashMap<>();
         private final Iterator<BaseEntry<String>> inMemoryIterator;
@@ -99,7 +98,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             BaseEntry<String> firstEntry = tempData.pollFirstEntry().getValue();
             try {
                 BaseEntry<String> newEntry;
-                for (Map.Entry<Integer, Map.Entry<BufferedReader, String>> filesReadMapEntry : filesReadMap.entrySet()) {
+                for (Map.Entry<Integer, Map.Entry<BufferedReader, String>> filesReadMapEntry
+                        : filesReadMap.entrySet()) {
                     if (!filesReadMapEntry.getValue().getValue().equals(firstEntry.key())) {
                         continue;
                     }
@@ -135,18 +135,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 }
             }
         }
-
-/*        private class FileInfo {
-            private final int fileNumber;
-            private final BufferedReader bufferedReader;
-            private String lastReadElement;
-
-            public FileInfo(int fileNumber, BufferedReader bufferedReader, String lastReadElement) {
-                this.fileNumber = fileNumber;
-                this.bufferedReader = bufferedReader;
-                this.lastReadElement = lastReadElement;
-            }
-        }*/
     }
 
     @Override
