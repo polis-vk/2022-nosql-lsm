@@ -12,7 +12,7 @@ public class PersistentRangeTest extends BaseTest {
     private static final int[] DATASET = new int[]{7, 97, 101};
 
     private void sliceAndDice(Dao<String, Entry<String>> dao) throws IOException {
-       // Full
+        // Full
         assertSame(dao.all(), DATASET);
 
         // From

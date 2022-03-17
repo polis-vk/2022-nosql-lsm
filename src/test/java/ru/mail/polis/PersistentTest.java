@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Assertions;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
-import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,14 +43,11 @@ public class PersistentTest extends BaseTest {
         List<Entry<String>> tmp = new ArrayList<>(entries);
 
         assertValueAt(DaoFactory.Factory.reopen(dao), entityIndex);
-        Clock clock = Clock.systemDefaultZone();
-        long startTime = clock.millis();
+
         assertSame(
                 tmp.get(entityIndex),
                 entries.get(entityIndex)
         );
-        long endTime = clock.millis();
-        System.out.println("ELAPSED FOR UPSERT: " +(double) (endTime - startTime)/1000);
     }
 
     @DaoTest(stage = 2)
