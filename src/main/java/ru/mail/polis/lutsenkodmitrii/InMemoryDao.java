@@ -133,6 +133,18 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 }
             }
         }
+
+        private static class FileInfo {
+            private final int fileNumber;
+            private final BufferedReader bufferedReader;
+            private String lastReadElement;
+
+            public FileInfo(int fileNumber, BufferedReader bufferedReader, String lastReadElement) {
+                this.fileNumber = fileNumber;
+                this.bufferedReader = bufferedReader;
+                this.lastReadElement = lastReadElement;
+            }
+        }
     }
 
     @Override
@@ -215,17 +227,5 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private static Path generateNextFilePath(Config config) {
         return config.basePath().resolve(DATA_FILE_NAME + fileCounter++ + DATA_FILE_EXTENSION);
-    }
-
-    static class FileInfo {
-        private final int fileNumber;
-        private final BufferedReader bufferedReader;
-        private String lastReadElement;
-
-        public FileInfo(int fileNumber, BufferedReader bufferedReader, String lastReadElement) {
-            this.fileNumber = fileNumber;
-            this.bufferedReader = bufferedReader;
-            this.lastReadElement = lastReadElement;
-        }
     }
 }
