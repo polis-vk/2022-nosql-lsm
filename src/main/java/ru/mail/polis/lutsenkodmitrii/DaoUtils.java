@@ -55,7 +55,8 @@ public final class DaoUtils {
         return new BaseEntry<>(new String(keyChars), bufferedReader.readLine());
     }
 
-    public static BaseEntry<String> ceilKey(Path path, BufferedReader bufferedReader, String key, long offset) throws IOException {
+    public static BaseEntry<String> ceilKey(Path path, BufferedReader bufferedReader,
+                                            String key, long offset) throws IOException {
         int keyLength;
         int prevEntryLength;
         char[] keyChars;
@@ -67,8 +68,7 @@ public final class DaoUtils {
             mid = (left + right) / 2;
             bufferedReader.mark((int) right);
             bufferedReader.skip(mid - left);
-            String t =  bufferedReader.readLine();
-            int readBytes = t.length();
+            int readBytes = bufferedReader.readLine().length();
             prevEntryLength = readUnsignedInt(bufferedReader);
             if (mid + prevEntryLength + readBytes >= right) {
                 bufferedReader.reset();

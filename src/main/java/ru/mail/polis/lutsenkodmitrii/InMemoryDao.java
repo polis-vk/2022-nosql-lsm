@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -43,7 +44,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     class MergeIterator implements Iterator<BaseEntry<String>> {
         private final List<FileInfo> filesList = new LinkedList<>();
         private final ConcurrentSkipListMap<String, BaseEntry<String>> tempData = new ConcurrentSkipListMap<>();
-        private final HashMap<String, Integer> tempDataPriorities = new HashMap<>();
+        private final Map<String, Integer> tempDataPriorities = new HashMap<>();
         private final Iterator<BaseEntry<String>> inMemoryIterator;
         private final String to;
         private String inMemoryLastKey;
@@ -68,7 +69,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 if (isFromNull || from.compareTo(fileMinKey) <= 0) {
                     firstEntry = DaoUtils.readEntry(bufferedReader);
                 } else if (from.compareTo(fileMaxKey) <= 0) {
-                    firstEntry = DaoUtils.ceilKey(path, bufferedReader, from, fileMinKey.length() + fileMaxKey.length());
+                    firstEntry = DaoUtils.ceilKey(path, bufferedReader, from,
+                            fileMinKey.length() + fileMaxKey.length());
                 }
                 if (firstEntry != null && (isToNull || firstEntry.key().compareTo(to) < 0)) {
                     tempData.put(firstEntry.key(), firstEntry);
@@ -96,17 +98,16 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             try {
                 BaseEntry<String> newEntry;
                 for (FileInfo fileInfo : filesList) {
-                    if (!fileInfo.lastReadElement.equals(firstEntry.key())) {
-                        continue;
-                    }
-                    newEntry = DaoUtils.readEntry(fileInfo.bufferedReader);
-                    if (newEntry != null) {
-                        Integer fileNumber = tempDataPriorities.get(newEntry.key());
-                        if (fileNumber == null || fileInfo.fileNumber > fileNumber) {
-                            tempData.put(newEntry.key(), newEntry);
-                            tempDataPriorities.put(newEntry.key(), fileInfo.fileNumber);
+                    if (fileInfo.lastReadElement.equals(firstEntry.key())) {
+                        newEntry = DaoUtils.readEntry(fileInfo.bufferedReader);
+                        if (newEntry != null) {
+                            Integer fileNumber = tempDataPriorities.get(newEntry.key());
+                            if (fileNumber == null || fileInfo.fileNumber > fileNumber) {
+                                tempData.put(newEntry.key(), newEntry);
+                                tempDataPriorities.put(newEntry.key(), fileInfo.fileNumber);
+                            }
+                            fileInfo.lastReadElement = newEntry.key();
                         }
-                        fileInfo.lastReadElement = newEntry.key();
                     }
                 }
                 if (inMemoryIterator.hasNext() && inMemoryLastKey.equals(firstEntry.key())) {
