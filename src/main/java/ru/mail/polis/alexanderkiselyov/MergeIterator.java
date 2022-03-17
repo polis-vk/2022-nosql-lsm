@@ -26,18 +26,20 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
 
     @Override
     public BaseEntry<byte[]> next() {
-        if (memoryIterator.hasNext()) {
-            if (currentMemoryEntry == null) {
-                currentMemoryEntry = memoryIterator.next();
-            }
+        if (memoryIterator.hasNext() && currentMemoryEntry == null) {
+            currentMemoryEntry = memoryIterator.next();
         }
-        if (diskIterator.hasNext()) {
-            if (currentDiskEntry == null) {
-                currentDiskEntry = diskIterator.next();
-            }
+        if (diskIterator.hasNext() && currentDiskEntry == null) {
+            currentDiskEntry = diskIterator.next();
         }
         BaseEntry<byte[]> buffer;
-        if (currentMemoryEntry != null && currentDiskEntry != null) {
+        if (currentMemoryEntry == null) {
+            buffer = currentDiskEntry;
+            currentDiskEntry = null;
+        } else if (currentDiskEntry == null) {
+            buffer = currentMemoryEntry;
+            currentMemoryEntry = null;
+        } else {
             int compare = Arrays.compare(currentMemoryEntry.key(), currentDiskEntry.key());
             if (compare > 0) {
                 buffer = currentDiskEntry;
@@ -50,12 +52,6 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
                 currentMemoryEntry = null;
                 currentDiskEntry = null;
             }
-        } else if (currentMemoryEntry != null) {
-            buffer = currentMemoryEntry;
-            currentMemoryEntry = null;
-        } else {
-            buffer = currentDiskEntry;
-            currentDiskEntry = null;
         }
         return buffer;
     }
