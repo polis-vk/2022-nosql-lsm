@@ -96,12 +96,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         public BaseEntry<String> next() {
             BaseEntry<String> firstEntry = tempData.pollFirstEntry().getValue();
             try {
-                BaseEntry<String> newEntry;
                 for (FileInfo fileInfo : filesList) {
                     if (!fileInfo.lastReadElement.equals(firstEntry.key())) {
                         continue;
                     }
-                    newEntry = DaoUtils.readEntry(fileInfo.bufferedReader);
+                    BaseEntry<String> newEntry = DaoUtils.readEntry(fileInfo.bufferedReader);
                     if (newEntry == null) {
                         continue;
                     }
@@ -113,7 +112,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     fileInfo.lastReadElement = newEntry.key();
                 }
                 if (inMemoryIterator.hasNext() && inMemoryLastKey.equals(firstEntry.key())) {
-                    newEntry = inMemoryIterator.next();
+                    BaseEntry<String> newEntry = inMemoryIterator.next();
                     tempData.put(newEntry.key(), newEntry);
                     tempDataPriorities.put(newEntry.key(), Integer.MAX_VALUE);
                     inMemoryLastKey = newEntry.key();
