@@ -1,7 +1,6 @@
 package ru.mail.polis.dmitrykondraev;
 
 import jdk.incubator.foreign.MemorySegment;
-import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
@@ -27,12 +26,14 @@ public class FileBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     private SortedStringTable sortedStringTable;
     private final Path basePath;
-    private final ResourceScope dataScope = ResourceScope.newConfinedScope();
 
     public FileBackedDao(Config config) {
         basePath = config == null ? null : config.basePath();
     }
 
+    /**
+     * Constructs FileBackedDao that behaves like in-memory DAO.
+     */
     public FileBackedDao() {
         this(null);
     }
@@ -43,7 +44,7 @@ public class FileBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     private SortedStringTable sortedStringTable() {
         if (sortedStringTable == null) {
-            sortedStringTable = SortedStringTable.of(basePath, dataScope);
+            sortedStringTable = SortedStringTable.of(basePath);
         }
         return sortedStringTable;
     }
@@ -69,32 +70,28 @@ public class FileBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     }
 
     @Override
-    public Entry<MemorySegment> get(MemorySegment key) {
+    public Entry<MemorySegment> get(MemorySegment key) throws IOException {
         Entry<MemorySegment> result = map.get(key);
         if (result != null) {
             return result;
         }
         if (basePath == null) {
+            // behaves like InMemoryDao if used without config
             return null;
         }
-        try {
-            return sortedStringTable().get(key);
-        } catch (IOException e) {
-            return null;
-        }
+        return sortedStringTable().get(key);
     }
 
     @Override
-    public void flush() throws IOException {
-        sortedStringTable()
-                .write(map.values())
-                .unload();
-        map.clear();
+    public void flush() {
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void close() throws IOException {
-        flush();
-        dataScope.close();
+        sortedStringTable()
+                .write(map.values())
+                .close();
+        map.clear();
     }
 }

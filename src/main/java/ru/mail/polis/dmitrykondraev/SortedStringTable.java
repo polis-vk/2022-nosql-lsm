@@ -1,62 +1,65 @@
 package ru.mail.polis.dmitrykondraev;
 
+import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.stream.LongStream;
 
-final class SortedStringTable {
+final class SortedStringTable implements Closeable {
     public static final String INDEX_FILENAME = "index";
     public static final String DATA_FILENAME = "data";
     private static final Comparator<MemorySegment> lexicographically = new MemorySegmentComparator();
 
-    private final Path indexFile; // unload
-    private final MemorySegmentAllocator segmentLazy;
+    private final Path indexFile;
+    private final Path dataFile;
     // Either dataSegment and offsets both null or both non-null
     private MemorySegment dataSegment;
-    private long[] offsets;
+    private MemorySegment indexSegment;
+    private final ResourceScope scope;
 
-    private SortedStringTable(Path indexFile, MemorySegmentAllocator segmentLazy) {
+    private SortedStringTable(Path indexFile, Path dataFile, ResourceScope scope) {
         this.indexFile = indexFile;
-        this.segmentLazy = segmentLazy;
+        this.dataFile = dataFile;
+        this.scope = scope;
     }
 
     /**
      * Constructs SortedStringTable.
      */
-    public static SortedStringTable of(
-            Path folderPath,
-            ResourceScope dataScope
-    ) {
-        Path indexFile = folderPath.resolve(INDEX_FILENAME);
-        Path dataFile = folderPath.resolve(DATA_FILENAME);
-
-        return new SortedStringTable(indexFile, (long size) -> MemorySegment.mapFile(
-                createFileIfNotExists(dataFile),
-                0L,
-                size,
-                FileChannel.MapMode.READ_WRITE,
-                dataScope
-        ));
+    public static SortedStringTable of(Path folderPath) {
+        return new SortedStringTable(
+                folderPath.resolve(INDEX_FILENAME),
+                folderPath.resolve(DATA_FILENAME),
+                ResourceScope.newSharedScope()
+        );
     }
 
-    // write key-value pairs in format:
-    // ┌─────────────────────┬─────────────────────────┐
-    // │key: byte[keySize(i)]│value: byte[valueSize(i)]│ entriesMapped() times
-    // └─────────────────────┴─────────────────────────┘
+    /**
+     * write key-value pairs in format:
+     * ┌─────────────────────┬─────────────────────────┐
+     * │key: byte[keySize(i)]│value: byte[valueSize(i)]│ entriesMapped() times
+     * └─────────────────────┴─────────────────────────┘
+     */
     public SortedStringTable write(Collection<Entry<MemorySegment>> entries) throws IOException {
-        offsets = calculateOffsets(entries);
-        dataSegment = segmentLazy.allocate(offsets[offsets.length - 1]);
+        writeIndex(entries);
+        dataSegment = MemorySegment.mapFile(
+                createFileIfNotExists(dataFile),
+                0L,
+                dataSize(),
+                FileChannel.MapMode.READ_WRITE,
+                scope
+        );
         int i = 0;
         for (Entry<MemorySegment> entry : entries) {
             mappedKey(i).copyFrom(entry.key());
@@ -66,10 +69,19 @@ final class SortedStringTable {
         return this;
     }
 
-    // binary search
+    /**
+     * Performs binary search.
+     * @return null if either indexFile or dataFile does not exist,
+     *         null if key does not exist in table
+     * @throws IOException if other I/O error occurs
+     */
     public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
-        if (offsets == null && dataSegment == null) {
-            loadFromFiles();
+        if (indexSegment == null && dataSegment == null) {
+            try {
+                loadFromFiles();
+            } catch (NoSuchFileException ignored) {
+                return null;
+            }
         }
         int low = 0;
         int high = entriesMapped() - 1;
@@ -77,9 +89,10 @@ final class SortedStringTable {
         while (low <= high) {
             int mid = (low + high) >>> 1;
             MemorySegment midVal = mappedKey(mid);
-            if (lexicographically.compare(midVal, key) < 0) {
+            int compare = lexicographically.compare(midVal, key);
+            if (compare < 0) {
                 low = mid + 1;
-            } else if (lexicographically.compare(midVal, key) > 0) {
+            } else if (compare > 0) {
                 high = mid - 1;
             } else {
                 return new BaseEntry<>(midVal, mappedValue(mid)); // key found
@@ -88,48 +101,94 @@ final class SortedStringTable {
         return null; // key not found.
     }
 
-    public void unload() throws IOException {
-        try (LongArrayOutput out = LongArrayOutput.of(indexFile)) {
-            out.write(offsets);
-        }
-        offsets = null;
-        dataSegment.unload();
+    @Override
+    public void close() {
+        scope.close();
+        indexSegment = null;
         dataSegment = null;
     }
 
     private void loadFromFiles() throws IOException {
-        try (LongArrayInput in = LongArrayInput.of(indexFile)) {
-            offsets = in.readLongArray();
+        if (indexSegment != null || dataSegment != null) {
+            throw new IllegalStateException("Can't load if already mapping");
         }
-        dataSegment = segmentLazy.allocate(offsets[offsets.length - 1]);
+        indexSegment = MemorySegment.mapFile(
+                indexFile,
+                0L,
+                Files.size(indexFile),
+                FileChannel.MapMode.READ_ONLY,
+                scope
+        );
+        dataSegment = MemorySegment.mapFile(
+                dataFile,
+                0L,
+                dataSize(),
+                FileChannel.MapMode.READ_ONLY,
+                scope
+        );
     }
 
-    private long keyOffset(int i) {
-        return offsets[i << 1];
+    private long keyOffset(long i) {
+        return MemoryAccess.getLongAtOffset(indexSegment, Integer.BYTES + (i << 1) * Long.BYTES);
     }
 
-    private long valueOffset(int i) {
-        return offsets[(i << 1) | 1];
+    private long valueOffset(long i) {
+        return MemoryAccess.getLongAtOffset(indexSegment, Integer.BYTES + ((i << 1) | 1L) * Long.BYTES);
     }
 
-    private long keySize(int i) {
+    private long keySize(long i) {
         return valueOffset(i) - keyOffset(i);
     }
 
-    private long valueSize(int i) {
+    private long valueSize(long i) {
         return keyOffset(i + 1) - valueOffset(i);
     }
 
     private int entriesMapped() {
-        return offsets.length >> 1;
+        return MemoryAccess.getIntAtOffset(indexSegment, 0L);
     }
 
-    private MemorySegment mappedKey(int i) {
+    private long dataSize() {
+        return keyOffset(entriesMapped());
+    }
+
+    private MemorySegment mappedKey(long i) {
         return dataSegment.asSlice(keyOffset(i), keySize(i));
     }
 
-    private MemorySegment mappedValue(int i) {
+    private MemorySegment mappedValue(long i) {
         return dataSegment.asSlice(valueOffset(i), valueSize(i));
+    }
+
+    /**
+     * write offsets in format:
+     * ┌─────────┬─────────────────────────┐
+     * │size: int│array: long[size * 2 + 1]│
+     * └─────────┴─────────────────────────┘
+     * where size is number of entries and
+     * array represents offsets of keys and values in data file specified by methods
+     * keyOffset, valueOffset, keySize and valueSize.
+     */
+    private void writeIndex(Collection<Entry<MemorySegment>> entries) throws IOException {
+        indexSegment = MemorySegment.mapFile(
+                createFileIfNotExists(indexFile),
+                0L,
+                Integer.BYTES + (entries.size() * 2L + 1) * Long.BYTES,
+                FileChannel.MapMode.READ_WRITE,
+                scope
+        );
+        MemoryAccess.setInt(indexSegment, entries.size());
+        MemorySegment offsetsSegment = indexSegment.asSlice(Integer.BYTES);
+        long currentOffset = 0L;
+        long index = 0L;
+        MemoryAccess.setLongAtIndex(offsetsSegment, index++, currentOffset);
+        for (Entry<MemorySegment> entry : entries) {
+            currentOffset += entry.key().byteSize();
+            MemoryAccess.setLongAtIndex(offsetsSegment, index++, currentOffset);
+            currentOffset += entry.value().byteSize();
+            MemoryAccess.setLongAtIndex(offsetsSegment, index++, currentOffset);
+        }
+        indexSegment = indexSegment.asReadOnly();
     }
 
     private static Path createFileIfNotExists(Path path) throws IOException {
@@ -138,17 +197,5 @@ final class SortedStringTable {
         } catch (FileAlreadyExistsException ignored) {
             return path;
         }
-    }
-
-    private static long[] calculateOffsets(Collection<Entry<MemorySegment>> entries) {
-        long[] result = LongStream.concat(
-                LongStream.of(0L),
-                entries
-                        .stream()
-                        // alternating key and value sizes
-                        .flatMapToLong(entry -> LongStream.of(entry.key().byteSize(), entry.value().byteSize()))
-        ).toArray();
-        Arrays.parallelPrefix(result, Long::sum);
-        return result;
     }
 }
