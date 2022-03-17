@@ -46,9 +46,9 @@ final class SortedStringTable implements Closeable {
     }
 
     /**
-     * write key-value pairs in format:
+     * Write key-value pairs in format:
      * ┌─────────────────────┬─────────────────────────┐
-     * │key: byte[keySize(i)]│value: byte[valueSize(i)]│ entriesMapped() times
+     * │key: byte[keySize(i)]│value: byte[valueSize(i)]│ entriesMapped() times.
      * └─────────────────────┴─────────────────────────┘
      */
     public SortedStringTable write(Collection<Entry<MemorySegment>> entries) throws IOException {
