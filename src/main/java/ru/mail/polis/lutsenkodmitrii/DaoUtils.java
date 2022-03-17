@@ -55,21 +55,22 @@ public final class DaoUtils {
         return new BaseEntry<>(new String(keyChars), bufferedReader.readLine());
     }
 
-    public static BaseEntry<String> ceilKey(Path path, BufferedReader bufferedReader, String key) throws IOException {
+    public static BaseEntry<String> ceilKey(Path path, BufferedReader bufferedReader, String key, long offset) throws IOException {
         int keyLength;
         int prevEntryLength;
         char[] keyChars;
         String currentKey;
-        long left = 0;
+        long left = offset;
         long right = Files.size(path) - Integer.BYTES;
         long mid;
         while (left <= right) {
             mid = (left + right) / 2;
             bufferedReader.mark((int) right);
             bufferedReader.skip(mid - left);
-            int readBytes = bufferedReader.readLine().length();
+            String t =  bufferedReader.readLine();
+            int readBytes = t.length();
             prevEntryLength = readUnsignedInt(bufferedReader);
-            if (mid + prevEntryLength >= right) {
+            if (mid + prevEntryLength + readBytes >= right) {
                 bufferedReader.reset();
                 bufferedReader.skip(Integer.BYTES);
                 right = mid - prevEntryLength + readBytes + 1;
@@ -117,7 +118,7 @@ public final class DaoUtils {
             int prevEntryLength;
             char[] keyChars;
             String currentKey;
-            long left = 0;
+            long left = fileMinKey.length() + fileMaxKey.length();
             long right = Files.size(path) - Integer.BYTES;
             long mid;
             while (left <= right) {

@@ -75,9 +75,14 @@ public class Stage3Test extends BaseTest {
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(5)));
         dao.upsert(new BaseEntry<>(keyAt(11), valueAt(111)));
         dao.upsert(new BaseEntry<>(keyAt(15), valueAt(15)));
+        dao.upsert(new BaseEntry<>(keyAt(22), valueAt(22)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(25)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(10)));
+        dao.upsert(new BaseEntry<>(keyAt(22), valueAt(222)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(25)));
+        dao.upsert(new BaseEntry<>(keyAt(27), valueAt(27)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(1), valueAt(1)));
@@ -85,6 +90,7 @@ public class Stage3Test extends BaseTest {
         dao.upsert(new BaseEntry<>(keyAt(6), valueAt(6)));
         dao.upsert(new BaseEntry<>(keyAt(11), valueAt(1111)));
         dao.upsert(new BaseEntry<>(keyAt(20), valueAt(20)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(525)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(555)));
@@ -101,6 +107,9 @@ public class Stage3Test extends BaseTest {
                 new BaseEntry<>(keyAt(11), valueAt(11)),
                 new BaseEntry<>(keyAt(15), valueAt(15)),
                 new BaseEntry<>(keyAt(20), valueAt(20)),
+                new BaseEntry<>(keyAt(22), valueAt(222)),
+                new BaseEntry<>(keyAt(25), valueAt(525)),
+                new BaseEntry<>(keyAt(27), valueAt(27)),
                 new BaseEntry<>(keyAt(100), valueAt(100))
         );
         Iterator<Entry<String>> allIterator = dao.get(null, null);
@@ -113,9 +122,14 @@ public class Stage3Test extends BaseTest {
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(5)));
         dao.upsert(new BaseEntry<>(keyAt(11), valueAt(111)));
         dao.upsert(new BaseEntry<>(keyAt(15), valueAt(15)));
+        dao.upsert(new BaseEntry<>(keyAt(22), valueAt(22)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(25)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(10)));
+        dao.upsert(new BaseEntry<>(keyAt(22), valueAt(222)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(25)));
+        dao.upsert(new BaseEntry<>(keyAt(27), valueAt(27)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(1), valueAt(1)));
@@ -123,6 +137,7 @@ public class Stage3Test extends BaseTest {
         dao.upsert(new BaseEntry<>(keyAt(6), valueAt(6)));
         dao.upsert(new BaseEntry<>(keyAt(11), valueAt(1111)));
         dao.upsert(new BaseEntry<>(keyAt(20), valueAt(20)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(525)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(555)));
@@ -135,6 +150,9 @@ public class Stage3Test extends BaseTest {
                 new BaseEntry<>(keyAt(11), valueAt(11)),
                 new BaseEntry<>(keyAt(15), valueAt(15)),
                 new BaseEntry<>(keyAt(20), valueAt(20)),
+                new BaseEntry<>(keyAt(22), valueAt(222)),
+                new BaseEntry<>(keyAt(25), valueAt(525)),
+                new BaseEntry<>(keyAt(27), valueAt(27)),
                 new BaseEntry<>(keyAt(100), valueAt(100))
         );
         Iterator<Entry<String>> entryIteratorFromEqualsLastKey = dao.get(keyAt(8), null);
@@ -148,9 +166,14 @@ public class Stage3Test extends BaseTest {
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(5)));
         dao.upsert(new BaseEntry<>(keyAt(11), valueAt(111)));
         dao.upsert(new BaseEntry<>(keyAt(15), valueAt(15)));
+        dao.upsert(new BaseEntry<>(keyAt(22), valueAt(22)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(25)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(10)));
+        dao.upsert(new BaseEntry<>(keyAt(22), valueAt(222)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(25)));
+        dao.upsert(new BaseEntry<>(keyAt(27), valueAt(27)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(1), valueAt(1)));
@@ -158,6 +181,7 @@ public class Stage3Test extends BaseTest {
         dao.upsert(new BaseEntry<>(keyAt(6), valueAt(6)));
         dao.upsert(new BaseEntry<>(keyAt(11), valueAt(1111)));
         dao.upsert(new BaseEntry<>(keyAt(20), valueAt(20)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(525)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(555)));
@@ -184,9 +208,14 @@ public class Stage3Test extends BaseTest {
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(5)));
         dao.upsert(new BaseEntry<>(keyAt(11), valueAt(111)));
         dao.upsert(new BaseEntry<>(keyAt(15), valueAt(15)));
+        dao.upsert(new BaseEntry<>(keyAt(22), valueAt(22)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(25)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(10)));
+        dao.upsert(new BaseEntry<>(keyAt(22), valueAt(222)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(25)));
+        dao.upsert(new BaseEntry<>(keyAt(27), valueAt(27)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(1), valueAt(1)));
@@ -194,6 +223,7 @@ public class Stage3Test extends BaseTest {
         dao.upsert(new BaseEntry<>(keyAt(6), valueAt(6)));
         dao.upsert(new BaseEntry<>(keyAt(11), valueAt(1111)));
         dao.upsert(new BaseEntry<>(keyAt(20), valueAt(20)));
+        dao.upsert(new BaseEntry<>(keyAt(25), valueAt(525)));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         dao.upsert(new BaseEntry<>(keyAt(5), valueAt(555)));
@@ -202,15 +232,17 @@ public class Stage3Test extends BaseTest {
         dao.upsert(new BaseEntry<>(keyAt(100), valueAt(100)));
 
         List<BaseEntry<String>> expectedEntriesList = List.of(
+                new BaseEntry<>(keyAt(6), valueAt(6)),
                 new BaseEntry<>(keyAt(8), valueAt(888)),
                 new BaseEntry<>(keyAt(11), valueAt(11)),
-                new BaseEntry<>(keyAt(15), valueAt(15))
+                new BaseEntry<>(keyAt(15), valueAt(15)),
+                new BaseEntry<>(keyAt(20), valueAt(20)),
+                new BaseEntry<>(keyAt(22), valueAt(222))
         );
-        Iterator<Entry<String>> entryIteratorFromTo = dao.get(keyAt(7), keyAt(16));
+        Iterator<Entry<String>> entryIteratorFromTo = dao.get(keyAt(6), keyAt(24));
         expectedEntriesList.forEach(entry -> assertSame(entryIteratorFromTo.next(), entry));
         assertEmpty(entryIteratorFromTo);
     }
-
 
 
     @DaoTest(stage = 3)

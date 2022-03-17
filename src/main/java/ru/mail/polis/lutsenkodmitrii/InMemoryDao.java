@@ -12,10 +12,10 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.AbstractMap;
+import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -41,8 +41,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     class MergeIterator implements Iterator<BaseEntry<String>> {
-        private final Map<Path, Map.Entry<BufferedReader, String>> filesReadMap = new TreeMap<>();
+        private final List<FileInfo> filesList = new LinkedList<>();
         private final ConcurrentSkipListMap<String, BaseEntry<String>> tempData = new ConcurrentSkipListMap<>();
+        private final HashMap<String, Integer> tempDataPriorities = new HashMap<>();
         private final Iterator<BaseEntry<String>> inMemoryIterator;
         private final String to;
         private String inMemoryLastKey;
@@ -64,24 +65,22 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 String fileMinKey = DaoUtils.readKey(bufferedReader);
                 String fileMaxKey = DaoUtils.readKey(bufferedReader);
                 BaseEntry<String> firstEntry = null;
-                if (isFromNull) {
+                if (isFromNull || from.compareTo(fileMinKey) <= 0) {
                     firstEntry = DaoUtils.readEntry(bufferedReader);
                 } else if (from.compareTo(fileMaxKey) <= 0) {
-                    firstEntry = DaoUtils.ceilKey(path, bufferedReader, from);
+                    firstEntry = DaoUtils.ceilKey(path, bufferedReader, from, fileMinKey.length() + fileMaxKey.length());
                 }
-                if (firstEntry != null && (isToNull || to.compareTo(fileMinKey) >= 0)) {
+                if (firstEntry != null && (isToNull || firstEntry.key().compareTo(to) < 0)) {
                     tempData.put(firstEntry.key(), firstEntry);
-                    Map.Entry<BufferedReader, String> lastReadElem = new AbstractMap.SimpleEntry<>(
-                            bufferedReader,
-                            firstEntry.key()
-                    );
-                    filesReadMap.put(path, lastReadElem);
+                    tempDataPriorities.put(firstEntry.key(), i);
+                    filesList.add(new FileInfo(i, bufferedReader, firstEntry.key()));
                 }
             }
             inMemoryIterator = getInMemoryDataIterator(from, to);
             if (inMemoryIterator.hasNext()) {
                 BaseEntry<String> entry = inMemoryIterator.next();
                 tempData.put(entry.key(), entry);
+                tempDataPriorities.put(entry.key(), Integer.MAX_VALUE);
                 inMemoryLastKey = entry.key();
             }
         }
@@ -95,24 +94,31 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         public BaseEntry<String> next() {
             BaseEntry<String> firstEntry = tempData.pollFirstEntry().getValue();
             try {
-                for (Map.Entry<BufferedReader, String> readerWithLastElemPair : filesReadMap.values()) {
-                    if (readerWithLastElemPair.getValue().equals(firstEntry.key())) {
-                        BaseEntry<String> newEntry = DaoUtils.readEntry(readerWithLastElemPair.getKey());
-                        if (newEntry != null) {
+                BaseEntry<String> newEntry;
+                for (FileInfo fileInfo : filesList) {
+                    if (!fileInfo.lastReadElement.equals(firstEntry.key())) {
+                        continue;
+                    }
+                    newEntry = DaoUtils.readEntry(fileInfo.bufferedReader);
+                    if (newEntry != null) {
+                        Integer fileNumber = tempDataPriorities.get(newEntry.key());
+                        if (fileNumber == null || fileInfo.fileNumber > fileNumber) {
                             tempData.put(newEntry.key(), newEntry);
-                            readerWithLastElemPair.setValue(newEntry.key());
+                            tempDataPriorities.put(newEntry.key(), fileInfo.fileNumber);
                         }
+                        fileInfo.lastReadElement = newEntry.key();
                     }
                 }
                 if (inMemoryIterator.hasNext() && inMemoryLastKey.equals(firstEntry.key())) {
-                    BaseEntry<String> newEntry = inMemoryIterator.next();
+                    newEntry = inMemoryIterator.next();
                     tempData.put(newEntry.key(), newEntry);
+                    tempDataPriorities.put(newEntry.key(), Integer.MAX_VALUE);
                     inMemoryLastKey = newEntry.key();
                 }
                 if (tempData.isEmpty() || (!isToNull && tempData.firstKey().compareTo(to) >= 0)) {
                     tempData.clear();
-                    for (Map.Entry<BufferedReader, String> readerWithLastElemPair : filesReadMap.values()) {
-                        readerWithLastElemPair.getKey().close();
+                    for (FileInfo fileInfo : filesList) {
+                        fileInfo.bufferedReader.close();
                     }
                 }
             } catch (IOException e) {
@@ -202,5 +208,17 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private static Path generateNextFilePath(Config config) {
         return config.basePath().resolve(DATA_FILE_NAME + fileCounter++ + DATA_FILE_EXTENSION);
+    }
+
+    static class FileInfo {
+        private final int fileNumber;
+        private final BufferedReader bufferedReader;
+        private String lastReadElement;
+
+        public FileInfo(int fileNumber, BufferedReader bufferedReader, String lastReadElement) {
+            this.fileNumber = fileNumber;
+            this.bufferedReader = bufferedReader;
+            this.lastReadElement = lastReadElement;
+        }
     }
 }
