@@ -20,10 +20,10 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class FileBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
-    private static final Comparator<MemorySegment> lexicographically = new MemorySegmentComparator();
+    private static final Comparator<MemorySegment> LEXICOGRAPHICALLY = new MemorySegmentComparator();
 
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map =
-            new ConcurrentSkipListMap<>(lexicographically);
+            new ConcurrentSkipListMap<>(LEXICOGRAPHICALLY);
 
     private SortedStringTable sortedStringTable;
     private final Path basePath;
