@@ -11,11 +11,6 @@ import ru.mail.polis.test.DaoFactory;
 public class StringDaoFactory implements DaoFactory.Factory<String, BaseEntry<String>> {
 
     @Override
-    public Dao<String, BaseEntry<String>> createDao() {
-        return new InMemoryDao();
-    }
-
-    @Override
     public Dao<String, BaseEntry<String>> createDao(Config config) {
         return new InMemoryDao(config);
     }
