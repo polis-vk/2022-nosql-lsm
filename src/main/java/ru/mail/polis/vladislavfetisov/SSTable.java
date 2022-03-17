@@ -95,7 +95,6 @@ public final class SSTable {
     public Iterator<Entry<MemorySegment>> range(MemorySegment from, MemorySegment to) {
         MemorySegment readOnlyFile = mapFile.asReadOnly();
         MemorySegment readOnlyIndex = mapIndex.asReadOnly();
-
         long li;
         if (from == null) {
             li = 0;
@@ -105,7 +104,6 @@ public final class SSTable {
                 return Collections.emptyIterator();
             }
         }
-
         long ri;
         if (to == null) {
             ri = readOnlyIndex.byteSize() / Long.BYTES;
