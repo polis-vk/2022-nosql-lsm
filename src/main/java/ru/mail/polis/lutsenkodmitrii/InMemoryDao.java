@@ -134,7 +134,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             }
         }
 
-        private static class FileInfo {
+        private class FileInfo {
             private final int fileNumber;
             private final BufferedReader bufferedReader;
             private String lastReadElement;
