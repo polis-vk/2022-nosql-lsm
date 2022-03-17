@@ -11,7 +11,7 @@ import java.util.NoSuchElementException;
 
 public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
-    private final List<BaseEntry<ByteBuffer>> buffer; //contains next values of all iterators, order matches iterators list
+    private final List<BaseEntry<ByteBuffer>> buffer; //contains next values of all iterators, order matches iterators
     private final List<Iterator<BaseEntry<ByteBuffer>>> iterators;
 
     public MergeIterator(List<Iterator<BaseEntry<ByteBuffer>>> iterators) {
