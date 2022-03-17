@@ -202,21 +202,19 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         long fromIndex = low;
         long toIndex = high;
         long mid = (low + high) / 2;
-        if (from != null) {
-            while (low <= high) {
-                BaseEntry<byte[]> current = getCurrent(mid, currentFile, currentIndexFile);
-                int compare = Arrays.compare(from, current.key());
-                if (compare > 0) {
-                    low = mid + 1;
-                    fromIndex = low;
-                } else if (compare < 0) {
-                    high = mid - 1;
-                } else {
-                    fromIndex = mid;
-                    break;
-                }
-                mid = (low + high) / 2;
+        while (low <= high) {
+            BaseEntry<byte[]> current = getCurrent(mid, currentFile, currentIndexFile);
+            int compare = Arrays.compare(from, current.key());
+            if (compare > 0) {
+                low = mid + 1;
+                fromIndex = low;
+            } else if (compare < 0) {
+                high = mid - 1;
+            } else {
+                fromIndex = mid;
+                break;
             }
+            mid = (low + high) / 2;
         }
         if (to != null) {
             low = fromIndex;
