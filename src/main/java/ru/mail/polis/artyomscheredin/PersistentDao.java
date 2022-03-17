@@ -48,16 +48,19 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
         lock.readLock().lock();
         try {
+            List<Utils.Pair<Path>> paths = getDataPathsToRead();
+            if (getDataPathsToRead().isEmpty()) {
+                return getInMemoryIterator(from, to);
+           }
+
             List<Iterator<BaseEntry<ByteBuffer>>> iteratorsList = new ArrayList<>();
 
-            List<Utils.Pair<Path>> paths = getDataPathsToRead();
             for (Utils.Pair<Path> path : paths) {
                 iteratorsList.add(new FileIterator(path, from, to));
             }
             if (!inMemoryData.isEmpty()) {
                 iteratorsList.add(getInMemoryIterator(from, to));
             }
-
             return new MergeIterator(iteratorsList);
         } finally {
             lock.readLock().unlock();
