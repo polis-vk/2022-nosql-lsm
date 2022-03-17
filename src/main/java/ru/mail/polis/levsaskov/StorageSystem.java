@@ -190,8 +190,8 @@ public class StorageSystem {
             int pos = binarySearch(bufferForIndexes, memChannel, entrysC - 1, from);
             BaseEntry<ByteBuffer> entry;
 
-            // Граничные случаи с первым и последним элементом
-            if ((pos == 0 || pos == entrysC - 2) && pos + 1 < entrysC && from != null
+            // Граничные случаи
+            if (pos + 1 < entrysC && from != null
                     && getEntry(bufferForIndexes, memChannel, pos).key().compareTo(from) < 0) {
                 pos++;
             }
