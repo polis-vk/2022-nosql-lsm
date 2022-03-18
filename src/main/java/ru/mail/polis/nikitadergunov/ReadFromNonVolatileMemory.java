@@ -41,7 +41,6 @@ public class ReadFromNonVolatileMemory implements AutoCloseable {
         MemorySegment readValue;
         long lengthKey;
         long lengthValue;
-
         while (offset < readMemorySegment.byteSize()) {
             lengthKey = MemoryAccess.getLongAtOffset(readMemorySegment, offset);
             offset += Long.BYTES;
