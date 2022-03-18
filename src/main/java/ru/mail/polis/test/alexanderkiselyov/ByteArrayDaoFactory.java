@@ -1,6 +1,7 @@
 package ru.mail.polis.test.alexanderkiselyov;
 
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.alexanderkiselyov.InMemoryDao;
@@ -8,10 +9,10 @@ import ru.mail.polis.test.DaoFactory;
 
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory
+@DaoFactory(stage = 3, week = 3)
 public class ByteArrayDaoFactory implements DaoFactory.Factory<byte[], BaseEntry<byte[]>> {
     @Override
-    public Dao<byte[], BaseEntry<byte[]>> createDao() {
+    public Dao<byte[], BaseEntry<byte[]>> createDao(Config config) {
         return new InMemoryDao();
     }
 
