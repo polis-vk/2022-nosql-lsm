@@ -68,7 +68,7 @@ class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
     }
 
     @Override
-    public void upsert(Entry<String> entry) {
+    public void upsert(@NotNull Entry<String> entry) {
         BaseEntry<D> e = new BaseEntry<>(
                 factory.fromString(entry.key()),
                 factory.fromString(entry.value())

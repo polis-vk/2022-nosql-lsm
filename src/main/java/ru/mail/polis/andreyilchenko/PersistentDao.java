@@ -81,7 +81,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void upsert(BaseEntry<ByteBuffer> entry) {
+    public void upsert(@NotNull BaseEntry<ByteBuffer> entry) {
         entries.put(entry.key(), entry);
     }
 

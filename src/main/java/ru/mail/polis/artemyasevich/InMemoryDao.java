@@ -74,7 +74,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public void upsert(BaseEntry<String> entry) {
+    public void upsert(@NotNull BaseEntry<String> entry) {
         if (entry.value().length() > maxValueSize) {
             maxValueSize = entry.value().length();
         }

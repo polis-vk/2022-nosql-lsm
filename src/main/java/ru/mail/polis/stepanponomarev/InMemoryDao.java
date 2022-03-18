@@ -1,5 +1,6 @@
 package ru.mail.polis.stepanponomarev;
 
+import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
@@ -29,7 +30,7 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     }
 
     @Override
-    public void upsert(Entry<ByteBuffer> entry) {
+    public void upsert(@NotNull Entry<ByteBuffer> entry) {
         if (entry == null) {
             throw new NullPointerException("Entry can't be null");
         }

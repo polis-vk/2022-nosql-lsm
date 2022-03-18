@@ -40,7 +40,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public void upsert(BaseEntry<MemorySegment> entry) {
+    public void upsert(@NotNull BaseEntry<MemorySegment> entry) {
         data.put(entry.key(), entry);
     }
 

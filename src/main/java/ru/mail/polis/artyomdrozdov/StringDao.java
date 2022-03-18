@@ -83,7 +83,7 @@ public class StringDao implements Dao<String, Entry<String>> {
     }
 
     @Override
-    public void upsert(Entry<String> entry) {
+    public void upsert(@NotNull Entry<String> entry) {
         lock.readLock().lock();
         try {
             storage.put(entry.key(), entry);

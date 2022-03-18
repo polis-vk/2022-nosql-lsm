@@ -1,5 +1,6 @@
 package ru.mail.polis.deniszhidkov;
 
+import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 import java.util.Collection;
@@ -27,7 +28,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public void upsert(BaseEntry<String> entry) {
+    public void upsert(@NotNull BaseEntry<String> entry) {
         storage.put(entry.key(), entry);
     }
 }

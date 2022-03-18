@@ -58,7 +58,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void upsert(BaseEntry<ByteBuffer> entry) {
+    public void upsert(@NotNull BaseEntry<ByteBuffer> entry) {
         try {
             rwlock.readLock().lock();
             data.put(entry.key(), entry);

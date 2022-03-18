@@ -81,7 +81,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     }
 
     @Override
-    public void upsert(BaseEntry<MemorySegment> entry) {
+    public void upsert(@NotNull BaseEntry<MemorySegment> entry) {
         storageSizeInBytes.addAndGet(entry.key().byteSize() + entry.value().byteSize());
         memory.put(entry.key(), entry);
     }

@@ -34,7 +34,7 @@ public class ByteBufferDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     }
 
     @Override
-    public void upsert(Entry<ByteBuffer> entry) {
+    public void upsert(@NotNull Entry<ByteBuffer> entry) {
         storage.put(entry.key(), entry);
     }
 }

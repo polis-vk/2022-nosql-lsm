@@ -31,7 +31,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public void upsert(BaseEntry<MemorySegment> entry) {
+    public void upsert(@NotNull BaseEntry<MemorySegment> entry) {
         map.put(entry.key(), entry);
     }
 }

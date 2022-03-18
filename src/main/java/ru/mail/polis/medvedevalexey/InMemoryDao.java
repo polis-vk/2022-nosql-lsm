@@ -62,7 +62,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public void upsert(BaseEntry<byte[]> entry) {
+    public void upsert(@NotNull BaseEntry<byte[]> entry) {
         if (entry == null) {
             throw new IllegalArgumentException();
         }

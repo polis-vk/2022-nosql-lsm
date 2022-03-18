@@ -80,7 +80,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     }
 
     @Override
-    public void upsert(Entry<String> entry) {
+    public void upsert(@NotNull Entry<String> entry) {
         data.put(entry.key(), entry);
         commit = false;
     }

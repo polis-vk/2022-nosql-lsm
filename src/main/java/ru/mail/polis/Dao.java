@@ -65,7 +65,7 @@ public interface Dao<D, E extends Entry<D>> extends Closeable {
      * Inserts of replaces entry.
      * @param entry element to upsert
      */
-    void upsert(E entry);
+    void upsert(@NotNull E entry);
 
     /*
      * Persists data (no-op by default).

@@ -56,7 +56,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void upsert(BaseEntry<ByteBuffer> entry) {
+    public void upsert(@NotNull BaseEntry<ByteBuffer> entry) {
         if (entry == null) {
             throw new IllegalArgumentException();
         }

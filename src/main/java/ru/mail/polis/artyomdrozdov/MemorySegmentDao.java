@@ -129,7 +129,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     }
 
     @Override
-    public void upsert(Entry<MemorySegment> entry) {
+    public void upsert(@NotNull Entry<MemorySegment> entry) {
         lock.readLock().lock();
         try {
             storage.put(entry.key(), entry);

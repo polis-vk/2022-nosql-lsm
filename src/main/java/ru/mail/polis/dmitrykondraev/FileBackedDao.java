@@ -65,7 +65,7 @@ public class FileBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     }
 
     @Override
-    public void upsert(Entry<MemorySegment> entry) {
+    public void upsert(@NotNull Entry<MemorySegment> entry) {
         // implicit check for non-null entry and entry.key()
         map.put(entry.key(), entry);
     }
