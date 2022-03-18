@@ -23,14 +23,13 @@ public class DaoReader {
     public DaoReader(Path fileName, Path indexName) throws NoSuchFileException {
         MappedByteBuffer mapper;
         MappedByteBuffer indexMapper;
-        try(FileChannel reader = FileChannel.open(fileName, StandardOpenOption.READ);
-            FileChannel indexReader = FileChannel.open(indexName, StandardOpenOption.READ)) {
+        try (FileChannel reader = FileChannel.open(fileName, StandardOpenOption.READ);
+             FileChannel indexReader = FileChannel.open(indexName, StandardOpenOption.READ)) {
             mapper = reader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(fileName));
             indexMapper = indexReader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(indexName));
         } catch (NoSuchFileException e) {
             throw e;
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
         this.mapper = mapper;
@@ -45,7 +44,7 @@ public class DaoReader {
 
         while (lowerBond <= higherBond) {
             BaseEntry<ByteBuffer> result = getEntry(middle);
-            if(result.value() == null) {
+            if (result.value() == null) {
                 return new BaseEntry<>(key, null);
             }
             if (key.compareTo(result.key()) > 0) {
@@ -68,10 +67,9 @@ public class DaoReader {
         BaseEntry<ByteBuffer> result = null;
         while (lowerBond <= higherBond) {
             result = getEntry(middle);
-            if(result.value() == null) {
+            if (result.value() == null) {
                 return result;
-            }
-            else if (key.compareTo(result.key()) > 0) {
+            } else if (key.compareTo(result.key()) > 0) {
                 lowerBond = middle + 1;
             } else if (key.compareTo(result.key()) < 0) {
                 higherBond = middle - 1;
@@ -80,10 +78,10 @@ public class DaoReader {
             }
             middle = (lowerBond + higherBond) / 2;
         }
-        if(result == null) {
+        if (result == null) {
             return null;
         }
-        if(key.compareTo(result.key()) < 0) {
+        if (key.compareTo(result.key()) < 0) {
             return result;
         }
         return getNextEntry();
@@ -96,7 +94,7 @@ public class DaoReader {
         int keyLen = mapper.getInt();
         int valLen = mapper.getInt();
         ByteBuffer key = mapper.slice(curPosition + Integer.BYTES * 2, keyLen);
-        if(valLen == -1) {
+        if (valLen == -1) {
             position = curPosition + Integer.BYTES * 2 + keyLen + valLen;
             return new BaseEntry<>(key, null);
         }
@@ -106,17 +104,17 @@ public class DaoReader {
     }
 
     public BaseEntry<ByteBuffer> getNextEntry() {
-        if(position == -1) {
+        if (position == -1) {
             throw new UnsupportedOperationException();
         }
-        if(position > lastPosition) {
+        if (position > lastPosition) {
             return null;
         }
         mapper.position(position);
         int keyLen = mapper.getInt();
         int valLen = mapper.getInt();
         ByteBuffer key = mapper.slice(position + Integer.BYTES * 2, keyLen);
-        if(valLen == -1) {
+        if (valLen == -1) {
             position = position + Integer.BYTES * 2 + keyLen + valLen;
             return new BaseEntry<>(key, null);
         }
@@ -128,7 +126,7 @@ public class DaoReader {
     public BaseEntry<ByteBuffer> getFirstEntry() {
         int size = indexMapper.getInt();
         lastPosition = indexMapper.position(size * Integer.BYTES).getInt();
-        if(size != 0) {
+        if (size != 0) {
             position = 0;
             return getNextEntry();
         }

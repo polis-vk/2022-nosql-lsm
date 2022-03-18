@@ -1,12 +1,11 @@
 package ru.mail.polis.alexanderkosnitskiy;
 
-import java.io.IOException;
+import ru.mail.polis.BaseEntry;
+
 import java.nio.ByteBuffer;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Iterator;
-
-import ru.mail.polis.BaseEntry;
 
 public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
     private final DaoReader reader;

@@ -22,14 +22,14 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String INDEX = "index";
     private static final String EXTENSION = ".anime";
     private final Config config;
-    private long amountOfFiles;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory = new ConcurrentSkipListMap<>();
+    private long amountOfFiles;
 
     public PersistenceDao(Config config) throws IOException {
         long amountOfFiles;
         this.config = config;
         try (Stream<Path> files = Files.list(config.basePath())) {
-            if(files != null) {
+            if (files != null) {
                 amountOfFiles = files.count() / 2;
             } else {
                 amountOfFiles = 0;
@@ -44,7 +44,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> result = memory.get(key);
         if (result != null) {
-            if(result.value() == null) {
+            if (result.value() == null) {
                 return null;
             }
             return result;
@@ -91,10 +91,10 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private BaseEntry<ByteBuffer> findInFiles(ByteBuffer key) {
         BaseEntry<ByteBuffer> result;
-        for(long i = amountOfFiles - 1; i >= 0; i--) {
+        for (long i = amountOfFiles - 1; i >= 0; i--) {
             result = findInFile(key, i);
-            if(result != null) {
-                if(result.value() == null) {
+            if (result != null) {
+                if (result.value() == null) {
                     return null;
                 }
                 return result;
@@ -141,7 +141,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 queue.add(new PriorityConstruction(0, memIter.next()));
             }
             for (int i = 0; i < list.size(); i++) {
-                if(list.get(i).peek() != null) {
+                if (list.get(i).peek() != null) {
                     queue.add(new PriorityConstruction(i + 1, list.get(i).next()));
                 }
             }
@@ -155,7 +155,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
         @Override
         public BaseEntry<ByteBuffer> next() {
-            if(!hasNext()) {
+            if (!hasNext()) {
                 throw new UnsupportedOperationException();
             }
             BaseEntry<ByteBuffer> temp = nextElement;
@@ -164,29 +164,29 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
 
         private BaseEntry<ByteBuffer> getNextElement() {
-            if(queue.isEmpty()) {
+            if (queue.isEmpty()) {
                 return null;
             }
             PriorityConstruction curr = queue.remove();
-            if(curr.index == 0) {
-                if(memIter.hasNext()) {
+            if (curr.index == 0) {
+                if (memIter.hasNext()) {
                     queue.add(new PriorityConstruction(0, memIter.next()));
                 }
-            } else if(list.get(curr.index - 1).hasNext()) {
+            } else if (list.get(curr.index - 1).hasNext()) {
                 queue.add(new PriorityConstruction(curr.index, list.get(curr.index - 1).next()));
             }
             PriorityConstruction similar;
             while (!queue.isEmpty() && queue.peek().entry.key().equals(curr.entry.key())) {
                 similar = queue.remove();
-                if(similar.index == 0) {
-                    if(memIter.hasNext()) {
+                if (similar.index == 0) {
+                    if (memIter.hasNext()) {
                         queue.add(new PriorityConstruction(0, memIter.next()));
                     }
-                } else if(list.get(similar.index - 1).hasNext()) {
+                } else if (list.get(similar.index - 1).hasNext()) {
                     queue.add(new PriorityConstruction(similar.index, list.get(similar.index - 1).next()));
                 }
             }
-            if(curr.entry.value() == null) {
+            if (curr.entry.value() == null) {
                 return getNextElement();
             }
             return curr.entry;
@@ -195,6 +195,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         private static class PriorityConstruction {
             int index;
             BaseEntry<ByteBuffer> entry;
+
             PriorityConstruction(int index, BaseEntry<ByteBuffer> entry) {
                 this.index = index;
                 this.entry = entry;

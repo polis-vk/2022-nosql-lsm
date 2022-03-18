@@ -33,7 +33,7 @@ public class DaoWriter implements Closeable {
                 (FileChannel.MapMode.READ_WRITE, 0, (long) Integer.BYTES * (map.size() + 1));
         indexMapper.putInt(map.size());
         int size = 0;
-        for(BaseEntry<ByteBuffer> entry : map.values()) {
+        for (BaseEntry<ByteBuffer> entry : map.values()) {
             indexMapper.putInt(size);
             int capacity = entry.value() != null ? entry.value().capacity() : 0;
             size += 2 * Integer.BYTES + entry.key().capacity() + capacity;
@@ -41,12 +41,12 @@ public class DaoWriter implements Closeable {
 
         MappedByteBuffer mapper = writer.map(FileChannel.MapMode.READ_WRITE, 0, size);
 
-        for(BaseEntry<ByteBuffer> entry : map.values()) {
+        for (BaseEntry<ByteBuffer> entry : map.values()) {
             mapper.putInt(entry.key().capacity());
             int capacity = entry.value() != null ? entry.value().capacity() : -1;
             mapper.putInt(capacity);
             mapper.put(entry.key());
-            if(entry.value() != null) {
+            if (entry.value() != null) {
                 mapper.put(entry.value());
             }
         }
