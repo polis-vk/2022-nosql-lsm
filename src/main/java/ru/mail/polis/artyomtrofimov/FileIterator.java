@@ -35,7 +35,8 @@ public class FileIterator implements Iterator<Entry<String>> {
     }
 
     private void findFloorEntry(String name) throws IOException {
-        try (RandomAccessFile index = new RandomAccessFile(basePath.resolve(name + InMemoryDao.INDEX_EXT).toString(), "r")) {
+        String filename = name + InMemoryDao.INDEX_EXT;
+        try (RandomAccessFile index = new RandomAccessFile(basePath.resolve(filename).toString(), "r")) {
             raf.seek(0);
             int size = raf.readInt();
             long left = -1;

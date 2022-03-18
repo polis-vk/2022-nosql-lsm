@@ -81,19 +81,20 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     @Override
     public Iterator<Entry<String>> get(String from, String to) throws IOException {
-        if (from == null) {
-            from = "";
+        String start = from;
+        if (start == null) {
+            start = "";
         }
         Iterator<Entry<String>> dataIterator;
         if (to == null) {
-            dataIterator = data.tailMap(from).values().iterator();
+            dataIterator = data.tailMap(start).values().iterator();
         } else {
-            dataIterator = data.subMap(from, to).values().iterator();
+            dataIterator = data.subMap(start, to).values().iterator();
         }
         List<PeekingIterator> iterators = new ArrayList<>();
         iterators.add(new PeekingIterator(dataIterator));
         for (String file : filesList) {
-            iterators.add(new PeekingIterator(new FileIterator(basePath, file, from, to)));
+            iterators.add(new PeekingIterator(new FileIterator(basePath, file, start, to)));
         }
         return new MergeIterator(iterators);
     }
