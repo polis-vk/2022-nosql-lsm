@@ -3,55 +3,58 @@ package ru.mail.polis.alexanderkosnitskiy;
 import ru.mail.polis.BaseEntry;
 
 import java.io.Closeable;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public class DaoWriter implements Closeable {
-    private final FileOutputStream writer;
-    private final FileOutputStream indexWriter;
+    private final FileChannel writer;
+    private final FileChannel indexWriter;
 
-    public DaoWriter(Path fileName, Path indexName) throws FileNotFoundException {
-        writer = new FileOutputStream(String.valueOf(fileName));
-        indexWriter = new FileOutputStream(String.valueOf(indexName));
+    public DaoWriter(Path fileName, Path indexName) throws IOException {
+        writer = FileChannel.open(fileName,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.READ,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING);
+        indexWriter = FileChannel.open(indexName,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.READ,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     public void writeMap(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map) throws IOException {
-        writeInt(map.size());
-        for (BaseEntry<ByteBuffer> entry : map.values()) {
-            writeElementPair(entry);
+        MappedByteBuffer indexMapper = indexWriter.map
+                (FileChannel.MapMode.READ_WRITE, 0, (long) Integer.BYTES * (map.size() + 1));
+        indexMapper.putInt(map.size());
+        int size = 0;
+        for(BaseEntry<ByteBuffer> entry : map.values()) {
+            indexMapper.putInt(size);
+            int capacity = entry.value() != null ? entry.value().capacity() : 0;
+            size += 2 * Integer.BYTES + entry.key().capacity() + capacity;
         }
-    }
 
-    public void writeElementPair(BaseEntry<ByteBuffer> entry) throws IOException {
-        writeLong(writer.getChannel().position());
-        int keyLen = entry.key().array().length;
-        int valLen = entry.value().array().length;
-        ByteBuffer buffer = ByteBuffer.wrap(new byte[2 * Integer.BYTES + keyLen + valLen]);
-        buffer.putInt(keyLen);
-        buffer.putInt(valLen);
-        buffer.put(entry.key().array());
-        buffer.put(entry.value().array());
-        writer.write(buffer.array());
-    }
+        MappedByteBuffer mapper = writer.map(FileChannel.MapMode.READ_WRITE, 0, size);
 
-    public void writeLong(long size) throws IOException {
-        ByteBuffer buffer = ByteBuffer.wrap(new byte[Long.BYTES]);
-        buffer.putLong(size);
-        indexWriter.write(buffer.array());
-    }
-
-    public void writeInt(int size) throws IOException {
-        ByteBuffer buffer = ByteBuffer.wrap(new byte[Integer.BYTES]);
-        buffer.putInt(size);
-        indexWriter.write(buffer.array());
+        for(BaseEntry<ByteBuffer> entry : map.values()) {
+            mapper.putInt(entry.key().capacity());
+            int capacity = entry.value() != null ? entry.value().capacity() : -1;
+            mapper.putInt(capacity);
+            mapper.put(entry.key());
+            if(entry.value() != null) {
+                mapper.put(entry.value());
+            }
+        }
     }
 
     @Override
     public void close() throws IOException {
         writer.close();
+        indexWriter.close();
     }
 }
