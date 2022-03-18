@@ -2,6 +2,7 @@ package ru.mail.polis.vladislavfetisov;
 
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
+import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
@@ -39,7 +40,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     }
 
     @Override
-    public Entry<MemorySegment> get(MemorySegment key) {
+    public Entry<MemorySegment> get(@NotNull MemorySegment key) {
         return storage.get(key);
     }
 

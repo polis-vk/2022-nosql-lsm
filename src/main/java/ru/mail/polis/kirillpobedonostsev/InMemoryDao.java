@@ -1,6 +1,7 @@
 package ru.mail.polis.kirillpobedonostsev;
 
 import jdk.incubator.foreign.MemorySegment;
+import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
@@ -25,7 +26,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public BaseEntry<MemorySegment> get(MemorySegment key) {
+    public BaseEntry<MemorySegment> get(@NotNull MemorySegment key) {
         return key == null ? null : map.get(key);
     }
 

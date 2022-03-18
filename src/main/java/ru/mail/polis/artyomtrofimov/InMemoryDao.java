@@ -1,5 +1,6 @@
 package ru.mail.polis.artyomtrofimov;
 
+import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -44,7 +45,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     }
 
     @Override
-    public Entry<String> get(String key) throws IOException {
+    public Entry<String> get(@NotNull String key) throws IOException {
         Entry<String> entry = data.get(key);
         if (entry == null) {
             entry = findInFileByKey(key);

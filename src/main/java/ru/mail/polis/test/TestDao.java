@@ -1,5 +1,6 @@
 package ru.mail.polis.test;
 
+import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -33,7 +34,7 @@ class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
     }
 
     @Override
-    public Entry<String> get(String key) throws IOException {
+    public Entry<String> get(@NotNull String key) throws IOException {
         E result = delegate.get(factory.fromString(key));
         if (result == null) {
             return null;

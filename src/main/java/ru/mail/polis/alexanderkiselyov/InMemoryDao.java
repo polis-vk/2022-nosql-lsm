@@ -1,5 +1,6 @@
 package ru.mail.polis.alexanderkiselyov;
 
+import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -49,7 +50,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public BaseEntry<byte[]> get(byte[] key) throws IOException {
+    public BaseEntry<byte[]> get(byte @NotNull [] key) throws IOException {
         BaseEntry<byte[]> value = pairs.get(key);
         if (value != null && Arrays.equals(value.key(), key)) {
             return value;

@@ -1,5 +1,6 @@
 package ru.mail.polis.pavelkovalenko;
 
+import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -46,7 +47,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
+    public BaseEntry<ByteBuffer> get(@NotNull ByteBuffer key) throws IOException {
         try {
             rwlock.readLock().lock();
             BaseEntry<ByteBuffer> result = findKeyInMap(key);

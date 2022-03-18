@@ -1,5 +1,6 @@
 package ru.mail.polis.andreyilchenko;
 
+import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -71,7 +72,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
+    public BaseEntry<ByteBuffer> get(@NotNull ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> entry = entries.get(key);
         if (entry == null && dataExistFlag) {
             return findInFile(key);

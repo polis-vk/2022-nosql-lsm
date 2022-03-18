@@ -1,5 +1,6 @@
 package ru.mail.polis.alexanderkosnitskiy;
 
+import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -22,7 +23,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
+    public BaseEntry<ByteBuffer> get(@NotNull ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> result = memory.get(key);
         if (result != null) {
             return result;
