@@ -41,7 +41,13 @@ checkstyle {
     checkstyleTest.enabled = false
 }
 
-// JDK Incubator Foreign module
-var incubatorArguments = ["--add-modules","jdk.incubator.foreign"]
-tasks.withType(JavaCompile) { options.compilerArgs += incubatorArguments }
-tasks.withType(Test) { jvmArgs += incubatorArguments }
+// Use JDK Incubator Foreign module (for MemorySegment users)
+def incubatorArgs = ["--add-modules", "jdk.incubator.foreign"]
+
+tasks.withType(JavaCompile) {
+    options.compilerArgs += incubatorArgs
+}
+
+tasks.withType(Test) {
+    jvmArgs += incubatorArgs
+}
