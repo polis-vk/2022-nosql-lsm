@@ -18,6 +18,7 @@ dependencies {
     // Checks
     errorprone 'com.google.errorprone:error_prone_core:2.11.0'
     checkstyle 'com.puppycrawl.tools:checkstyle:9.3'
+    compileOnly 'org.jetbrains:annotations:23.0.0'
 
     // Logging
     implementation 'org.slf4j:slf4j-api:1.7.36'
