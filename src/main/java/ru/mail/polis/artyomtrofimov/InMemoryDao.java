@@ -8,7 +8,6 @@ import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.io.UncheckedIOException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -16,17 +15,14 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.PriorityQueue;
-import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<String, Entry<String>> {
+    public static final String DATA_EXT = ".dat";
+    public static final String INDEX_EXT = ".ind";
     private static final String ALL_FILES = "files.fl";
-    private static final String DATA_EXT = ".dat";
-    private static final String INDEX_EXT = ".ind";
     private static final Random rnd = new Random();
     private final ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
     private final Path basePath;
@@ -65,11 +61,12 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             while (left < right) {
                 mid = left + (right - left) / 2;
                 indexInput.seek(mid * Long.BYTES);
-                input.seek(indexInput.readLong());
+                long index = indexInput.readLong();
+                input.seek(index & 0x7fffffff);
                 String currentKey = input.readUTF();
                 int keyComparing = key.compareTo(currentKey);
                 if (keyComparing == 0) {
-                    return new BaseEntry<>(currentKey, input.readUTF());
+                    return new BaseEntry<>(currentKey, index < 0 ? null : input.readUTF());
                 } else if (keyComparing < 0) {
                     right = mid;
                 } else {
@@ -84,27 +81,21 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     @Override
     public Iterator<Entry<String>> get(String from, String to) throws IOException {
-        boolean isFromNull = from == null;
-        boolean isToNull = to == null;
+        if (from == null) {
+            from = "";
+        }
         Iterator<Entry<String>> dataIterator;
-        if (isFromNull && isToNull) {
-            dataIterator = data.values().iterator();
-        } else if (isFromNull) {
-            dataIterator = data.headMap(to).values().iterator();
-        } else if (isToNull) {
+        if (to == null) {
             dataIterator = data.tailMap(from).values().iterator();
         } else {
             dataIterator = data.subMap(from, to).values().iterator();
         }
-
         List<PeekingIterator> iterators = new ArrayList<>();
         iterators.add(new PeekingIterator(dataIterator));
         for (String file : filesList) {
             iterators.add(new PeekingIterator(new FileIterator(basePath, file, from, to)));
         }
-
         return new MergeIterator(iterators);
-
     }
 
     @Override
@@ -155,163 +146,21 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             output.seek(0);
             output.writeInt(data.size());
             for (Entry<String> value : data.values()) {
-                indexOut.writeLong(output.getFilePointer());
+                long fp = output.getFilePointer();
+                String val = value.value();
+                if (val == null) {
+                    fp = -fp;
+                    val = "";
+                }
+                indexOut.writeLong(fp);
                 output.writeUTF(value.key());
-                output.writeUTF(value.value());
+                output.writeUTF(val);
             }
-
             allFilesOut.setLength(0);
             while (!filesList.isEmpty()) {
                 allFilesOut.writeUTF(filesList.pollLast());
             }
-
         }
         commit = true;
-    }
-
-    private static final class MergeIterator implements Iterator<Entry<String>> {
-        private Queue<PeekingIterator> queue =
-                new PriorityQueue<>((l, r) -> {
-                    if (l.hasNext() && r.hasNext()) {
-                        return l.peek().key().compareTo(r.peek().key());
-                    }
-                    return l.hasNext() ? -1 : 1;
-                });
-
-
-        private MergeIterator(List<PeekingIterator> iterators) {
-            queue.addAll(iterators);
-        }
-
-        @Override
-        public boolean hasNext() {
-            queue.removeIf(item -> !item.hasNext());
-            return !queue.isEmpty();
-        }
-
-        @Override
-        public Entry<String> next() {
-            if (!hasNext()) {
-                throw new NoSuchElementException();
-            }
-
-            PeekingIterator nextIter = queue.poll();
-            Entry<String> nextEntry = nextIter.next();
-            queue.add(nextIter);
-
-            while (queue.peek().hasNext() && queue.peek().peek().key().equals(nextEntry.key())) {
-                PeekingIterator peek = queue.poll();
-                peek.next();
-                queue.add(peek);
-            }
-
-            return nextEntry;
-        }
-    }
-
-    private static class PeekingIterator implements Iterator<Entry<String>> {
-
-        private final Iterator<Entry<String>> iterator;
-        private Entry<String> currentEntry;
-
-        public PeekingIterator(Iterator<Entry<String>> iterator) {
-            this.iterator = iterator;
-        }
-
-        public Entry<String> peek() {
-            if (currentEntry == null) {
-                currentEntry = iterator.next();
-            }
-            return currentEntry;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return currentEntry != null || iterator.hasNext();
-        }
-
-        @Override
-        public Entry<String> next() {
-            Entry<String> peek = peek();
-            currentEntry = null;
-            return peek;
-        }
-    }
-
-    private static class FileIterator implements Iterator<Entry<String>> {
-        private final Path basePath;
-        String from;
-        String to;
-        private RandomAccessFile raf;
-        private long lastPos;
-        private Entry<String> nextEntry = null;
-
-        public FileIterator(Path basePath, String name, String from, String to) throws IOException {
-            this.from = from;
-            this.to = to;
-            this.basePath = basePath;
-            try {
-                raf = new RandomAccessFile(basePath.resolve(name + DATA_EXT).toString(), "r");
-                if (this.from == null) {
-                    this.from = "";
-                }
-                findFloorEntry(name);
-            } catch (FileNotFoundException | EOFException e) {
-                nextEntry = null;
-            }
-        }
-
-        private void findFloorEntry(String name) throws IOException {
-            try (RandomAccessFile index = new RandomAccessFile(basePath.resolve(name + INDEX_EXT).toString(), "r")) {
-                raf.seek(0);
-                int size = raf.readInt();
-                long left = -1;
-                long right = size;
-                long mid;
-                while (left < right - 1) {
-                    mid = left + (right - left) / 2;
-                    index.seek(mid * Long.BYTES);
-                    raf.seek(index.readLong());
-                    String currentKey = raf.readUTF();
-                    String currentValue = raf.readUTF();
-                    int keyComparing = currentKey.compareTo(from);
-                    if (keyComparing == 0) {
-                        lastPos = raf.getFilePointer();
-                        this.nextEntry = new BaseEntry<>(currentKey, currentValue);
-                        break;
-                    } else if (keyComparing > 0) {
-                        lastPos = raf.getFilePointer();
-                        this.nextEntry = new BaseEntry<>(currentKey, currentValue);
-                        right = mid;
-                    } else {
-                        left = mid;
-                    }
-                }
-            }
-        }
-
-        @Override
-        public boolean hasNext() {
-            return (to == null && nextEntry != null) || (nextEntry != null && nextEntry.key().compareTo(to) < 0);
-        }
-
-        @Override
-        public Entry<String> next() {
-            if (!hasNext()) {
-                throw new NoSuchElementException();
-            }
-            Entry<String> retval = nextEntry;
-            try {
-                raf.seek(lastPos);
-                String currentKey = raf.readUTF();
-                nextEntry = new BaseEntry<>(currentKey, raf.readUTF());
-                lastPos = raf.getFilePointer();
-            } catch (EOFException e) {
-                nextEntry = null;
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-            return retval;
-        }
     }
 }
