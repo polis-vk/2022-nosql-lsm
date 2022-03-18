@@ -47,6 +47,8 @@ plugins:
         enabled: false
       SingularField:
         enabled: false
+      UseVarargs:
+        enabled: false
   sonar-java:
     enabled: true
     config:
