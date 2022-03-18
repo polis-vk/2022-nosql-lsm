@@ -101,12 +101,21 @@ class MemorySegmentReader {
         }
 
         long byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex);
-        long byteSize = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex + 1) - byteOffset;
+        long nextOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex + 1);
+
+        if (nextOffset == -1) {
+            return null;
+        }
+        if (byteOffset == -1) {
+            byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex - 1);
+        }
+
+        long byteSize = nextOffset - byteOffset;
 
         return mappedSegmentForData.asSlice(byteOffset, byteSize);
     }
 
-    public Iterator<BaseEntry<MemorySegment>> getFromDisk(MemorySegment from, MemorySegment to) {
+    public PeekIterator getFromDisk(MemorySegment from, MemorySegment to) {
         long start = getIndex(from, 0);
         long end = getIndex(to, lastIndex + 1);
 
@@ -114,7 +123,7 @@ class MemorySegmentReader {
             throw new IllegalArgumentException("from is bigger than to");
         }
 
-        return new Iterator<>() {
+        return new PeekIterator(number, new Iterator<>() {
             long next = start;
             final long last = end;
 
@@ -127,7 +136,7 @@ class MemorySegmentReader {
             public BaseEntry<MemorySegment> next() {
                 return new BaseEntry<>(getMemorySegment(next, false), getMemorySegment(next++, true));
             }
-        };
+        });
     }
 
     private long getIndex(MemorySegment key, long defaultIndex) {

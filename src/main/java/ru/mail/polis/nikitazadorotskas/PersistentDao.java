@@ -65,12 +65,12 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
         }
     }
 
-    private List<Iterator<BaseEntry<MemorySegment>>> getIterators(MemorySegment from, MemorySegment to) {
-        List<Iterator<BaseEntry<MemorySegment>>> iterators = new ArrayList<>();
+    private List<PeekIterator> getIterators(MemorySegment from, MemorySegment to) {
+        List<PeekIterator> iterators = new ArrayList<>();
         for (MemorySegmentReader reader : readers) {
             iterators.add(reader.getFromDisk(from, to));
         }
-        iterators.add(getMap(from, to).values().iterator());
+        iterators.add(new PeekIterator(numberOfFiles, getMap(from, to).values().iterator()));
 
         return iterators;
     }
@@ -100,7 +100,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
             BaseEntry<MemorySegment> result = memory.get(key);
 
             if (result != null) {
-                return result;
+                return result.value() == null ? null : result;
             }
 
             if (readers.length == 0) {
@@ -110,7 +110,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
             for (int i = readers.length - 1; i >= 0; i--) {
                 BaseEntry<MemorySegment> res = readers[i].getFromDisk(key);
                 if (res != null) {
-                    return res;
+                    return res.value() == null ? null : res;
                 }
             }
 
@@ -129,7 +129,8 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     public void upsert(BaseEntry<MemorySegment> entry) {
         lock.readLock().lock();
         try {
-            storageSizeInBytes.addAndGet(entry.key().byteSize() + entry.value().byteSize());
+            long valueSize = entry.value() == null ? 0L : entry.value().byteSize();
+            storageSizeInBytes.addAndGet(entry.key().byteSize() + valueSize);
             memory.put(entry.key(), entry);
         } finally {
             lock.readLock().unlock();

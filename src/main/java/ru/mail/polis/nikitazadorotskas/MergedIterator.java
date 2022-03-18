@@ -3,86 +3,81 @@ package ru.mail.polis.nikitazadorotskas;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
-    private int emptyIterators;
-    private final List<Iterator<BaseEntry<MemorySegment>>> iterators;
-    private final List<BaseEntry<MemorySegment>> currentEntries;
-    private final List<Integer> indexesWithSameKey = new ArrayList<>();
     private final Utils utils;
+    private BaseEntry<MemorySegment> next;
+    PriorityQueue<PeekIterator> minHeap = new PriorityQueue<>(new Comparator<>() {
+        @Override
+        public int compare(PeekIterator first, PeekIterator second) {
+            return utils.compareBaseEntries(first.current(), second.current());
+        }
+    });
 
-    public MergedIterator(List<Iterator<BaseEntry<MemorySegment>>> iterators, Utils utils) {
-        this.iterators = iterators;
+    public MergedIterator(List<PeekIterator> iterators, Utils utils) {
         this.utils = utils;
-        currentEntries = initCurrentEntries();
+        addIteratorsToHeap(iterators);
+        updateNext();
     }
 
-    private List<BaseEntry<MemorySegment>> initCurrentEntries() {
-        List<BaseEntry<MemorySegment>> result = new ArrayList<>();
-        for (Iterator<BaseEntry<MemorySegment>> iterator : iterators) {
+    private void addIteratorsToHeap(List<PeekIterator> iterators) {
+        for (PeekIterator iterator : iterators) {
             if (iterator.hasNext()) {
-                result.add(iterator.next());
-                continue;
+                iterator.next();
+                minHeap.add(iterator);
             }
+        }
+    }
 
-            result.add(null);
-            emptyIterators++;
+    @Override
+    public boolean hasNext() {
+        return next != null;
+    }
+
+    @Override
+    public BaseEntry<MemorySegment> next() {
+        BaseEntry<MemorySegment> result = next;
+        updateNext();
+        return result;
+    }
+
+    private void updateNext() {
+        BaseEntry<MemorySegment> result = null;
+
+        while (result == null && minHeap.size() > 0) {
+            PeekIterator iterator = minHeap.poll();
+            BaseEntry<MemorySegment> current = iterator.current();
+
+            List<PeekIterator> iterators = getIteratorsWithSameValues(current);
+            iterators.add(iterator);
+
+            result = getActualEntry(iterators);
+            addIteratorsToHeap(iterators);
+        }
+
+        next = result;
+    }
+
+    private List<PeekIterator> getIteratorsWithSameValues(BaseEntry<MemorySegment> current) {
+        List<PeekIterator> result = new ArrayList<>();
+
+        while (minHeap.size() > 0 && utils.compareBaseEntries(minHeap.peek().current(), current) == 0) {
+            result.add(minHeap.poll());
         }
 
         return result;
     }
 
-    @Override
-    public boolean hasNext() {
-        return emptyIterators < iterators.size();
-    }
-
-    @Override
-    public BaseEntry<MemorySegment> next() {
-        BaseEntry<MemorySegment> min = findNext();
-        updateCurrentEntries();
-        return min;
-    }
-
-    private BaseEntry<MemorySegment> findNext() {
-        BaseEntry<MemorySegment> min = null;
-        for (int i = iterators.size() - 1; i >= 0; i--) {
-            BaseEntry<MemorySegment> current = currentEntries.get(i);
-            if (current == null) {
-                continue;
-            }
-
-            if (min == null) {
-                min = current;
-                indexesWithSameKey.add(i);
-                continue;
-            }
-
-            int compare = utils.compareBaseEntries(current, min);
-            if (compare < 0) {
-                min = current;
-                indexesWithSameKey.clear();
-                indexesWithSameKey.add(i);
-            } else if (compare == 0) {
-                indexesWithSameKey.add(i);
+    private BaseEntry<MemorySegment> getActualEntry(List<PeekIterator> iterators) {
+        int maxNumber = iterators.get(0).getNumber();
+        BaseEntry<MemorySegment> result = iterators.get(0).current();
+        for (int i = 1; i < iterators.size(); i++) {
+            if (iterators.get(i).getNumber() > maxNumber) {
+                maxNumber = iterators.get(i).getNumber();
+                result = iterators.get(i).current();
             }
         }
-
-        return min;
-    }
-
-    private void updateCurrentEntries() {
-        for (int i : indexesWithSameKey) {
-            if (iterators.get(i).hasNext()) {
-                currentEntries.set(i, iterators.get(i).next());
-            } else {
-                emptyIterators++;
-                currentEntries.set(i, null);
-            }
-        }
-        indexesWithSameKey.clear();
+        return result.value() == null ? null : result;
     }
 }
