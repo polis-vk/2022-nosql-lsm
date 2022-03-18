@@ -117,6 +117,7 @@ public class DaoReader {
         int valLen = mapper.getInt();
         ByteBuffer key = mapper.slice(position + Integer.BYTES * 2, keyLen);
         if(valLen == -1) {
+            position = position + Integer.BYTES * 2 + keyLen + valLen;
             return new BaseEntry<>(key, null);
         }
         ByteBuffer value = mapper.slice(position + Integer.BYTES * 2 + keyLen, valLen);

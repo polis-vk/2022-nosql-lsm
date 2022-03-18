@@ -187,7 +187,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 }
             }
             if(curr.entry.value() == null) {
-                return null;
+                return getNextElement();
             }
             return curr.entry;
         }
