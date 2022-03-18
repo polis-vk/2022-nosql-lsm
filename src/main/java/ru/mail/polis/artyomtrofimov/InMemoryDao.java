@@ -17,6 +17,8 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -95,10 +97,10 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             dataIterator = data.subMap(from, to).values().iterator();
         }
 
-        List<ExtendedIterator> iterators = new ArrayList<>();
-        iterators.add(new ExtendedIterator(dataIterator));
+        List<PeekingIterator> iterators = new ArrayList<>();
+        iterators.add(new PeekingIterator(dataIterator));
         for (String file : filesList) {
-            iterators.add(new ExtendedIterator(new FileIterator(basePath, file, from, to)));
+            iterators.add(new PeekingIterator(new FileIterator(basePath, file, from, to)));
         }
 
         return new MergeIterator(iterators);
@@ -167,12 +169,24 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         commit = true;
     }
 
-    private record MergeIterator(List<ExtendedIterator> iterators) implements Iterator<Entry<String>> {
+    private static final class MergeIterator implements Iterator<Entry<String>> {
+        private Queue<PeekingIterator> queue =
+                new PriorityQueue<>((l, r) -> {
+                    if (l.hasNext() && r.hasNext()) {
+                        return l.peek().key().compareTo(r.peek().key());
+                    }
+                    return l.hasNext() ? -1 : 1;
+                });
+
+
+        private MergeIterator(List<PeekingIterator> iterators) {
+            queue.addAll(iterators);
+        }
 
         @Override
         public boolean hasNext() {
-            iterators.removeIf(item -> !item.hasNext());
-            return !iterators.isEmpty();
+            queue.removeIf(item -> !item.hasNext());
+            return !queue.isEmpty();
         }
 
         @Override
@@ -180,34 +194,32 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             if (!hasNext()) {
                 throw new NoSuchElementException();
             }
-            Entry<String> nextEntry = null;
-            for (ExtendedIterator iterator : iterators) {
-                if (nextEntry == null || iterator.peek().key().compareTo(nextEntry.key()) < 0) {
-                    nextEntry = iterator.peek();
-                }
+
+            PeekingIterator nextIter = queue.poll();
+            Entry<String> nextEntry = nextIter.next();
+            queue.add(nextIter);
+
+            while (queue.peek().hasNext() && queue.peek().peek().key().equals(nextEntry.key())) {
+                PeekingIterator peek = queue.poll();
+                peek.next();
+                queue.add(peek);
             }
-            if (nextEntry != null) {
-                for (ExtendedIterator iterator : iterators) {
-                    if (iterator.peek().key().compareTo(nextEntry.key()) == 0) {
-                        iterator.next();
-                    }
-                }
-            }
+
             return nextEntry;
         }
     }
 
-    private static class ExtendedIterator implements Iterator<Entry<String>> {
+    private static class PeekingIterator implements Iterator<Entry<String>> {
 
         private final Iterator<Entry<String>> iterator;
         private Entry<String> currentEntry;
 
-        public ExtendedIterator(Iterator<Entry<String>> iterator) {
+        public PeekingIterator(Iterator<Entry<String>> iterator) {
             this.iterator = iterator;
         }
 
         public Entry<String> peek() {
-            if (currentEntry == null && iterator.hasNext()) {
+            if (currentEntry == null) {
                 currentEntry = iterator.next();
             }
             return currentEntry;
@@ -215,23 +227,14 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
         @Override
         public boolean hasNext() {
-            if (currentEntry == null) {
-                return iterator.hasNext();
-            }
-            return true;
+            return currentEntry != null || iterator.hasNext();
         }
 
         @Override
         public Entry<String> next() {
-            try {
-                return currentEntry;
-            } finally {
-                if (iterator.hasNext()) {
-                    currentEntry = iterator.next();
-                } else {
-                    currentEntry = null;
-                }
-            }
+            Entry<String> peek = peek();
+            currentEntry = null;
+            return peek;
         }
     }
 
@@ -268,8 +271,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 while (left < right - 1) {
                     mid = left + (right - left) / 2;
                     index.seek(mid * Long.BYTES);
-                    long entryPos = index.readLong();
-                    raf.seek(entryPos);
+                    raf.seek(index.readLong());
                     String currentKey = raf.readUTF();
                     String currentValue = raf.readUTF();
                     int keyComparing = currentKey.compareTo(from);
