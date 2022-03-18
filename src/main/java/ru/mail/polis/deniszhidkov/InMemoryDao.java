@@ -2,18 +2,37 @@ package ru.mail.polis.deniszhidkov;
 
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
+
+import java.io.IOException;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
-    ConcurrentNavigableMap<String, BaseEntry<String>> storage = new ConcurrentSkipListMap<>();
+    private static final String FILE_NAME = "storage.txt";
+    private boolean hasFile = true;
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+    private final ConcurrentNavigableMap<String, BaseEntry<String>> storage = new ConcurrentSkipListMap<>();
+    private final DaoReader reader;
+    private final DaoWriter writer;
+
+    public InMemoryDao(Config config) throws IOException {
+        Path pathToFile = config.basePath().resolve(FILE_NAME);
+        this.reader = new DaoReader(pathToFile);
+        this.writer = new DaoWriter(pathToFile);
+    }
 
     @Override
-    public Iterator<BaseEntry<String>> get(String from, String to) {
+    public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
         Collection<BaseEntry<String>> values;
         if (from == null && to == null) {
             values = storage.values();
@@ -28,7 +47,45 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
+    public BaseEntry<String> get(String key) throws IOException {
+        if (!hasFile) {
+            return null;
+        }
+        BaseEntry<String> value = storage.get(key);
+        lock.readLock().lock();
+        try {
+            if (value == null) {
+                try {
+                    value = reader.findEntryByKey(key);
+                } catch (NoSuchFileException e) {
+                    hasFile = false;
+                    return null;
+                }
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+        return value;
+    }
+
+    @Override
+    public void flush() throws IOException {
+        lock.writeLock().lock();
+        try {
+            writer.writeDAO(storage);
+            storage.clear();
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    @Override
     public void upsert(@NotNull BaseEntry<String> entry) {
-        storage.put(entry.key(), entry);
+        lock.readLock().lock();
+        try {
+            storage.put(entry.key(), entry);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 }
