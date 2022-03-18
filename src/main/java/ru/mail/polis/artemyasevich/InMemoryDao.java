@@ -55,9 +55,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (to != null && to.equals(from)) {
             return Collections.emptyIterator();
         }
-        if (from != null) {
-            processAllMeta();
-        }
+        processAllMeta();
         return new MergeIterator(from, to, numberOfFiles, getDataMapIterator(from, to), pathToDirectory, offsets);
     }
 
@@ -73,10 +71,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             }
             entry = getFromFile(key, fileNumber);
             if (entry != null) {
-                break;
+                return entry.value() == null ? null : entry;
             }
         }
-        return entry;
+        return null;
     }
 
     @Override
@@ -111,20 +109,21 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private BaseEntry<String> getFromFile(String key, int fileNumber) throws IOException {
         Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
+        long[] fileOffsets = offsets.get(fileNumber);
         BaseEntry<String> res = null;
         try (RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r")) {
             int left = 0;
             int middle;
-            int right = offsets.get(fileNumber).length - 2;
+            int right = fileOffsets.length - 2;
 
             while (left <= right) {
                 middle = (right - left) / 2 + left;
-                long pos = offsets.get(fileNumber)[middle];
+                long pos = fileOffsets[middle];
                 reader.seek(pos);
                 String entryKey = reader.readUTF();
                 int comparison = key.compareTo(entryKey);
                 if (comparison == 0) {
-                    String entryValue = reader.readUTF();
+                    String entryValue = reader.getFilePointer() == fileOffsets[middle + 1] ? null : reader.readUTF();
                     res = new BaseEntry<>(entryKey, entryValue);
                     break;
                 } else if (comparison > 0) {
@@ -151,7 +150,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
              ))) {
             Entry<String> entry = dataIterator.next();
             dataStream.writeUTF(entry.key());
-            dataStream.writeUTF(entry.value());
+            if (entry.value() != null) {
+                dataStream.writeUTF(entry.value());
+            }
             metaStream.writeInt(dataMap.size());
             int currentBytes = dataStream.size();
             int currentRepeats = 1;
@@ -159,7 +160,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             while (dataIterator.hasNext()) {
                 entry = dataIterator.next();
                 dataStream.writeUTF(entry.key());
-                dataStream.writeUTF(entry.value());
+                if (entry.value() != null) {
+                    dataStream.writeUTF(entry.value());
+                }
                 int bytesWritten = dataStream.size() - bytesWrittenTotal;
                 if (bytesWritten == currentBytes) {
                     currentRepeats++;
@@ -179,17 +182,17 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private long[] readOffsets(int fileNumber) throws IOException {
         long[] fileOffsets;
-        try (DataInputStream dataInputStream = new DataInputStream(new BufferedInputStream(
+        try (DataInputStream metaStream = new DataInputStream(new BufferedInputStream(
                 Files.newInputStream(pathToDirectory.resolve(META_FILE + fileNumber + FILE_EXTENSION))))) {
-            int dataSize = dataInputStream.readInt();
+            int dataSize = metaStream.readInt();
             fileOffsets = new long[dataSize + 1];
 
             long currentOffset = 0;
             fileOffsets[0] = currentOffset;
             int i = 1;
-            while (dataInputStream.available() > 0) {
-                int numberOfEntries = dataInputStream.readInt();
-                int entryBytesSize = dataInputStream.readInt();
+            while (metaStream.available() > 0) {
+                int numberOfEntries = metaStream.readInt();
+                int entryBytesSize = metaStream.readInt();
                 for (int j = 0; j < numberOfEntries; j++) {
                     currentOffset += entryBytesSize;
                     fileOffsets[i] = currentOffset;

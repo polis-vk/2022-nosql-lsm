@@ -4,23 +4,22 @@ import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 
 public class MergeIterator implements Iterator<BaseEntry<String>> {
     private static final String DATA_FILE = "data";
     private static final String FILE_EXTENSION = ".txt";
     private final int numberOfFiles;
-    private final Path pathToDirectory;
     private final List<RandomAccessFile> readers;
     private final List<BaseEntry<String>> currents;
     private final List<long[]> offsets;
+    private final int[] nextEntriesToRead;
     private final Iterator<BaseEntry<String>> dataMapIterator;
     private final String to;
+    private BaseEntry<String> next;
 
     public MergeIterator(String from, String to, int numberOfFiles, Iterator<BaseEntry<String>> dataMapIterator,
                          Path pathToDirectory, List<long[]> offsets) throws IOException {
@@ -28,43 +27,59 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         this.to = to;
         this.dataMapIterator = dataMapIterator;
         this.offsets = offsets;
-        this.pathToDirectory = pathToDirectory;
-        readers = new ArrayList<>(this.numberOfFiles);
-        currents = new ArrayList<>(this.numberOfFiles + 1);
+        this.nextEntriesToRead = new int[numberOfFiles];
+        this.readers = new ArrayList<>(this.numberOfFiles);
+        this.currents = new ArrayList<>(this.numberOfFiles + 1);
         for (int fileNumber = 0; fileNumber < this.numberOfFiles; fileNumber++) {
             Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
             RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r");
             readers.add(reader);
-            if (from == null) {
-                currents.add(readEntry(fileNumber));
-                continue;
-            }
-            BaseEntry<String> closest = findValidClosest(from, to, reader, offsets.get(fileNumber));
-            currents.add(closest);
-            if (closest == null) {
+            BaseEntry<String> entry = from == null ? readEntry(fileNumber) : findValidClosest(from, to, fileNumber);
+            currents.add(entry);
+            if (entry == null) {
                 reader.close();
                 readers.set(fileNumber, null);
             }
         }
         currents.add(this.dataMapIterator.hasNext() ? this.dataMapIterator.next() : null);
+        setNext();
     }
 
     @Override
     public boolean hasNext() {
-        return currents.stream().anyMatch(Objects::nonNull);
+        return next != null;
     }
 
     @Override
     public BaseEntry<String> next() {
-        String minKey = "";
+        BaseEntry<String> nextToGive = next;
+        try {
+            skipEntriesWithKey(next.key());
+            setNext();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return nextToGive;
+    }
+
+    private void setNext() throws IOException {
+        next = getNext();
+        while (next != null && next.value() == null) {
+            skipEntriesWithKey(next.key());
+            next = getNext();
+        }
+    }
+
+    private BaseEntry<String> getNext() {
+        String minKey = null;
         int minI = 0;
         for (int i = numberOfFiles; i >= 0; i--) {
-            BaseEntry<String> current = currents.get(i);
-            if (current != null) {
-                minKey = current.key();
-                minI = i;
-                break;
+            if (currents.get(i) == null) {
+                continue;
             }
+            minKey = currents.get(i).key();
+            minI = i;
+            break;
         }
 
         for (int i = minI - 1; i >= 0; i--) {
@@ -77,40 +92,40 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
                 minI = i;
             }
         }
-        BaseEntry<String> next = currents.get(minI);
-        try {
-            currents.set(minI, readEntry(minI));
-            for (int i = 0; i < numberOfFiles + 1; i++) {
-                BaseEntry<String> current = currents.get(i);
-                if (current == null) {
-                    continue;
-                }
-                if (current.key().equals(minKey)) {
-                    currents.set(i, readEntry(i));
-                }
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        return next;
+
+        return currents.get(minI);
     }
 
-    private BaseEntry<String> findValidClosest(String from, String to,
-                                               RandomAccessFile reader, long[] offsets) throws IOException {
+    private void skipEntriesWithKey(String keyToSkip) throws IOException {
+        for (int i = 0; i < currents.size(); i++) {
+            BaseEntry<String> entry = currents.get(i);
+            if (entry == null) {
+                continue;
+            }
+            if (entry.key().equals(keyToSkip)) {
+                currents.set(i, readEntry(i));
+            }
+        }
+    }
+
+    private BaseEntry<String> findValidClosest(String from, String to, int fileNumber) throws IOException {
+        RandomAccessFile reader = readers.get(fileNumber);
+        long[] fileOffsets = offsets.get(fileNumber);
         int left = 0;
         int middle;
-        int right = offsets.length - 2;
+        int right = fileOffsets.length - 2;
         String validKey = null;
         String validValue = null;
         int validEntryIndex = 0;
         while (left <= right) {
             middle = (right - left) / 2 + left;
-            reader.seek(offsets[middle]);
+            reader.seek(fileOffsets[middle]);
             String key = reader.readUTF();
             int comparison = from.compareTo(key);
             if (comparison <= 0) {
-                String value = reader.readUTF();
+                String value = reader.getFilePointer() == fileOffsets[middle + 1] ? null : reader.readUTF();
                 if (comparison == 0) {
+                    nextEntriesToRead[fileNumber] = middle + 1;
                     return new BaseEntry<>(key, value);
                 } else {
                     right = middle - 1;
@@ -125,7 +140,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         if (validKey == null) {
             return null;
         }
-        reader.seek(offsets[validEntryIndex + 1]);
+        nextEntriesToRead[fileNumber] = validEntryIndex + 1;
         return to != null && validKey.compareTo(to) >= 0 ? null : new BaseEntry<>(validKey, validValue);
     }
 
@@ -134,10 +149,10 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
             return dataMapIterator.hasNext() ? dataMapIterator.next() : null;
         }
         RandomAccessFile reader = readers.get(fileNumber);
-        long[] curOffsets = offsets.get(fileNumber);
-        long fileSize = curOffsets == null ? Files.size(pathToDirectory.resolve(DATA_FILE + fileNumber + ".txt"))
-                : curOffsets[curOffsets.length - 1];
-        if (reader.getFilePointer() == fileSize) {
+        int entryToRead = nextEntriesToRead[fileNumber];
+        long[] fileOffsets = offsets.get(fileNumber);
+        reader.seek(fileOffsets[entryToRead]);
+        if (reader.getFilePointer() == fileOffsets[fileOffsets.length - 1]) {
             reader.close();
             return null;
         }
@@ -146,7 +161,8 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
             reader.close();
             return null;
         }
-        String value = reader.readUTF();
+        String value = reader.getFilePointer() == fileOffsets[entryToRead + 1] ? null : reader.readUTF();
+        nextEntriesToRead[fileNumber]++;
         return new BaseEntry<>(key, value);
     }
 }
