@@ -2,8 +2,8 @@ package ru.mail.polis.nikitadergunov;
 
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
-import ru.mail.polis.Config;
 import org.jetbrains.annotations.NotNull;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
