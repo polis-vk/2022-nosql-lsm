@@ -59,10 +59,17 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     @Override
     public BaseEntry<byte[]> get(byte[] key) throws IOException {
         BaseEntry<byte[]> value = pairs.get(key);
+        if (value != null && value.value() == null) {
+            return null;
+        }
         if (value != null && Arrays.equals(value.key(), key)) {
             return value;
         }
-        return findInFiles(key);
+        BaseEntry<byte[]> fileEntry = findInFiles(key);
+        if (fileEntry == null || fileEntry.value() == null) {
+            return null;
+        }
+        return fileEntry;
     }
 
     @Override
@@ -95,10 +102,16 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
                 writer.write(intBuffer.array());
                 intBuffer.clear();
                 writer.write(pair.getKey());
-                intBuffer.putInt(pair.getValue().value().length);
-                writer.write(intBuffer.array());
-                intBuffer.clear();
-                writer.write(pair.getValue().value());
+                if (pair.getValue().value() == null) {
+                    intBuffer.putInt(-1);
+                    writer.write(intBuffer.array());
+                    intBuffer.clear();
+                } else {
+                    intBuffer.putInt(pair.getValue().value().length);
+                    writer.write(intBuffer.array());
+                    intBuffer.clear();
+                    writer.write(pair.getValue().value());
+                }
             }
         }
     }
@@ -115,7 +128,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             writer.write(longBuffer.array());
             longBuffer.clear();
             for (var pair : sortedPairs.entrySet()) {
-                size += 2 * Integer.BYTES + pair.getKey().length + pair.getValue().value().length;
+                if (pair.getValue().value() == null) {
+                    size += 2 * Integer.BYTES + pair.getKey().length;
+                } else {
+                    size += 2 * Integer.BYTES + pair.getKey().length + pair.getValue().value().length;
+                }
                 longBuffer.putLong(size);
                 writer.write(longBuffer.array());
                 longBuffer.clear();
@@ -180,6 +197,9 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             intBuffer.put(fis.readNBytes(Integer.BYTES));
             intBuffer.flip();
             int valueLength = intBuffer.getInt();
+            if (valueLength == -1) {
+                return new BaseEntry<>(currentKey, null);
+            }
             currentValue = fis.readNBytes(valueLength);
         }
         return new BaseEntry<>(currentKey, currentValue);

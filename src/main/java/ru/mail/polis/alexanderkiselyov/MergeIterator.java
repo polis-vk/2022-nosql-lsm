@@ -14,10 +14,18 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
     public MergeIterator(Iterator<BaseEntry<byte[]>> memoryIterator, Iterator<BaseEntry<byte[]>> diskIterator) {
         this.memoryIterator = memoryIterator;
         this.diskIterator = diskIterator;
+        currentMemoryEntry = memoryIterator.hasNext() ? memoryIterator.next() : null;
+        currentDiskEntry = diskIterator.hasNext() ? diskIterator.next() : null;
     }
 
     @Override
     public boolean hasNext() {
+        if ((currentMemoryEntry != null && currentMemoryEntry.value() == null
+                || currentDiskEntry != null && currentDiskEntry.value() == null)
+                && !memoryIterator.hasNext() && !diskIterator.hasNext()) {
+            return false;
+        }
+        skipNullValues();
         return currentMemoryEntry != null
                 || currentDiskEntry != null
                 || memoryIterator.hasNext()
@@ -32,6 +40,7 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
         if (diskIterator.hasNext() && currentDiskEntry == null) {
             currentDiskEntry = diskIterator.next();
         }
+        skipNullValues();
         BaseEntry<byte[]> buffer;
         if (currentMemoryEntry == null) {
             buffer = currentDiskEntry;
@@ -54,5 +63,14 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
             }
         }
         return buffer;
+    }
+
+    private void skipNullValues() {
+        while (currentMemoryEntry != null && currentMemoryEntry.value() == null && memoryIterator.hasNext()) {
+            currentMemoryEntry = memoryIterator.next();
+        }
+        while (currentDiskEntry != null && currentDiskEntry.value() == null && diskIterator.hasNext()) {
+            currentDiskEntry = diskIterator.next();
+        }
     }
 }
