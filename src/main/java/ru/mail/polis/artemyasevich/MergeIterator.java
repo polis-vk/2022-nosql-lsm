@@ -74,12 +74,11 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         String minKey = null;
         int minI = 0;
         for (int i = numberOfFiles; i >= 0; i--) {
-            if (currents.get(i) == null) {
-                continue;
+            if (currents.get(i) != null) {
+                minKey = currents.get(i).key();
+                minI = i;
+                break;
             }
-            minKey = currents.get(i).key();
-            minI = i;
-            break;
         }
 
         for (int i = minI - 1; i >= 0; i--) {
