@@ -1,6 +1,5 @@
 package ru.mail.polis.daniilbakin;
 
-import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 
@@ -36,7 +35,8 @@ public class MapsDeserializeStream {
             Path indexesPath = config.basePath().resolve("indexes" + (dataCount - i - 1));
 
             FileChannel mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(StandardOpenOption.READ));
-            FileChannel indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(StandardOpenOption.READ));
+            FileChannel indexesChannel = (FileChannel)
+                    Files.newByteChannel(indexesPath, Set.of(StandardOpenOption.READ));
 
             mapData[i] = mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size());
             indexesData[i] = indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size());

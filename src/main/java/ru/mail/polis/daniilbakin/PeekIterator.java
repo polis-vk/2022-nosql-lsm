@@ -6,7 +6,7 @@ public class PeekIterator<E> implements Iterator<E> {
 
     private final Iterator<E> delegate;
 
-    private E current = null;
+    private E current;
 
     public PeekIterator(Iterator<E> delegate) {
         this.delegate = delegate;

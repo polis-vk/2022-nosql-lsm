@@ -1,10 +1,10 @@
 package ru.mail.polis.daniilbakin;
 
+import ru.mail.polis.BaseEntry;
+
 import java.util.Iterator;
 import java.util.List;
 import java.util.PriorityQueue;
-
-import ru.mail.polis.BaseEntry;
 
 public class MergeIterator<E extends Comparable<E>> implements Iterator<BaseEntry<E>> {
 
@@ -47,28 +47,28 @@ public class MergeIterator<E extends Comparable<E>> implements Iterator<BaseEntr
         }
 
         PeekIterator<BaseEntry<E>> iterator = minHeap.poll();
-        BaseEntry<E> next = iterator.next();
+        BaseEntry<E> current = iterator.next();
         minHeap.add(iterator);
 
-        if (checkEntryDeleted(next)) {
-            deleted = next;
+        if (checkEntryDeleted(current)) {
+            deleted = current;
             return getNext();
         }
-        if (checkNotCorrectEntry(next)) {
+        if (checkNotCorrectEntry(current)) {
             return getNext();
         }
-        return next;
+        return current;
     }
 
-    private boolean checkEntryDeleted(BaseEntry<E> next) {
-        return next != null && next.value() == null;
+    private boolean checkEntryDeleted(BaseEntry<E> current) {
+        return current != null && current.value() == null;
     }
 
-    private boolean checkNotCorrectEntry(BaseEntry<E> next) {
-        if (this.next != null && next != null && next.key().compareTo(this.next.key()) == 0) {
+    private boolean checkNotCorrectEntry(BaseEntry<E> current) {
+        if (next != null && current != null && current.key().compareTo(next.key()) == 0) {
             return true;
         }
-        return deleted != null && next != null && next.key().compareTo(deleted.key()) == 0;
+        return deleted != null && current != null && current.key().compareTo(deleted.key()) == 0;
     }
 
     private int compareIterators(PeekIterator<BaseEntry<E>> first, PeekIterator<BaseEntry<E>> second) {
