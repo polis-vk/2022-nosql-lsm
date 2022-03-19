@@ -27,14 +27,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         deserialize = new MapsDeserializeStream(config, dataCounter);
     }
 
-    private int countDataFiles(Config config) throws IOException {
-        try (Stream<Path> files = Files.list(config.basePath())) {
-            return (int) files.count() / 2;
-        } catch (NoSuchFileException e) {
-            return 0;
-        }
-    }
-
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
         return deserialize.getRange(from, to, new PeekIterator<>(getDataIterator(from, to)));
@@ -81,5 +73,13 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return data.tailMap(from).values().iterator();
         }
         return data.subMap(from, to).values().iterator();
+    }
+
+    private int countDataFiles(Config config) throws IOException {
+        try (Stream<Path> files = Files.list(config.basePath())) {
+            return (int) files.count() / 2;
+        } catch (NoSuchFileException e) {
+            return 0;
+        }
     }
 }

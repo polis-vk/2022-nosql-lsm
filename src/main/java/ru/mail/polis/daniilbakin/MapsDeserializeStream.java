@@ -70,12 +70,13 @@ public class MapsDeserializeStream {
     public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) {
         for (int i = 0; i < dataCount; i++) {
             BaseEntry<ByteBuffer> entry = readByKey(key, i);
-            if (entry != null) {
-                if (entry.value() == null) {
-                    return null;
-                }
-                return entry;
+            if (entry == null) {
+                continue;
             }
+            if (entry.value() == null) {
+                return null;
+            }
+            return entry;
         }
         return null;
     }
@@ -106,7 +107,7 @@ public class MapsDeserializeStream {
             startIndex = binarySearchIndex(from, indexesBuffer, mapBuffer, true);
         }
 
-        if (to == null ) {
+        if (to == null) {
             endIndex = indexesBuffer.capacity() / Integer.BYTES;
         } else {
             endIndex = binarySearchIndex(to, indexesBuffer, mapBuffer, true);
@@ -130,10 +131,11 @@ public class MapsDeserializeStream {
 
     private BaseEntry<ByteBuffer> readByKey(ByteBuffer key, int index) {
         MappedByteBuffer indexesBuffer = indexesData[index];
-        MappedByteBuffer mapBuffer = mapData[index];
         if (indexesBuffer.capacity() < Integer.BYTES) {
             return null;
         }
+
+        MappedByteBuffer mapBuffer = mapData[index];
         int keyIndex = binarySearchIndex(key, indexesBuffer, mapBuffer, false);
         if (keyIndex == -1) {
             return null;
@@ -150,6 +152,8 @@ public class MapsDeserializeStream {
         int position = (first + last) / 2;
 
         ByteBuffer currKey = readByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
+        assert currKey != null;
+
         int compare = currKey.compareTo(key);
         while ((compare != 0) && (first <= last)) {
             if (compare > 0) {
@@ -157,11 +161,13 @@ public class MapsDeserializeStream {
             } else {
                 first = position + 1;
             }
+
             position = (first + last) / 2;
             if (position == size) {
                 break;
             }
             currKey = readByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
+            assert currKey != null;
             compare = currKey.compareTo(key);
         }
         if (first <= last) {
@@ -182,6 +188,7 @@ public class MapsDeserializeStream {
      */
     private BaseEntry<ByteBuffer> readEntry(int position, MappedByteBuffer mapBuffer) {
         ByteBuffer key = readByteBuffer(position, mapBuffer);
+        assert key != null;
         ByteBuffer value = readByteBuffer(position + key.capacity() + Integer.BYTES, mapBuffer);
         return new BaseEntry<>(key.duplicate(), value);
     }
@@ -191,6 +198,9 @@ public class MapsDeserializeStream {
      */
     private ByteBuffer readByteBuffer(int position, MappedByteBuffer mapBuffer) {
         int length = readInt(position, mapBuffer);
+        if (length == -1) {
+            return null;
+        }
         return mapBuffer.slice(position + Integer.BYTES, length);
     }
 
