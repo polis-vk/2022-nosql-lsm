@@ -75,6 +75,4 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         filesCount++;
         pairs.clear();
     }
-
-
 }
