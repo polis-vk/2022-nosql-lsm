@@ -8,7 +8,7 @@ public class PeekIterator<E> implements Iterator<E> {
 
     private E current = null;
 
-    private PeekIterator(Iterator<E> delegate) {
+    public PeekIterator(Iterator<E> delegate) {
         this.delegate = delegate;
     }
 

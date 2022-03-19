@@ -1,5 +1,6 @@
 package ru.mail.polis.daniilbakin;
 
+import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 
@@ -12,6 +13,8 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.Set;
 
 public class MapsDeserializeStream {
@@ -64,7 +67,7 @@ public class MapsDeserializeStream {
 
     public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) {
         for (int i = 0; i < dataCount; i++) {
-            BaseEntry<ByteBuffer> entry = readByKey(key, indexesData[i], mapData[i]);
+            BaseEntry<ByteBuffer> entry = readByKey(key, i);
             if (entry != null) {
                 if (entry.value() == null) {
                     return null;
@@ -75,25 +78,46 @@ public class MapsDeserializeStream {
         return null;
     }
 
-    private BaseEntry<ByteBuffer> readByKey(ByteBuffer key, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer) {
+    private PeekIterator<BaseEntry<ByteBuffer>> get(
+            ByteBuffer from, ByteBuffer to, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer
+    ) {
+        if (indexesBuffer.capacity() < Integer.BYTES) {
+            return new PeekIterator<>(Collections.emptyIterator());
+        }
+        int startIndex = binarySearchIndex(from, indexesBuffer, mapBuffer, true);
+        int endIndex = binarySearchIndex(to, indexesBuffer, mapBuffer, true);
+
+        return new PeekIterator<>(new Iterator<>() {
+            int next = startIndex;
+            final long last = endIndex;
+
+            @Override
+            public boolean hasNext() {
+                return next < last;
+            }
+
+            @Override
+            public BaseEntry<ByteBuffer> next() {
+                return readEntry(getInternalIndexByOrder(next++, indexesBuffer), mapBuffer);
+            }
+        });
+    }
+
+    private BaseEntry<ByteBuffer> readByKey(ByteBuffer key, int index) {
+        MappedByteBuffer indexesBuffer = indexesData[index];
+        MappedByteBuffer mapBuffer = mapData[index];
         if (indexesBuffer.capacity() < Integer.BYTES) {
             return null;
         }
-        return binarySearchEntry(key, indexesBuffer, mapBuffer);
-    }
-
-    private BaseEntry<ByteBuffer> binarySearchEntry(
-            ByteBuffer key, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer
-    ) {
-        int index = binarySearchIndex(key, indexesBuffer, mapBuffer);
-        if (index == -1) {
+        int keyIndex = binarySearchIndex(key, indexesBuffer, mapBuffer, false);
+        if (keyIndex == -1) {
             return null;
         }
-        return readEntry(getInternalIndexByOrder(index, indexesBuffer), mapBuffer);
+        return readEntry(getInternalIndexByOrder(keyIndex, indexesBuffer), mapBuffer);
     }
 
     private int binarySearchIndex(
-            ByteBuffer key, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer
+            ByteBuffer key, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer, boolean needClosestRight
     ) {
         int first = 0;
         int last = indexesBuffer.capacity() / Integer.BYTES;
@@ -113,6 +137,13 @@ public class MapsDeserializeStream {
         }
         if (first <= last) {
             return position;
+        }
+        if (needClosestRight) {
+            if (compare > 0) {
+                return position;
+            } else {
+                return position + 1;
+            }
         }
         return -1;
     }
