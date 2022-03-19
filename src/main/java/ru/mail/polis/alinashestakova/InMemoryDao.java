@@ -7,13 +7,13 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.BufferedOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -26,10 +26,16 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     private final Path path;
     private int filesCount;
 
-    public InMemoryDao(Config config) {
+    public InMemoryDao(Config config) throws IOException {
         this.path = config.basePath();
-        File[] files = this.path.toFile().listFiles();
-        this.filesCount = files == null ? 0 : files.length;
+
+        if (Files.exists(this.path)) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(this.path)) {
+                for (Path path : stream) {
+                    this.filesCount++;
+                }
+            }
+        }
     }
 
     @Override
@@ -56,27 +62,29 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     public BaseEntry<MemorySegment> getFromFile(MemorySegment key) throws IOException {
-        File[] files = this.path.toFile().listFiles();
-        if (files == null) {
+        if (this.filesCount == 0) {
             return null;
         }
 
-        Arrays.sort(files, Collections.reverseOrder());
+        for (int i = this.filesCount; i > 0; i--) {
+            Path tmp = this.path.resolve(Paths.get("storage" + i + ".txt"));
+            if (!Files.exists(tmp)) {
+                continue;
+            }
 
-        for (File file : files) {
-            try (InputStream input = Files.newInputStream(file.toPath())) {
+            try (InputStream input = Files.newInputStream(tmp)) {
                 while (true) {
-                    byte size = (byte) input.read();
+                    int size = input.read();
                     if (size < 0) {
                         break;
                     }
                     byte[] rkey = new byte[size];
                     input.read(rkey);
-                    size = (byte) input.read();
+                    size = input.read();
                     byte[] rvalue = new byte[size];
                     input.read(rvalue);
 
-                    if (Arrays.equals(rkey, key.toByteArray())) {
+                    if (new MemorySegmentComparator().compare(MemorySegment.ofArray(rkey), key) == 0) {
                         return new BaseEntry<>(key, MemorySegment.ofArray(rvalue));
                     }
                 }
@@ -100,7 +108,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         Path newFile = Files.createFile(path.resolve("storage" + (++this.filesCount) + ".txt"));
 
         try (OutputStream output = Files.newOutputStream(newFile);
-             BufferedOutputStream buffer = new BufferedOutputStream(output, 128)) {
+             BufferedOutputStream buffer = new BufferedOutputStream(output, 102400)) {
             for (BaseEntry<MemorySegment> memorySegmentBaseEntry : storage.values()) {
                 buffer.write((byte) memorySegmentBaseEntry.key().byteSize());
                 buffer.write(memorySegmentBaseEntry.key().toByteArray());
