@@ -27,7 +27,7 @@ public class DaoReader {
             tempMapper = reader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(fileName));
             tempIndexMapper = indexReader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(indexName));
         } catch (IOException e) {
-            if(e.getClass().equals(NoSuchFileException.class)) {
+            if (e.getClass().equals(NoSuchFileException.class)) {
                 throw (NoSuchFileException) e;
             }
             throw new UncheckedIOException(e);

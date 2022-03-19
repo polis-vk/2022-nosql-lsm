@@ -54,7 +54,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        if(amountOfFiles == 0) {
+        if (amountOfFiles == 0) {
             return getMemory(from, to);
         }
         return new MergeIterator(from, to);
