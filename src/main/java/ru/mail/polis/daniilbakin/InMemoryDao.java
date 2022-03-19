@@ -19,15 +19,16 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final Config config;
     private final int dataCounter;
-    private MapsDeserializeStream deserialize;
+    private final MapsDeserializeStream deserialize;
 
     public InMemoryDao(Config config) throws IOException {
         dataCounter = countDataFiles(config);
         this.config = config;
+        deserialize = new MapsDeserializeStream(config, dataCounter);
     }
 
     private int countDataFiles(Config config) throws IOException {
-        try (Stream<Path> files = Files.list(config.basePath())){
+        try (Stream<Path> files = Files.list(config.basePath())) {
             return (int) files.count() / 2;
         } catch (NoSuchFileException e) {
             return 0;
@@ -36,28 +37,19 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        if (from == null && to == null) {
-            return data.values().iterator();
-        }
-        if (from == null) {
-            return data.headMap(to).values().iterator();
-        }
-        if (to == null) {
-            return data.tailMap(from).values().iterator();
-        }
-        return data.subMap(from, to).values().iterator();
+        return deserialize.getRange(from, to, new PeekIterator<>(getDataIterator(from, to)));
     }
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> value = data.get(key);
         if (value != null) {
-            return value;
+            return value.value() == null ? null : value;
         }
         if (dataCounter == 0) {
             return null;
         }
-        return getFromLog(key);
+        return deserialize.readByKey(key);
     }
 
     @Override
@@ -67,9 +59,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void close() throws IOException {
-        if (deserialize != null) {
-            deserialize.close();
-        }
+        deserialize.close();
         flush();
     }
 
@@ -80,14 +70,16 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         writer.close();
     }
 
-    private BaseEntry<ByteBuffer> getFromLog(ByteBuffer key) throws IOException {
-        if (deserialize == null) {
-            try {
-                deserialize = new MapsDeserializeStream(config, dataCounter);
-            } catch (NoSuchFileException e) {
-                return null;
-            }
+    private Iterator<BaseEntry<ByteBuffer>> getDataIterator(ByteBuffer from, ByteBuffer to) {
+        if (from == null && to == null) {
+            return data.values().iterator();
         }
-        return deserialize.readByKey(key);
+        if (from == null) {
+            return data.headMap(to).values().iterator();
+        }
+        if (to == null) {
+            return data.tailMap(from).values().iterator();
+        }
+        return data.subMap(from, to).values().iterator();
     }
 }

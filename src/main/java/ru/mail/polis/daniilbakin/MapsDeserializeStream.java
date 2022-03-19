@@ -13,8 +13,10 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 
 public class MapsDeserializeStream {
@@ -78,14 +80,37 @@ public class MapsDeserializeStream {
         return null;
     }
 
-    private PeekIterator<BaseEntry<ByteBuffer>> get(
+    public Iterator<BaseEntry<ByteBuffer>> getRange(
+            ByteBuffer from, ByteBuffer to, PeekIterator<BaseEntry<ByteBuffer>> dataIterator
+    ) {
+        List<PeekIterator<BaseEntry<ByteBuffer>>> iterators = new ArrayList<>();
+        iterators.add(dataIterator);
+        for (int i = 0; i < dataCount; i++) {
+            iterators.add(getIterator(from, to, indexesData[i], mapData[i]));
+        }
+        return new MergeIterator<>(iterators);
+    }
+
+    private PeekIterator<BaseEntry<ByteBuffer>> getIterator(
             ByteBuffer from, ByteBuffer to, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer
     ) {
         if (indexesBuffer.capacity() < Integer.BYTES) {
             return new PeekIterator<>(Collections.emptyIterator());
         }
-        int startIndex = binarySearchIndex(from, indexesBuffer, mapBuffer, true);
-        int endIndex = binarySearchIndex(to, indexesBuffer, mapBuffer, true);
+        int startIndex;
+        int endIndex;
+
+        if (from == null) {
+            startIndex = 0;
+        } else {
+            startIndex = binarySearchIndex(from, indexesBuffer, mapBuffer, true);
+        }
+
+        if (to == null ) {
+            endIndex = indexesBuffer.capacity() / Integer.BYTES;
+        } else {
+            endIndex = binarySearchIndex(to, indexesBuffer, mapBuffer, true);
+        }
 
         return new PeekIterator<>(new Iterator<>() {
             int next = startIndex;
@@ -119,8 +144,9 @@ public class MapsDeserializeStream {
     private int binarySearchIndex(
             ByteBuffer key, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer, boolean needClosestRight
     ) {
+        int size = indexesBuffer.capacity() / Integer.BYTES;
         int first = 0;
-        int last = indexesBuffer.capacity() / Integer.BYTES;
+        int last = size;
         int position = (first + last) / 2;
 
         ByteBuffer currKey = readByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
@@ -132,6 +158,9 @@ public class MapsDeserializeStream {
                 first = position + 1;
             }
             position = (first + last) / 2;
+            if (position == size) {
+                break;
+            }
             currKey = readByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
             compare = currKey.compareTo(key);
         }

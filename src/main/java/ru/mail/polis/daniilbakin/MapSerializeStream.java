@@ -51,8 +51,9 @@ public class MapSerializeStream {
         int indexObjPosition = 0;
         for (Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry : data.entrySet()) {
             indexes[i++] = indexObjPosition;
+            int valueCapacity = (entry.getValue().value() == null) ? 0 : entry.getValue().value().capacity();
             ByteBuffer localBuffer = ByteBuffer.allocate(
-                    entry.getKey().capacity() + entry.getValue().value().capacity() + Integer.BYTES * 2
+                    entry.getKey().capacity() + valueCapacity + Integer.BYTES * 2
             );
             writeEntry(entry, localBuffer);
             localBuffer.flip();
@@ -69,6 +70,10 @@ public class MapSerializeStream {
     }
 
     private void writeByteBuffer(ByteBuffer buffer, ByteBuffer localBuffer) {
+        if (buffer == null) {
+            writeInt(-1, localBuffer);
+            return;
+        }
         buffer.position(buffer.arrayOffset());
         writeInt(buffer.capacity(), localBuffer);
         localBuffer.put(buffer);
