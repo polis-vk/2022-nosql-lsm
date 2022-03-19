@@ -20,9 +20,8 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
 
     @Override
     public boolean hasNext() {
-        if ((currentMemoryEntry != null && currentMemoryEntry.value() == null
-                || currentDiskEntry != null && currentDiskEntry.value() == null)
-                && !memoryIterator.hasNext() && !diskIterator.hasNext()) {
+        if (currentMemoryEntry != null && currentMemoryEntry.value() == null && !memoryIterator.hasNext()
+                || currentDiskEntry != null && currentDiskEntry.value() == null && !diskIterator.hasNext()) {
             return false;
         }
         skipNullValues();
