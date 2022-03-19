@@ -73,10 +73,10 @@ public class MapsDeserializeStream {
             if (entry == null) {
                 continue;
             }
-            if (entry.value() == null) {
-                return null;
+            if (entry.value() != null) {
+                return entry;
             }
-            return entry;
+            return null;
         }
         return null;
     }
