@@ -19,21 +19,21 @@ public class DaoReader {
     private int position = -1;
     private int lastPosition = -1;
 
-
     public DaoReader(Path fileName, Path indexName) throws NoSuchFileException {
-        MappedByteBuffer mapper;
-        MappedByteBuffer indexMapper;
+        MappedByteBuffer tempMapper;
+        MappedByteBuffer tempIndexMapper;
         try (FileChannel reader = FileChannel.open(fileName, StandardOpenOption.READ);
              FileChannel indexReader = FileChannel.open(indexName, StandardOpenOption.READ)) {
-            mapper = reader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(fileName));
-            indexMapper = indexReader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(indexName));
-        } catch (NoSuchFileException e) {
-            throw e;
+            tempMapper = reader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(fileName));
+            tempIndexMapper = indexReader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(indexName));
         } catch (IOException e) {
+            if(e.getClass().equals(NoSuchFileException.class)) {
+                throw (NoSuchFileException) e;
+            }
             throw new UncheckedIOException(e);
         }
-        this.mapper = mapper;
-        this.indexMapper = indexMapper;
+        this.mapper = tempMapper;
+        this.indexMapper = tempIndexMapper;
     }
 
     public BaseEntry<ByteBuffer> binarySearch(ByteBuffer key) {

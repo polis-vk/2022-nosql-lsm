@@ -29,13 +29,13 @@ public class DaoWriter implements Closeable {
     }
 
     public void writeMap(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map) throws IOException {
-        MappedByteBuffer indexMapper = indexWriter.map
-                (FileChannel.MapMode.READ_WRITE, 0, (long) Integer.BYTES * (map.size() + 1));
+        MappedByteBuffer indexMapper = indexWriter.map(FileChannel.MapMode.READ_WRITE, 0,
+                (long) Integer.BYTES * (map.size() + 1));
         indexMapper.putInt(map.size());
         int size = 0;
         for (BaseEntry<ByteBuffer> entry : map.values()) {
             indexMapper.putInt(size);
-            int capacity = entry.value() != null ? entry.value().capacity() : 0;
+            int capacity = entry.value() == null ? -1 : entry.value().capacity();
             size += 2 * Integer.BYTES + entry.key().capacity() + capacity;
         }
 
@@ -43,7 +43,7 @@ public class DaoWriter implements Closeable {
 
         for (BaseEntry<ByteBuffer> entry : map.values()) {
             mapper.putInt(entry.key().capacity());
-            int capacity = entry.value() != null ? entry.value().capacity() : -1;
+            int capacity = entry.value() == null ? -1 : entry.value().capacity();
             mapper.putInt(capacity);
             mapper.put(entry.key());
             if (entry.value() != null) {

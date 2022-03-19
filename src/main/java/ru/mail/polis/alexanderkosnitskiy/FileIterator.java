@@ -16,12 +16,12 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
         try {
             reader = new DaoReader(path, indexPath);
         } catch (NoSuchFileException e) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException(e);
         }
-        if(initialKey != null) {
-            nextValue = reader.nonPreciseBinarySearch(initialKey);
-        } else {
+        if (initialKey == null) {
             nextValue = reader.getFirstEntry();
+        } else {
+            nextValue = reader.nonPreciseBinarySearch(initialKey);
         }
         this.to = to;
     }
@@ -33,7 +33,7 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
     @Override
     public BaseEntry<ByteBuffer> next() {
-        if(!hasNext()) {
+        if (!hasNext()) {
             return null;
         }
         BaseEntry<ByteBuffer> temp = nextValue;
@@ -42,7 +42,7 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
     }
 
     public BaseEntry<ByteBuffer> peek() {
-        if(!hasNext()) {
+        if (!hasNext()) {
             return null;
         }
         return nextValue;

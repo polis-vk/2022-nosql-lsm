@@ -26,18 +26,18 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private long amountOfFiles;
 
     public PersistenceDao(Config config) throws IOException {
-        long amountOfFiles;
+        long numberOfFiles;
         this.config = config;
         try (Stream<Path> files = Files.list(config.basePath())) {
-            if (files != null) {
-                amountOfFiles = files.count() / 2;
+            if (files == null) {
+                numberOfFiles = 0;
             } else {
-                amountOfFiles = 0;
+                numberOfFiles = files.count() / 2;
             }
         } catch (NoSuchFileException e) {
-            amountOfFiles = 0;
+            numberOfFiles = 0;
         }
-        this.amountOfFiles = amountOfFiles;
+        this.amountOfFiles = numberOfFiles;
     }
 
     @Override
