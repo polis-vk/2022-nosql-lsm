@@ -17,7 +17,7 @@ import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public record FileOperations(Config config, long filesCount, String fileName) {
-    private static final int BUFFER_SIZE = 200 * Character.BYTES;
+    private static final int BUFFER_SIZE = 1000 * Character.BYTES;
     private static final String FILE_EXTENSION = ".txt";
     private static final String FILE_INDEX_NAME = "myIndex";
     private static final String FILE_INDEX_EXTENSION = ".txt";
