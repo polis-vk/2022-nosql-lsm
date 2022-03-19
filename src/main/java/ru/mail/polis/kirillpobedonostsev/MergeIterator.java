@@ -11,18 +11,19 @@ import java.util.PriorityQueue;
 import java.util.Queue;
 
 class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
-    private final Queue<PeekingIterator> queue;
-    private static final Comparator<PeekingIterator> comparator = Comparator.comparing(i -> i.peek().key());
-    private static final Comparator<BaseEntry<ByteBuffer>> entryComparator = Comparator.comparing(BaseEntry::key);
+    private final Queue<PeekingIterator<BaseEntry<ByteBuffer>>> queue;
+    private static final Comparator<PeekingIterator<BaseEntry<ByteBuffer>>> comparator =
+            Comparator.comparing((PeekingIterator<BaseEntry<ByteBuffer>> iter) -> iter.peek().key())
+                    .thenComparing(PeekingIterator::getPriority, Comparator.reverseOrder());
+    private static final Comparator<BaseEntry<ByteBuffer>> entryComparator =
+            Comparator.comparing(BaseEntry::key);
     private BaseEntry<ByteBuffer> prev;
 
-    public MergeIterator(List<Iterator<BaseEntry<ByteBuffer>>> iterators) {
-        queue = new PriorityQueue<>(iterators.size(),
-                comparator.thenComparing(PeekingIterator::getPriority));
-        for (int i = 0; i < iterators.size(); i++) {
-            Iterator<BaseEntry<ByteBuffer>> iterator = iterators.get(i);
+    public MergeIterator(List<PeekingIterator<BaseEntry<ByteBuffer>>> iterators) {
+        queue = new PriorityQueue<>(iterators.size(), comparator);
+        for (PeekingIterator<BaseEntry<ByteBuffer>> iterator : iterators) {
             if (iterator.hasNext()) {
-                queue.add(new PeekingIterator(iterator, i));
+                queue.add(iterator);
             }
         }
     }
@@ -32,7 +33,7 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (queue.isEmpty()) {
             return false;
         }
-        PeekingIterator nextIter = queue.remove();
+        PeekingIterator<BaseEntry<ByteBuffer>> nextIter = queue.remove();
         while (prev != null && nextIter.hasNext() && entryComparator.compare(nextIter.peek(), prev) == 0) {
             nextIter.next();
             if (nextIter.hasNext()) {
@@ -55,7 +56,7 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        PeekingIterator nextIter = queue.remove();
+        PeekingIterator<BaseEntry<ByteBuffer>> nextIter = queue.remove();
         prev = nextIter.next();
         if (nextIter.hasNext()) {
             queue.add(nextIter);

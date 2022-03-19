@@ -1,17 +1,14 @@
 package ru.mail.polis.kirillpobedonostsev;
 
-import ru.mail.polis.BaseEntry;
-
-import java.nio.ByteBuffer;
 import java.util.Iterator;
 
-public class PeekingIterator implements Iterator<BaseEntry<ByteBuffer>> {
+public class PeekingIterator<E> implements Iterator<E> {
 
-    private BaseEntry<ByteBuffer> lastElement;
-    private final Iterator<BaseEntry<ByteBuffer>> iterator;
+    private E lastElement;
+    private final Iterator<E> iterator;
     private final int priority;
 
-    public PeekingIterator(Iterator<BaseEntry<ByteBuffer>> iterator, int priority) {
+    public PeekingIterator(Iterator<E> iterator, int priority) {
         this.iterator = iterator;
         this.priority = priority;
         if (this.iterator.hasNext()) {
@@ -23,13 +20,13 @@ public class PeekingIterator implements Iterator<BaseEntry<ByteBuffer>> {
         return priority;
     }
 
-    public BaseEntry<ByteBuffer> peek() {
+    public E peek() {
         return lastElement;
     }
 
     @Override
-    public BaseEntry<ByteBuffer> next() {
-        BaseEntry<ByteBuffer> toReturn = lastElement;
+    public E next() {
+        E toReturn = lastElement;
         if (iterator.hasNext()) {
             lastElement = iterator.next();
         } else {
