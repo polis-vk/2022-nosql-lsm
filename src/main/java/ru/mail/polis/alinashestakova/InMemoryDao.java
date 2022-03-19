@@ -31,9 +31,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
         if (Files.exists(this.path)) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(this.path)) {
-                for (Path path : stream) {
-                    this.filesCount++;
-                }
+                stream.forEach(p -> this.filesCount++);
             }
         }
     }
