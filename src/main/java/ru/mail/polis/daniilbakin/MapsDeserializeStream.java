@@ -1,0 +1,148 @@
+package ru.mail.polis.daniilbakin;
+
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.Set;
+
+public class MapsDeserializeStream {
+
+    private final MappedByteBuffer[] mapData;
+    private final MappedByteBuffer[] indexesData;
+    private final int dataCount;
+    private final Method unmap;
+    private final Object fieldValue;
+
+    public MapsDeserializeStream(Config config, int dataCount) throws IOException {
+        this.dataCount = dataCount;
+        mapData = new MappedByteBuffer[dataCount];
+        indexesData = new MappedByteBuffer[dataCount];
+        for (int i = 0; i < dataCount; i++) {
+            Path mapPath = config.basePath().resolve("myLog" + (dataCount - i - 1));
+            Path indexesPath = config.basePath().resolve("indexes" + (dataCount - i - 1));
+
+            FileChannel mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(StandardOpenOption.READ));
+            FileChannel indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(StandardOpenOption.READ));
+
+            mapData[i] = mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size());
+            indexesData[i] = indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size());
+
+            mapChannel.close();
+            indexesChannel.close();
+        }
+
+        try {
+            unmap = Class.forName("sun.misc.Unsafe").getMethod("invokeCleaner", ByteBuffer.class);
+            unmap.setAccessible(true);
+            Field theUnsafeField = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe");
+            theUnsafeField.setAccessible(true);
+            fieldValue = theUnsafeField.get(null);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public void close() throws IOException {
+        try {
+            for (int i = 0; i < dataCount; i++) {
+                unmap.invoke(fieldValue, mapData[i]);
+                unmap.invoke(fieldValue, indexesData[i]);
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new IOException(e);
+        }
+    }
+
+    public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) {
+        for (int i = 0; i < dataCount; i++) {
+            BaseEntry<ByteBuffer> entry = readByKey(key, indexesData[i], mapData[i]);
+            if (entry != null) {
+                if (entry.value() == null) {
+                    return null;
+                }
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private BaseEntry<ByteBuffer> readByKey(ByteBuffer key, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer) {
+        if (indexesBuffer.capacity() < Integer.BYTES) {
+            return null;
+        }
+        return binarySearchEntry(key, indexesBuffer, mapBuffer);
+    }
+
+    private BaseEntry<ByteBuffer> binarySearchEntry(
+            ByteBuffer key, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer
+    ) {
+        int index = binarySearchIndex(key, indexesBuffer, mapBuffer);
+        if (index == -1) {
+            return null;
+        }
+        return readEntry(getInternalIndexByOrder(index, indexesBuffer), mapBuffer);
+    }
+
+    private int binarySearchIndex(
+            ByteBuffer key, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer
+    ) {
+        int first = 0;
+        int last = indexesBuffer.capacity() / Integer.BYTES;
+        int position = (first + last) / 2;
+
+        ByteBuffer currKey = readByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
+        int compare = currKey.compareTo(key);
+        while ((compare != 0) && (first <= last)) {
+            if (compare > 0) {
+                last = position - 1;
+            } else {
+                first = position + 1;
+            }
+            position = (first + last) / 2;
+            currKey = readByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
+            compare = currKey.compareTo(key);
+        }
+        if (first <= last) {
+            return position;
+        }
+        return -1;
+    }
+
+    /**
+     * Position in bytes.
+     */
+    private BaseEntry<ByteBuffer> readEntry(int position, MappedByteBuffer mapBuffer) {
+        ByteBuffer key = readByteBuffer(position, mapBuffer);
+        ByteBuffer value = readByteBuffer(position + key.capacity() + Integer.BYTES, mapBuffer);
+        return new BaseEntry<>(key.duplicate(), value);
+    }
+
+    /**
+     * Position in bytes.
+     */
+    private ByteBuffer readByteBuffer(int position, MappedByteBuffer mapBuffer) {
+        int length = readInt(position, mapBuffer);
+        return mapBuffer.slice(position + Integer.BYTES, length);
+    }
+
+    /**
+     * Position in bytes.
+     */
+    private Integer readInt(int position, MappedByteBuffer mapBuffer) {
+        return mapBuffer.getInt(position);
+    }
+
+    private int getInternalIndexByOrder(int order, MappedByteBuffer indexesBuffer) {
+        return indexesBuffer.getInt(order * Integer.BYTES);
+    }
+
+}

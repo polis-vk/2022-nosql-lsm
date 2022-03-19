@@ -1,6 +1,7 @@
 package ru.mail.polis.daniilbakin;
 
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -18,9 +19,11 @@ public class MapSerializeStream {
     private final FileChannel mapChannel;
     private final FileChannel indexesChannel;
 
-    public MapSerializeStream(Path map, Path indexes) throws IOException {
-        mapChannel = (FileChannel) Files.newByteChannel(map, Set.of(WRITE, CREATE));
-        indexesChannel = (FileChannel) Files.newByteChannel(indexes, Set.of(WRITE, CREATE));
+    public MapSerializeStream(Config config, int dataCount) throws IOException {
+        Path mapPath = config.basePath().resolve("myLog" + dataCount);
+        Path indexesPath = config.basePath().resolve("indexes" + dataCount);
+        mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE));
+        indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE));
     }
 
     public void close() throws IOException {

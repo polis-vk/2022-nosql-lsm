@@ -6,23 +6,32 @@ import ru.mail.polis.Dao;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.stream.Stream;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    private final Path mapPath;
-    private final Path indexesPath;
-    private MapDeserializeStream deserialize;
-    private boolean dataNotExistsForSure;
+    private final Config config;
+    private final int dataCounter;
+    private MapsDeserializeStream deserialize;
 
-    public InMemoryDao(Config config) {
-        this.mapPath = config.basePath().resolve("myLog");
-        this.indexesPath = config.basePath().resolve("indexes");
+    public InMemoryDao(Config config) throws IOException {
+        dataCounter = countDataFiles(config);
+        this.config = config;
+    }
+
+    private int countDataFiles(Config config) throws IOException {
+        try (Stream<Path> files = Files.list(config.basePath())){
+            return (int) files.count() / 2;
+        } catch (NoSuchFileException e) {
+            return 0;
+        }
     }
 
     @Override
@@ -45,7 +54,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (value != null) {
             return value;
         }
-        if (dataNotExistsForSure) {
+        if (dataCounter == 0) {
             return null;
         }
         return getFromLog(key);
@@ -66,7 +75,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        MapSerializeStream writer = new MapSerializeStream(mapPath, indexesPath);
+        MapSerializeStream writer = new MapSerializeStream(config, dataCounter);
         writer.serializeMap(data);
         writer.close();
     }
@@ -74,9 +83,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private BaseEntry<ByteBuffer> getFromLog(ByteBuffer key) throws IOException {
         if (deserialize == null) {
             try {
-                deserialize = new MapDeserializeStream(mapPath, indexesPath);
+                deserialize = new MapsDeserializeStream(config, dataCounter);
             } catch (NoSuchFileException e) {
-                dataNotExistsForSure = true;
                 return null;
             }
         }
