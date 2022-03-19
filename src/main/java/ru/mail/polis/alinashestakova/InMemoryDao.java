@@ -10,7 +10,6 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -19,6 +18,7 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.stream.Stream;
 
 public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final SortedMap<MemorySegment, BaseEntry<MemorySegment>> storage =
@@ -30,8 +30,8 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         this.path = config.basePath();
 
         if (Files.exists(this.path)) {
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(this.path)) {
-                stream.forEach(p -> this.filesCount++);
+            try (Stream<Path> files = Files.list(this.path)) {
+                this.filesCount = (int) files.count();
             }
         }
     }
