@@ -124,9 +124,16 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             if (offset == -1) {
                 return 0;
             }
-
-            Byte b = MemoryAccess.getByteAtOffset(o1, offset);
-            return b.compareTo(MemoryAccess.getByteAtOffset(o2, offset));
+            if (offset == o1.byteSize()) {
+                return -1;
+            }
+            if (offset == o2.byteSize()) {
+                return 1;
+            }
+            return Byte.compareUnsigned(
+                    MemoryAccess.getByteAtOffset(o1, offset),
+                    MemoryAccess.getByteAtOffset(o2, offset)
+            );
         }
     }
 }
