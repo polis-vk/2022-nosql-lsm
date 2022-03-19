@@ -24,7 +24,7 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
             throw new NoSuchElementException();
         }
         int keySize = mappedFile.getInt();
-        ByteBuffer key = mappedFile.slice(mappedFile.position(), keySize);
+        final ByteBuffer key = mappedFile.slice(mappedFile.position(), keySize);
         mappedFile.position(mappedFile.position() + keySize);
         int valueSize = mappedFile.getInt();
         ByteBuffer value = null;

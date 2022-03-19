@@ -65,7 +65,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         lock.readLock().lock();
         try {
             Iterator<BaseEntry<ByteBuffer>> inMemoryIterator = getInMemoryIterator(from, to);
-            if (filesList.size() == 0) {
+            if (filesList.isEmpty()) {
                 return inMemoryIterator;
             }
             List<PeekingIterator<BaseEntry<ByteBuffer>>> iteratorsList =
