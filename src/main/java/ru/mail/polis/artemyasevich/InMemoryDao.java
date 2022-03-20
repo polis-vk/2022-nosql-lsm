@@ -115,7 +115,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             int left = 0;
             int middle;
             int right = fileOffsets.length - 2;
-
             while (left <= right) {
                 middle = (right - left) / 2 + left;
                 long pos = fileOffsets[middle];
