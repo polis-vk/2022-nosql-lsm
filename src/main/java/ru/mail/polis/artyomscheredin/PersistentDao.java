@@ -68,8 +68,8 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             List<PeekIterator> iteratorsList = new ArrayList<>();
             int priority = 0;
             for (Utils.MappedBuffersPair pair : mappedDiskData) {
-                iteratorsList.add(new PeekIterator(new FileIterator(pair.dataBuffer().rewind(),
-                        pair.indexBuffer().rewind(), from, to), priority++));
+                iteratorsList.add(new PeekIterator(new FileIterator(pair.getDataBuffer().rewind(),
+                        pair.getIndexBuffer().rewind(), from, to), priority++));
             }
             if (!inMemoryData.isEmpty()) {
                 iteratorsList.add(new PeekIterator(getInMemoryIterator(from, to), priority));

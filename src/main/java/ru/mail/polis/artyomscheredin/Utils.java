@@ -27,7 +27,8 @@ public final class Utils {
         }
     }
 
-    public static BaseEntry<ByteBuffer> readEntry(ByteBuffer dataBuffer, int offset) {
+    public static BaseEntry<ByteBuffer> readEntry(ByteBuffer dataBuffer, int sourceOffset) {
+        int offset = sourceOffset;
         int keySize = dataBuffer.getInt(offset);
         offset += Integer.BYTES;
         ByteBuffer curKey = dataBuffer.slice(offset, keySize);
