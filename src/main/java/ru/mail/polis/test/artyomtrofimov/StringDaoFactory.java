@@ -1,17 +1,15 @@
 package ru.mail.polis.test.artyomtrofimov;
 
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.artyomtrofimov.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
+import java.io.IOException;
 
-@DaoFactory
-public class StringDaoFactory implements DaoFactory.Factory<String, BaseEntry<String>> {
-    @Override
-    public Dao<String, BaseEntry<String>> createDao() {
-        return new InMemoryDao();
-    }
+@DaoFactory(stage = 2, week = 2)
+public class StringDaoFactory implements DaoFactory.Factory<String, Entry<String>> {
 
     @Override
     public String toString(String data) {
@@ -26,5 +24,10 @@ public class StringDaoFactory implements DaoFactory.Factory<String, BaseEntry<St
     @Override
     public BaseEntry<String> fromBaseEntry(Entry<String> baseEntry) {
         return new BaseEntry<>(baseEntry.key(), baseEntry.value());
+    }
+
+    @Override
+    public Dao<String, Entry<String>> createDao(Config config) throws IOException {
+        return new InMemoryDao(config);
     }
 }
