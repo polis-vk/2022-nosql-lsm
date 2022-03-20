@@ -27,27 +27,12 @@ public class DaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
                 heap.add(iter);
             }
             if (heap.peek() != null) {
-                PeekIterator<BaseEntry<ByteBuffer>> nextIter;
-                int maxOrder = iter.getOrder();
-                while (heap.peek().hasNext() && entry.key().compareTo(heap.peek().peek().key()) == 0) {
-                    nextIter = heap.poll();
-                    if (maxOrder < nextIter.getOrder()) {
-                        entry = nextIter.next();
-                        maxOrder = nextIter.getOrder();
-                    } else {
-                        nextIter.next();
-                    }
-                    if (nextIter.hasNext()) {
-                        heap.add(nextIter);
-                    }
-                    if (heap.peek() == null) {
-                        break;
-                    }
-                }
+                entry = skipSame(entry, iter.getOrder());
             }
 
             if (entry.value() != null) {
-                return value = entry;
+                value = entry;
+                return value;
             }
 
             if (heap.peek() != null && heap.peek().hasNext()) {
@@ -69,4 +54,25 @@ public class DaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
         return peek;
     }
 
+    private BaseEntry<ByteBuffer> skipSame(BaseEntry<ByteBuffer> check, int max) {
+        PeekIterator<BaseEntry<ByteBuffer>> nextIter;
+        BaseEntry<ByteBuffer> entry = check;
+        int maxOrder = max;
+        while (heap.peek().hasNext() && entry.key().compareTo(heap.peek().peek().key()) == 0) {
+            nextIter = heap.poll();
+            if (maxOrder < nextIter.getOrder()) {
+                entry = nextIter.next();
+                maxOrder = nextIter.getOrder();
+            } else {
+                nextIter.next();
+            }
+            if (nextIter.hasNext()) {
+                heap.add(nextIter);
+            }
+            if (heap.peek() == null) {
+                break;
+            }
+        }
+        return entry;
+    }
 }

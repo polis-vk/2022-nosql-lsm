@@ -146,14 +146,14 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             }
             mid = min + (max - min) / 2;
             comparison = key.compareTo(readBuffer(in, indexes[mid], temp));
+            if (comparison == 0) {
+                return mid;
+            }
             if (comparison > 0) {
                 min = mid + 1;
-                continue;
-            } else if (comparison < 0) {
+            } else {
                 max = mid;
-                continue;
             }
-            return mid;
         }
         return max;
     }
@@ -232,34 +232,33 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             int max = indexes.length - 1;
             int mid;
             int comparison;
-            ByteBuffer bound;
             while (min <= max) {
-                bound = readBuffer(in, indexes[min], temp);
-                comparison = key.compareTo(bound);
-                if (key.compareTo(bound) < 0) {
+                comparison = key.compareTo(readBuffer(in, indexes[min], temp));
+                if (comparison < 0) {
                     return null;
                 }
-                if (comparison != 0) {
-                    bound = readBuffer(in, indexes[max], temp);
-                    comparison = key.compareTo(bound);
-                    if (comparison > 0) {
-                        return null;
-                    }
-                    if (comparison != 0) {
-                        mid = min + (max - min) / 2;
-                        bound = readBuffer(in, indexes[mid], temp);
-                        comparison = key.compareTo(bound);
-                        if (comparison > 0) {
-                            min = mid + 1;
-                            continue;
-                        } else if (comparison < 0) {
-                            max = mid - 1;
-                            continue;
-                        }
-                    }
+                if (comparison == 0) {
+                    return new BaseEntry<>(key, readBuffer(in, readInt(in, temp)));
                 }
 
-                return new BaseEntry<>(key, readBuffer(in, readInt(in, temp)));
+                comparison = key.compareTo(readBuffer(in, indexes[max], temp));
+                if (comparison > 0) {
+                    return null;
+                }
+                if (comparison == 0) {
+                    return new BaseEntry<>(key, readBuffer(in, readInt(in, temp)));
+                }
+
+                mid = min + (max - min) / 2;
+                comparison = key.compareTo(readBuffer(in, indexes[mid], temp));
+                if (comparison == 0) {
+                    return new BaseEntry<>(key, readBuffer(in, readInt(in, temp)));
+                }
+                if (comparison > 0) {
+                    min = mid + 1;
+                } else {
+                    max = mid - 1;
+                }
             }
         }
         return null;
