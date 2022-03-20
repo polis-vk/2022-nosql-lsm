@@ -200,7 +200,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     private List<Path> getPaths() throws IOException {
-        try(Stream<Path> s = Files.list(path)) {
+        try (Stream<Path> s = Files.list(path)) {
             return s.filter(Files::isRegularFile).toList();
         }
     }
