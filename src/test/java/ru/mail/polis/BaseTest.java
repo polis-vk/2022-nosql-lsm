@@ -23,6 +23,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntConsumer;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class BaseTest {
 
@@ -40,6 +42,10 @@ public class BaseTest {
 
     public void assertSame(Iterator<? extends Entry<String>> iterator, Entry<?>... expected) {
         assertSame(iterator, Arrays.asList(expected));
+    }
+
+    public void assertSame(Iterator<? extends Entry<String>> iterator, int... expected) {
+        assertSame(iterator, IntStream.of(expected).mapToObj(this::entryAt).collect(Collectors.toList()));
     }
 
     public void assertSame(Iterator<? extends Entry<String>> iterator, List<? extends Entry<?>> expected) {
@@ -202,7 +208,9 @@ public class BaseTest {
 
             @Override
             public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                Files.delete(dir);
+                if (!dir.equals(config.basePath())) {
+                    Files.delete(dir);
+                }
                 return FileVisitResult.CONTINUE;
             }
         });
