@@ -19,22 +19,20 @@ import java.util.List;
 import java.util.NavigableMap;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.stream.Stream;
 
+import static ru.mail.polis.baidiyarosan.FileUtils.DATA_FILE_HEADER;
+import static ru.mail.polis.baidiyarosan.FileUtils.FILE_EXTENSION;
+import static ru.mail.polis.baidiyarosan.FileUtils.INDEX_FILE_HEADER;
+import static ru.mail.polis.baidiyarosan.FileUtils.INDEX_FOLDER;
+import static ru.mail.polis.baidiyarosan.FileUtils.getEndIndex;
+import static ru.mail.polis.baidiyarosan.FileUtils.getFileNumber;
+import static ru.mail.polis.baidiyarosan.FileUtils.getStartIndex;
 import static ru.mail.polis.baidiyarosan.FileUtils.readBuffer;
 import static ru.mail.polis.baidiyarosan.FileUtils.readLong;
 import static ru.mail.polis.baidiyarosan.FileUtils.sizeOfEntry;
 import static ru.mail.polis.baidiyarosan.FileUtils.writeEntryToBuffer;
 
 public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-
-    private static final String DATA_FILE_HEADER = "data";
-
-    private static final String INDEX_FOLDER = "indexes";
-
-    private static final String INDEX_FILE_HEADER = "index";
-
-    private static final String FILE_EXTENSION = ".log";
 
     private final NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection = new ConcurrentSkipListMap<>();
 
@@ -47,13 +45,6 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             Files.createDirectory(indexesDir);
         }
 
-    }
-
-    private static int getFileNumber(Path pathToFile) {
-        String number = pathToFile.getFileName().toString()
-                .replaceFirst(DATA_FILE_HEADER, "")
-                .replaceFirst(FILE_EXTENSION, "");
-        return Integer.parseInt(number);
     }
 
     @Override
@@ -98,59 +89,6 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             }
             return list.iterator();
         }
-    }
-
-    private int getStartIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp)
-            throws IOException {
-        int min = 0;
-        int max = indexes.length - 1;
-        int mid;
-        int comparison;
-        while (min <= max) {
-            if (key.compareTo(readBuffer(in, indexes[min], temp)) <= 0) {
-                return min;
-            }
-            comparison = key.compareTo(readBuffer(in, indexes[max], temp));
-            if (comparison > 0) {
-                return -1;
-            }
-            if (comparison == 0) {
-                return max;
-            }
-            mid = min + (max - min) / 2;
-            comparison = key.compareTo(readBuffer(in, indexes[mid], temp));
-            if (comparison == 0) {
-                return mid;
-            }
-            if (comparison > 0) {
-                min = mid + 1;
-            } else {
-                max = mid;
-            }
-        }
-        return max;
-    }
-
-    private int getEndIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp)
-            throws IOException {
-        int min = 0;
-        int max = indexes.length - 1;
-        int mid;
-        while (min <= max) {
-            if (key.compareTo(readBuffer(in, indexes[min], temp)) <= 0) {
-                return -1;
-            }
-            if (key.compareTo(readBuffer(in, indexes[max], temp)) > 0) {
-                return max;
-            }
-            mid = min + 1 + (max - min) / 2;
-            if (key.compareTo(readBuffer(in, indexes[mid], temp)) > 0) {
-                min = mid;
-            } else {
-                max = mid - 1;
-            }
-        }
-        return min;
     }
 
     private Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(ByteBuffer from, ByteBuffer to) {
@@ -214,7 +152,6 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                 if (comparison == 0) {
                     return new BaseEntry<>(key, readBuffer(in, temp));
                 }
-
                 comparison = key.compareTo(readBuffer(in, indexes[max], temp));
                 if (comparison > 0) {
                     return null;
@@ -222,7 +159,6 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                 if (comparison == 0) {
                     return new BaseEntry<>(key, readBuffer(in, temp));
                 }
-
                 mid = min + (max - min) / 2;
                 comparison = key.compareTo(readBuffer(in, indexes[mid], temp));
                 if (comparison == 0) {
@@ -267,16 +203,11 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             }
             indexBuffer.flip();
             indexOut.write(indexBuffer);
-
         }
     }
 
     private List<Path> getPaths() throws IOException {
-        List<Path> paths;
-        try (Stream<Path> s = Files.list(path)) {
-            paths = s.filter(Files::isRegularFile).toList();
-        }
-        return paths;
+        return Files.list(path).filter(Files::isRegularFile).toList();
     }
 
     private long[] getIndexArray(int fileNumber) throws IOException {

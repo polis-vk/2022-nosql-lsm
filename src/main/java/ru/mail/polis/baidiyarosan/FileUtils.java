@@ -5,13 +5,30 @@ import ru.mail.polis.BaseEntry;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Path;
 
-public class FileUtils {
+public final class FileUtils {
 
     public static final int NULL_SIZE_FLAG = -1;
 
-    private FileUtils(){
+    public static final String DATA_FILE_HEADER = "data";
+
+    public static final String INDEX_FOLDER = "indexes";
+
+    public static final String INDEX_FILE_HEADER = "index";
+
+    public static final String FILE_EXTENSION = ".log";
+
+    private FileUtils() {
         // Utility class
+    }
+
+
+    public static int getFileNumber(Path pathToFile) {
+        String number = pathToFile.getFileName().toString()
+                .replaceFirst(DATA_FILE_HEADER, "")
+                .replaceFirst(FILE_EXTENSION, "");
+        return Integer.parseInt(number);
     }
 
     public static int sizeOfEntry(BaseEntry<ByteBuffer> entry) {
@@ -56,6 +73,60 @@ public class FileUtils {
             buffer.putInt(entry.value().capacity()).put(entry.value());
         }
         return buffer.flip();
+    }
+
+
+    public static int getStartIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp)
+            throws IOException {
+        int min = 0;
+        int max = indexes.length - 1;
+        int mid;
+        int comparison;
+        while (min <= max) {
+            if (key.compareTo(readBuffer(in, indexes[min], temp)) <= 0) {
+                return min;
+            }
+            comparison = key.compareTo(readBuffer(in, indexes[max], temp));
+            if (comparison > 0) {
+                return -1;
+            }
+            if (comparison == 0) {
+                return max;
+            }
+            mid = min + (max - min) / 2;
+            comparison = key.compareTo(readBuffer(in, indexes[mid], temp));
+            if (comparison == 0) {
+                return mid;
+            }
+            if (comparison > 0) {
+                min = mid + 1;
+            } else {
+                max = mid;
+            }
+        }
+        return max;
+    }
+
+    public static int getEndIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp)
+            throws IOException {
+        int min = 0;
+        int max = indexes.length - 1;
+        int mid;
+        while (min <= max) {
+            if (key.compareTo(readBuffer(in, indexes[min], temp)) <= 0) {
+                return -1;
+            }
+            if (key.compareTo(readBuffer(in, indexes[max], temp)) > 0) {
+                return max;
+            }
+            mid = min + 1 + (max - min) / 2;
+            if (key.compareTo(readBuffer(in, indexes[mid], temp)) > 0) {
+                min = mid;
+            } else {
+                max = mid - 1;
+            }
+        }
+        return min;
     }
 
 }
