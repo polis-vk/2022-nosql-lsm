@@ -92,9 +92,10 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             dataIterator = data.subMap(start, to).values().iterator();
         }
         List<PeekingIterator> iterators = new ArrayList<>();
-        iterators.add(new PeekingIterator(dataIterator));
+        int priority = 0;
+        iterators.add(new PeekingIterator(dataIterator, priority++));
         for (String file : filesList) {
-            iterators.add(new PeekingIterator(new FileIterator(basePath, file, start, to)));
+            iterators.add(new PeekingIterator(new FileIterator(basePath, file, start, to), priority++));
         }
         return new MergeIterator(iterators);
     }

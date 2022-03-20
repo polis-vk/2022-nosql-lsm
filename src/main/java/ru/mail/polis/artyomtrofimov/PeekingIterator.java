@@ -7,9 +7,15 @@ public class PeekingIterator implements Iterator<Entry<String>> {
 
     private final Iterator<Entry<String>> iterator;
     private Entry<String> currentEntry;
+    private final int priority;
 
-    public PeekingIterator(Iterator<Entry<String>> iterator) {
+    public PeekingIterator(Iterator<Entry<String>> iterator, int priority) {
         this.iterator = iterator;
+        this.priority = priority;
+    }
+
+    public int getPriority() {
+        return priority;
     }
 
     public Entry<String> peek() {
