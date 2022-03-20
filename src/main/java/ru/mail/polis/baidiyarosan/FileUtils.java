@@ -10,6 +10,10 @@ public class FileUtils {
 
     public static final int NULL_SIZE_FLAG = -1;
 
+    private FileUtils(){
+        // Utility class
+    }
+
     public static int sizeOfEntry(BaseEntry<ByteBuffer> entry) {
         return 2 * Integer.BYTES + entry.key().capacity() + (entry.value() == null ? 0 : entry.value().capacity());
     }

@@ -160,14 +160,15 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         if (from == null && to == null) {
             return collection.values().iterator();
         }
-        final boolean flag = (to == null || !to.equals(collection.floorKey(to)));
-        from = (from == null ? collection.firstKey() : collection.ceilingKey(from));
-        to = (to == null ? collection.lastKey() : collection.floorKey(to));
 
-        if (from == null || to == null || from.compareTo(to) > 0) {
+        ByteBuffer start = (from == null ? collection.firstKey() : collection.ceilingKey(from));
+        ByteBuffer end = (to == null ? collection.lastKey() : collection.floorKey(to));
+
+        if (start == null || end == null || start.compareTo(end) > 0) {
             return Collections.emptyIterator();
         }
-        return collection.subMap(from, true, to, flag).values().iterator();
+        return collection.subMap(start, true, end, to == null || !to.equals(collection.floorKey(to)))
+                .values().iterator();
     }
 
     @Override
