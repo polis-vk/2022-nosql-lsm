@@ -166,11 +166,11 @@ public class MapsDeserializeStream {
             assert currKey != null;
             compare = currKey.compareTo(key);
         }
-        if (first <= last) {
+        if (first <= last && position != size) {
             return position;
         }
         if (needClosestRight) {
-            if (compare > 0) {
+            if (compare > 0 || position == size) {
                 return position;
             } else {
                 return position + 1;
