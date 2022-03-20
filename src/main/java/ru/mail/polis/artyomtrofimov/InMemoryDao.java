@@ -111,8 +111,9 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 }
             }
         }
-        if (entry != null && entry.value() == null)
+        if (entry != null && entry.value() == null) {
             return null;
+        }
         return entry;
     }
 
