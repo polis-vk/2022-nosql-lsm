@@ -28,10 +28,10 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
         mappedFile.position(mappedFile.position() + keySize);
         int valueSize = mappedFile.getInt();
         ByteBuffer value = null;
-        if (valueSize != PersistenceDao.NULL_VALUE_LENGTH) {
-            value = mappedFile.slice(mappedFile.position(), valueSize);
-        } else {
+        if (valueSize == PersistenceDao.NULL_VALUE_LENGTH) {
             valueSize = 0;
+        } else {
+            value = mappedFile.slice(mappedFile.position(), valueSize);
         }
         mappedFile.position(mappedFile.position() + valueSize);
         return new BaseEntry<>(key, value);
