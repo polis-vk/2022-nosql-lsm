@@ -43,20 +43,7 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (curr.hasNext()) {
             iteratorQueue.add(curr);
         }
-        while (!iteratorQueue.isEmpty()) {
-            curr = iteratorQueue.poll();
-            if (!curr.hasNext()) {
-                continue;
-            }
-            if (!curr.peek().key().equals(result.key())) {
-                iteratorQueue.add(curr);
-                break;
-            }
-            curr.next();
-            if (curr.hasNext()) {
-                iteratorQueue.add(curr);
-            }
-        }
+        deleteByKey(result.key());
         checkNextValueAndFix();
         return result;
     }
@@ -95,20 +82,19 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
     }
 
     private void deleteByKey(ByteBuffer keyToDelete) {
-        if (iteratorQueue.isEmpty()) {
-            return;
-        }
-        PeekIterator tem = iteratorQueue.poll();
-        while (tem.peek().key().equals(keyToDelete)) {
-            tem.next();
-            if (tem.hasNext()) {
-
-                iteratorQueue.add(tem);
+        while (!iteratorQueue.isEmpty()) {
+            PeekIterator curr = iteratorQueue.poll();
+            if (!curr.hasNext()) {
+                continue;
             }
-            if (iteratorQueue.isEmpty()) {
-                return;
+            if (!curr.peek().key().equals(keyToDelete)) {
+                iteratorQueue.add(curr);
+                break;
+            }
+            curr.next();
+            if (curr.hasNext()) {
+                iteratorQueue.add(curr);
             }
         }
-        iteratorQueue.add(tem);
     }
 }

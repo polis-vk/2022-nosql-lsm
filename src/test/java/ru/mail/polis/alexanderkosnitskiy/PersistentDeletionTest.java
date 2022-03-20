@@ -188,7 +188,7 @@ public class PersistentDeletionTest extends BaseTest {
             removeValue(i, dao, values);
         }
 
-        //performChecks(dao, values);
+        performChecks(dao, values);
 
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
