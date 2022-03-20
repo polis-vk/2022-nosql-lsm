@@ -11,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.FileTime;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -32,6 +31,8 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     private static final String FILE_EXTENSION = ".log";
 
+    private static final int NULL_SIZE_FLAG = -1;
+
     private final NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection = new ConcurrentSkipListMap<>();
 
     private final Path path;
@@ -46,7 +47,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     private static int sizeOfEntry(BaseEntry<ByteBuffer> entry) {
-        return 2 * Integer.BYTES + entry.key().capacity() + entry.value().capacity();
+        return 2 * Integer.BYTES + entry.key().capacity() + (entry.value() == null ? 0 :entry.value().capacity());
     }
 
     private static int getFileNumber(Path pathToFile) {
@@ -69,6 +70,9 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     private static ByteBuffer readBuffer(FileChannel in, int size) throws IOException {
+        if(size == NULL_SIZE_FLAG) {
+            return null;
+        }
         ByteBuffer buffer = ByteBuffer.allocate(size);
         in.read(buffer);
         return buffer.flip();
@@ -85,12 +89,12 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                 new PriorityQueue<>(Comparator.comparing(o -> o.peek().key()));
         Iterator<BaseEntry<ByteBuffer>> temp = getInMemoryIterator(from, to);
         if (temp.hasNext()) {
-            heap.add(new PeekIterator<>(temp, FileTime.fromMillis(Long.MAX_VALUE)));
+            heap.add(new PeekIterator<>(temp, Integer.MAX_VALUE));
         }
         for (Path searchPath : getPaths()) {
             temp = getInFileIterator(searchPath, from, to);
             if (temp.hasNext()) {
-                heap.add(new PeekIterator<>(temp, Files.getLastModifiedTime(searchPath)));
+                heap.add(new PeekIterator<>(temp, getFileNumber(searchPath)));
             }
         }
 
@@ -201,19 +205,19 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> value = collection.get(key);
-        if (value != null) {
-            return value;
-        }
-        if (Files.exists(path)) {
-            FileTime lastMod = FileTime.fromMillis(0);
+        if (value == null && Files.exists(path)) {
+            int order = 0;
             for (Path searchPath : getPaths()) {
-                if (lastMod.compareTo(Files.getLastModifiedTime(searchPath)) < 0) {
+                if (order < getFileNumber(searchPath)) {
                     value = binarySearchFile(searchPath, key);
                     if (value != null) {
-                        lastMod = Files.getLastModifiedTime(searchPath);
+                        order = getFileNumber(searchPath);
                     }
                 }
             }
+        }
+        if(value != null && value.value() == null) {
+            return null;
         }
         return value;
     }
@@ -284,7 +288,12 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                 }
 
                 buffer.putInt(entry.key().capacity()).put(entry.key());
-                buffer.putInt(entry.value().capacity()).put(entry.value());
+                if(entry.value() == null) {
+                    buffer.putInt(NULL_SIZE_FLAG);
+                }
+                else {
+                    buffer.putInt(entry.value().capacity()).put(entry.value());
+                }
                 buffer.flip();
 
                 indexBuffer.putLong(dataOut.position());
@@ -330,13 +339,13 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
         private final Iterator<E> iter;
 
-        private final FileTime lastModification;
+        private final int order;
 
         private E value;
 
-        private PeekIterator(Iterator<E> iter, FileTime lastModification) {
+        private PeekIterator(Iterator<E> iter, int order) {
             this.iter = iter;
-            this.lastModification = lastModification;
+            this.order = order;
         }
 
         public E peek() {
@@ -360,34 +369,71 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     }
 
-    private record DaoIterator(PriorityQueue<PeekIterator<BaseEntry<ByteBuffer>>> heap)
-            implements Iterator<BaseEntry<ByteBuffer>> {
+    private static class DaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
+
+        private final PriorityQueue<PeekIterator<BaseEntry<ByteBuffer>>> heap;
+
+        private BaseEntry<ByteBuffer> value;
+
+        public DaoIterator(PriorityQueue<PeekIterator<BaseEntry<ByteBuffer>>> heap) {
+            this.heap = heap;
+        }
+
+        public BaseEntry<ByteBuffer> peek() {
+            if (value == null) {
+                PeekIterator<BaseEntry<ByteBuffer>> iter = heap.poll();
+                if(iter == null) {
+                    return null;
+                }
+                BaseEntry<ByteBuffer> entry = iter.next();
+                if (iter.hasNext()) {
+                    heap.add(iter);
+                }
+                if(heap.peek() != null) {
+                    entry = skipSame(entry, iter.order);
+                }
+
+                if(entry.value() == null) {
+                    if(heap.peek()!= null && heap.peek().hasNext()) {
+                        return peek();
+                    }
+                    return null;
+                }
+
+                value = entry;
+            }
+            return value;
+        }
 
         @Override
         public boolean hasNext() {
-            return heap.peek() != null && heap.peek().hasNext();
+            return value != null || peek() != null;
         }
 
         @Override
         public BaseEntry<ByteBuffer> next() {
-            PeekIterator<BaseEntry<ByteBuffer>> iter = heap.poll();
-            BaseEntry<ByteBuffer> entry = iter.next();
-            if (iter.hasNext()) {
-                heap.add(iter);
-            }
+            BaseEntry<ByteBuffer> peek = peek();
+            value = null;
+            return peek;
+        }
+
+        private BaseEntry<ByteBuffer> skipSame(BaseEntry<ByteBuffer> entry, int maxOrder) {
             PeekIterator<BaseEntry<ByteBuffer>> nextIter;
-            while (hasNext() && entry.key().compareTo(heap.peek().peek().key()) == 0) {
+            while (heap.peek().hasNext() && entry.key().compareTo(heap.peek().peek().key()) == 0) {
                 nextIter = heap.poll();
-                if (iter.lastModification.compareTo(nextIter.lastModification) < 0) {
+                if (maxOrder < nextIter.order) {
                     entry = nextIter.next();
+                    maxOrder = nextIter.order;
                 } else {
                     nextIter.next();
                 }
                 if (nextIter.hasNext()) {
                     heap.add(nextIter);
                 }
+                if(heap.peek() == null) {
+                    break;
+                }
             }
-
             return entry;
         }
     }
