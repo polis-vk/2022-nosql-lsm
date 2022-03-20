@@ -33,6 +33,9 @@ public class MergeIterator implements Iterator<Entry<String>> {
             while (iter.hasNext() && iter.peek().value() == null) {
                 iter.next();
             }
+            if (!iter.hasNext()) {
+                queue.clear();
+            }
         } else {
             while (!queue.isEmpty() && queue.peek().peek().value() == null) {
                 updateIterators();
