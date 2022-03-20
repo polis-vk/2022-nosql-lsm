@@ -104,7 +104,8 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             int file = getFileNumber(filePath);
             long[] indexes = getIndexArray(file);
             ByteBuffer temp = ByteBuffer.allocate(Integer.BYTES);
-            int start = 0, end = indexes.length - 1;
+            int start = 0;
+            int end = indexes.length - 1;
             if (from != null) {
                 start = getStartIndex(in, indexes, from, temp);
             }
@@ -223,12 +224,15 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             int file = getFileNumber(searchPath);
             long[] indexes = getIndexArray(file);
             ByteBuffer temp = ByteBuffer.allocate(Integer.BYTES);
-            int min = 0, max = indexes.length - 1, mid, comparison;
+            int min = 0;
+            int max = indexes.length - 1;
+            int mid;
+            int comparison;
             ByteBuffer bound;
             while (min <= max) {
                 bound = readBuffer(in, indexes[min], temp);
                 comparison = key.compareTo(bound);
-                if (comparison < 0) {
+                if (key.compareTo(bound) < 0) {
                     return null;
                 }
                 if (comparison != 0) {
