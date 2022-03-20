@@ -4,15 +4,30 @@ import ru.mail.polis.BaseEntry;
 
 import java.nio.ByteBuffer;
 
-public class Utils {
+public final class Utils {
 
     private Utils() {
     }
 
-    public record MappedBuffersPair(ByteBuffer dataBuffer, ByteBuffer indexBuffer) {}
+    public static class MappedBuffersPair {
+        private final ByteBuffer dataBuffer;
+        private final ByteBuffer indexBuffer;
 
-    public static BaseEntry<ByteBuffer> readEntry(ByteBuffer dataBuffer, int sourceOffset) {
-        int offset = sourceOffset;
+        public MappedBuffersPair(ByteBuffer dataBuffer, ByteBuffer indexBuffer) {
+            this.dataBuffer = dataBuffer;
+            this.indexBuffer = indexBuffer;
+        }
+
+        public ByteBuffer getDataBuffer() {
+            return dataBuffer;
+        }
+
+        public ByteBuffer getIndexBuffer() {
+            return indexBuffer;
+        }
+    }
+
+    public static BaseEntry<ByteBuffer> readEntry(ByteBuffer dataBuffer, int offset) {
         int keySize = dataBuffer.getInt(offset);
         offset += Integer.BYTES;
         ByteBuffer curKey = dataBuffer.slice(offset, keySize);
