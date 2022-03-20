@@ -100,7 +100,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
             BaseEntry<MemorySegment> result = memory.get(key);
 
             if (result != null) {
-                return result.value() == null ? null : result;
+                return checkIfWasDeleted(result);
             }
 
             if (readers.length == 0) {
@@ -110,7 +110,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
             for (int i = readers.length - 1; i >= 0; i--) {
                 BaseEntry<MemorySegment> res = readers[i].getFromDisk(key);
                 if (res != null) {
-                    return res.value() == null ? null : res;
+                    return checkIfWasDeleted(res);
                 }
             }
 
@@ -118,6 +118,10 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    private BaseEntry<MemorySegment> checkIfWasDeleted(BaseEntry<MemorySegment> entry) {
+        return entry.value() == null ? null : entry;
     }
 
     @Override
