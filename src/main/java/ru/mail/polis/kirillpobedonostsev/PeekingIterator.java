@@ -21,22 +21,21 @@ public class PeekingIterator<E> implements Iterator<E> {
     }
 
     public E peek() {
+        if (lastElement == null) {
+            lastElement = iterator.next();
+        }
         return lastElement;
     }
 
     @Override
     public E next() {
-        E toReturn = lastElement;
-        if (iterator.hasNext()) {
-            lastElement = iterator.next();
-        } else {
-            lastElement = null;
-        }
-        return toReturn;
+        E current = peek();
+        lastElement = null;
+        return current;
     }
 
     @Override
     public boolean hasNext() {
-        return lastElement != null;
+        return lastElement != null || iterator.hasNext();
     }
 }

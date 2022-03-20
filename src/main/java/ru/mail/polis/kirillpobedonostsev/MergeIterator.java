@@ -17,7 +17,6 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
                     .thenComparing(PeekingIterator::getPriority, Comparator.reverseOrder());
     private static final Comparator<BaseEntry<ByteBuffer>> entryComparator =
             Comparator.comparing(BaseEntry::key);
-    private BaseEntry<ByteBuffer> prev;
 
     public MergeIterator(List<PeekingIterator<BaseEntry<ByteBuffer>>> iterators) {
         queue = new PriorityQueue<>(iterators.size(), comparator);
@@ -33,21 +32,7 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (queue.isEmpty()) {
             return false;
         }
-        PeekingIterator<BaseEntry<ByteBuffer>> nextIter = queue.remove();
-        while (prev != null && nextIter.hasNext() && entryComparator.compare(nextIter.peek(), prev) == 0) {
-            nextIter.next();
-            if (nextIter.hasNext()) {
-                queue.add(nextIter);
-            }
-            if (queue.isEmpty()) {
-                return false;
-            } else {
-                nextIter = queue.remove();
-            }
-        }
-        if (nextIter.hasNext()) {
-            queue.add(nextIter);
-        }
+        removeNull();
         return !queue.isEmpty();
     }
 
@@ -57,10 +42,53 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
             throw new NoSuchElementException();
         }
         PeekingIterator<BaseEntry<ByteBuffer>> nextIter = queue.remove();
-        prev = nextIter.next();
+        BaseEntry<ByteBuffer> current = nextIter.next();
+        removeSame(current);
         if (nextIter.hasNext()) {
             queue.add(nextIter);
         }
-        return prev;
+        return current;
+    }
+
+    private void removeSame(BaseEntry<ByteBuffer> current) {
+        if (queue.isEmpty()) {
+            return;
+        }
+        PeekingIterator<BaseEntry<ByteBuffer>> iter = queue.remove();
+        boolean same = entryComparator.compare(iter.peek(), current) == 0;
+        while (same) {
+            iter.next();
+            if (iter.hasNext()) {
+                queue.add(iter);
+            }
+            if (queue.isEmpty()) {
+                break;
+            }
+            iter = queue.remove();
+            same = entryComparator.compare(iter.peek(), current) == 0;
+        }
+        if (!same) {
+            queue.add(iter);
+        }
+    }
+
+    private void removeNull() {
+        PeekingIterator<BaseEntry<ByteBuffer>> nextIter = queue.remove();
+        BaseEntry<ByteBuffer> current = nextIter.peek();
+        while (current.value() == null) {
+            nextIter.next();
+            removeSame(current);
+            if (nextIter.hasNext()) {
+                queue.add(nextIter);
+            }
+            if (queue.isEmpty()) {
+                break;
+            }
+            nextIter = queue.remove();
+            current = nextIter.peek();
+        }
+        if (current.value() != null) {
+            queue.add(nextIter);
+        }
     }
 }
