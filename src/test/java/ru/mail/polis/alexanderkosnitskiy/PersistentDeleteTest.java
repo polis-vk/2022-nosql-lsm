@@ -7,7 +7,11 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
-import java.util.Iterator;
+import java.util.Comparator;
+import java.util.List;
+import java.util.NavigableSet;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -15,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 public class PersistentDeleteTest extends BaseTest {
     
     @DaoTest(stage = 3)
-    void deleteOldValue(Dao<String, Entry<String>> dao) throws IOException {
+    void deleteOldValueFromFile(Dao<String, Entry<String>> dao) throws IOException {
         dao.upsert(entry(keyAt(1), "removable"));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
@@ -25,7 +29,19 @@ public class PersistentDeleteTest extends BaseTest {
         dao = DaoFactory.Factory.reopen(dao);
 
         assertNull(dao.get(keyAt(1)));
-        assertFalse(dao.get(keyAt(1), null).hasNext());
+        assertFalse(dao.allFrom(keyAt(1)).hasNext());
+    }
+
+    @DaoTest(stage = 3)
+    void deleteOldValueFromMemory(Dao<String, Entry<String>> dao) throws IOException {
+        dao.upsert(entry(keyAt(1), "removable"));
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        dao.upsert(entry(keyAt(1), null));
+
+        assertNull(dao.get(keyAt(1)));
+        assertFalse(dao.allFrom(keyAt(1)).hasNext());
     }
 
     @DaoTest(stage = 3)
@@ -34,12 +50,84 @@ public class PersistentDeleteTest extends BaseTest {
         dao.upsert(entry(keyAt(1), null));
 
         assertNull(dao.get(keyAt(1)));
-        assertFalse(dao.get(keyAt(1), null).hasNext());
+        assertFalse(dao.allFrom(keyAt(1)).hasNext());
     }
 
     @DaoTest(stage = 3)
-    void emptyValueStringIsNotDeleted(Dao<String, Entry<String>> dao) throws IOException {
-        dao.upsert(entryAt(7));
+    void deleteFromDisk(Dao<String, Entry<String>> dao) throws IOException {
+        dao.upsert(entry(keyAt(1), "removable"));
+        dao.upsert(entry(keyAt(1), null));
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        assertNull(dao.get(keyAt(1)));
+        assertFalse(dao.allFrom(keyAt(1)).hasNext());
+    }
+
+    @DaoTest(stage = 3)
+    void restoreOldValueInFile(Dao<String, Entry<String>> dao) throws IOException {
+        dao.upsert(entry(keyAt(1), "removable"));
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        dao.upsert(entry(keyAt(1), null));
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        dao.upsert(entryAt(1));
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        assertSame(dao.all(), 1);
+    }
+
+    @DaoTest(stage = 3)
+    void restoreOldValueInMemory(Dao<String, Entry<String>> dao) throws IOException {
+        dao.upsert(entry(keyAt(1), "removable"));
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        dao.upsert(entry(keyAt(1), null));
+
+        dao.upsert(entryAt(1));
+
+        assertSame(dao.all(), 1);
+    }
+
+    @DaoTest(stage = 3)
+    void restoreInMemory(Dao<String, Entry<String>> dao) throws IOException {
+        dao.upsert(entry(keyAt(1), "removable"));
+        dao.upsert(entry(keyAt(1), null));
+        dao.upsert(entryAt(1));
+
+        assertSame(dao.all(), 1);
+    }
+
+    @DaoTest(stage = 3)
+    void restoreOnDisk(Dao<String, Entry<String>> dao) throws IOException {
+        dao.upsert(entry(keyAt(1), "removable"));
+        dao.upsert(entry(keyAt(1), null));
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        dao.upsert(entryAt(1));
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        assertSame(dao.all(), 1);
+    }
+
+    @DaoTest(stage = 3)
+    void upsertNonExistent(Dao<String, Entry<String>> dao) throws IOException {
+        dao.upsert(entry(keyAt(1), null));
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        assertFalse(dao.all().hasNext());
+    }
+
+    @DaoTest(stage = 3)
+    void emptyStringIsNotNull(Dao<String, Entry<String>> dao) throws IOException {
         dao.upsert(entry(keyAt(1), ""));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
@@ -48,23 +136,71 @@ public class PersistentDeleteTest extends BaseTest {
     }
 
     @DaoTest(stage = 3)
-    void CheckFlow(Dao<String, Entry<String>> dao) throws IOException {
-        dao.upsert(entryAt(1));
-        dao.upsert(entryAt(2));
-        dao.upsert(entryAt(3));
-        dao.upsert(entryAt(4));
+    void checkFlow(Dao<String, Entry<String>> dao) throws IOException {
+        NavigableSet<Entry<String>> values = new TreeSet<>(Comparator.comparing(Entry::key));
+        for(int i = 1; i <= 100; i++) {
+            values.add(entryAt(i));
+            dao.upsert(entryAt(i));
+        }
+
+        for(int i = 75; i <= 90; i++) {
+            removeValue(i, dao, values);
+        }
+
+        performChecks(dao, values);
 
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
-        dao.upsert(entry(keyAt(2), null));
+
+        for(int i = 30; i <= 60; i++) {
+            removeValue(i, dao, values);
+        }
+
+        performChecks(dao, values);
+
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
 
-        Iterator<Entry<String>> iter = dao.get(null, null);
+        for(int i = 5; i <= 15; i++) {
+            removeValue(i, dao, values);
+        }
 
-        assertSame(iter.next(), entryAt(1));
-        assertSame(iter.next(), entryAt(3));
-        assertSame(iter.next(), entryAt(4));
-        assertFalse(iter.hasNext());
+        performChecks(dao, values);
+
+        for(int i = 45; i <= 60; i++) {
+            addValue(i, dao, values);
+        }
+
+        performChecks(dao, values);
+
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        performChecks(dao, values);
+    }
+
+    void performChecks(Dao<String, Entry<String>> dao, NavigableSet<Entry<String>> values) throws IOException {
+        assertSame(dao.all(), List.copyOf(values));
+        int oneForth = values.size() / 4;
+        for(int i = 1; i < 4; i++) {
+            assertSame(dao.allFrom(keyAt(i * oneForth)),
+                    List.copyOf(values.tailSet(entryAt(i * oneForth), true)));
+            assertSame(dao.allTo(keyAt(i * oneForth)),
+                    List.copyOf(values.headSet(entryAt(i * oneForth), false)));
+        }
+        int size = values.size();
+        assertSame(dao.get(keyAt(size / 4), keyAt(size - size / 4)),
+                List.copyOf(values.subSet(entryAt(size / 4), true,
+                        entryAt(size - size / 4), false)));
+    }
+
+    void removeValue(int value, Dao<String, Entry<String>> dao, NavigableSet<Entry<String>> values) {
+        dao.upsert(entry(keyAt(value), null));
+        values.remove(entryAt(value));
+    }
+
+    void addValue(int value, Dao<String, Entry<String>> dao, NavigableSet<Entry<String>> values) {
+        dao.upsert(entryAt(value));
+        values.add(entryAt(value));
     }
 }
