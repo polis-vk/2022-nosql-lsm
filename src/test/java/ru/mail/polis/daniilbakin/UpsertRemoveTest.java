@@ -1,9 +1,7 @@
 package ru.mail.polis.daniilbakin;
 
 import java.io.IOException;
-import java.util.Iterator;
 
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.BaseTest;
 import ru.mail.polis.Dao;
 import ru.mail.polis.DaoTest;
@@ -18,7 +16,7 @@ public class UpsertRemoveTest extends BaseTest {
         dao.close();
 
         dao = DaoFactory.Factory.reopen(dao);
-        dao.upsert(new BaseEntry<>(keyAt(1), null));
+        dao.upsert(entry(keyAt(1), null));
         assertSame(dao.get(keyAt(1)), null);
     }
 
@@ -26,7 +24,7 @@ public class UpsertRemoveTest extends BaseTest {
     void persistentRemoveTestRange(Dao<String, Entry<String>> dao) throws IOException {
         dao.upsert(entryAt(1));
         dao.upsert(entryAt(2));
-        dao.upsert(new BaseEntry<>(keyAt(2), null));
+        dao.upsert(entry(keyAt(2), null));
         dao.close();
 
         dao = DaoFactory.Factory.reopen(dao);
@@ -41,7 +39,7 @@ public class UpsertRemoveTest extends BaseTest {
         dao.close();
 
         dao = DaoFactory.Factory.reopen(dao);
-        dao.upsert(new BaseEntry<>(keyAt(2), null));
+        dao.upsert(entry(keyAt(2), null));
 
         assertSame(dao.all(), entryAt(1));
     }
@@ -50,7 +48,7 @@ public class UpsertRemoveTest extends BaseTest {
     void persistentGetAfterRemoveTestRange(Dao<String, Entry<String>> dao) throws IOException {
         dao.upsert(entryAt(1));
         dao.upsert(entryAt(2));
-        dao.upsert(new BaseEntry<>(keyAt(2), null));
+        dao.upsert(entry(keyAt(2), null));
         dao.close();
 
         dao = DaoFactory.Factory.reopen(dao);
@@ -66,7 +64,7 @@ public class UpsertRemoveTest extends BaseTest {
         dao.close();
 
         dao = DaoFactory.Factory.reopen(dao);
-        dao.upsert(new BaseEntry<>(keyAt(2), null));
+        dao.upsert(entry(keyAt(2), null));
         dao.upsert(entryAt(2));
 
         assertSame(dao.all(), entryAt(1), entryAt(2));
@@ -80,16 +78,16 @@ public class UpsertRemoveTest extends BaseTest {
         dao.close();
 
         dao = DaoFactory.Factory.reopen(dao);
-        dao.upsert(new BaseEntry<>(keyAt(1), null));
-        dao.upsert(new BaseEntry<>(keyAt(2), null));
-        dao.upsert(new BaseEntry<>(keyAt(4), null));
-        dao.upsert(new BaseEntry<>(keyAt(5), null));
+        dao.upsert(entry(keyAt(1), null));
+        dao.upsert(entry(keyAt(2), null));
+        dao.upsert(entry(keyAt(4), null));
+        dao.upsert(entry(keyAt(5), null));
         dao.close();
 
         dao = DaoFactory.Factory.reopen(dao);
-        dao.upsert(new BaseEntry<>(keyAt(3), null));
+        dao.upsert(entry(keyAt(3), null));
         dao.upsert(entryAt(4));
-        dao.upsert(new BaseEntry<>(keyAt(5), "new value"));
+        dao.upsert(entry(keyAt(5), "new value"));
         dao.close();
 
         dao = DaoFactory.Factory.reopen(dao);
@@ -102,7 +100,7 @@ public class UpsertRemoveTest extends BaseTest {
                 entryAt(1),
                 entryAt(2),
                 entryAt(4),
-                new BaseEntry<>(keyAt(5), "new value")
+                entry(keyAt(5), "new value")
         );
     }
 
