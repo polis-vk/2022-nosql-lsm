@@ -110,19 +110,17 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> value = collection.get(key);
-        if (value != null || !Files.exists(path)) {
-            return value;
-        }
-        int order = 0;
-        for (Path searchPath : getPaths()) {
-            if (order < getFileNumber(searchPath)) {
-                value = binarySearchFile(searchPath, key);
-                if (value != null) {
-                    order = getFileNumber(searchPath);
+        if (value == null && Files.exists(path)) {
+            int order = 0;
+            for (Path searchPath : getPaths()) {
+                if (order < getFileNumber(searchPath)) {
+                    value = binarySearchFile(searchPath, key);
+                    if (value != null) {
+                        order = getFileNumber(searchPath);
+                    }
                 }
             }
         }
-
         if (value != null && value.value() == null) {
             return null;
         }
@@ -202,7 +200,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     private List<Path> getPaths() throws IOException {
-        try (Stream<Path> s = Files.list(path)) {
+        try(Stream<Path> s = Files.list(path)) {
             return s.filter(Files::isRegularFile).toList();
         }
     }
