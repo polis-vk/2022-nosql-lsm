@@ -19,13 +19,11 @@ import java.util.List;
 import java.util.NavigableMap;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.stream.Stream;
 
 import static ru.mail.polis.baidiyarosan.FileUtils.getFileNumber;
-
 import static ru.mail.polis.baidiyarosan.FileUtils.readBuffer;
-
 import static ru.mail.polis.baidiyarosan.FileUtils.sizeOfEntry;
-
 
 public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
@@ -112,17 +110,19 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> value = collection.get(key);
-        if (value == null && Files.exists(path)) {
-            int order = 0;
-            for (Path searchPath : getPaths()) {
-                if (order < getFileNumber(searchPath)) {
-                    value = binarySearchFile(searchPath, key);
-                    if (value != null) {
-                        order = getFileNumber(searchPath);
-                    }
+        if (value != null || !Files.exists(path)) {
+            return value;
+        }
+        int order = 0;
+        for (Path searchPath : getPaths()) {
+            if (order < getFileNumber(searchPath)) {
+                value = binarySearchFile(searchPath, key);
+                if (value != null) {
+                    order = getFileNumber(searchPath);
                 }
             }
         }
+
         if (value != null && value.value() == null) {
             return null;
         }
@@ -202,7 +202,9 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     private List<Path> getPaths() throws IOException {
-        return Files.list(path).filter(Files::isRegularFile).toList();
+        try(Stream<Path> s = Files.list(path)) {
+            return s.filter(Files::isRegularFile).toList();
+        }
     }
 
     private long[] getIndexArray(int fileNumber) throws IOException {
