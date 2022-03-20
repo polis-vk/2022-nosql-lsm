@@ -193,9 +193,9 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                 size = sizeOfEntry(entry);
                 if (buffer.capacity() < size) {
                     buffer = ByteBuffer.allocate(size);
+                } else {
+                    buffer.clear();
                 }
-                buffer.clear();
-
 
                 indexBuffer.putLong(dataOut.position());
                 dataOut.write(FileUtils.writeEntryToBuffer(buffer, entry));
