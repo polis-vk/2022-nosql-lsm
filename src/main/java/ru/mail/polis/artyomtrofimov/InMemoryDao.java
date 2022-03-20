@@ -55,10 +55,10 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
              RandomAccessFile indexInput = new RandomAccessFile(indexPath.toString(), "r")) {
             input.seek(0);
             int size = input.readInt();
-            long left = 0;
+            long left = -1;
             long right = size;
             long mid;
-            while (left < right) {
+            while (left < right - 1) {
                 mid = left + (right - left) / 2;
                 indexInput.seek(mid * Long.BYTES);
                 input.seek(indexInput.readLong());
