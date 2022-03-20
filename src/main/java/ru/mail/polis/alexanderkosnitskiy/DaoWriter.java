@@ -35,7 +35,7 @@ public class DaoWriter implements Closeable {
         int size = 0;
         for (BaseEntry<ByteBuffer> entry : map.values()) {
             indexMapper.putInt(size);
-            int capacity = entry.value() == null ? -1 : entry.value().capacity();
+            int capacity = entry.value() == null ? 0 : entry.value().capacity();
             size += 2 * Integer.BYTES + entry.key().capacity() + capacity;
         }
 

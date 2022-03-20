@@ -44,9 +44,6 @@ public class DaoReader {
 
         while (lowerBond <= higherBond) {
             BaseEntry<ByteBuffer> result = getEntry(middle);
-            if (result.value() == null) {
-                return new BaseEntry<>(key, null);
-            }
             if (key.compareTo(result.key()) > 0) {
                 lowerBond = middle + 1;
             } else if (key.compareTo(result.key()) < 0) {
@@ -67,9 +64,7 @@ public class DaoReader {
         BaseEntry<ByteBuffer> result = null;
         while (lowerBond <= higherBond) {
             result = getEntry(middle);
-            if (result.value() == null) {
-                return result;
-            } else if (key.compareTo(result.key()) > 0) {
+            if (key.compareTo(result.key()) > 0) {
                 lowerBond = middle + 1;
             } else if (key.compareTo(result.key()) < 0) {
                 higherBond = middle - 1;
@@ -95,7 +90,7 @@ public class DaoReader {
         int valLen = mapper.getInt();
         ByteBuffer key = mapper.slice(curPosition + Integer.BYTES * 2, keyLen);
         if (valLen == -1) {
-            position = curPosition + Integer.BYTES * 2 + keyLen + valLen;
+            position = curPosition + Integer.BYTES * 2 + keyLen;
             return new BaseEntry<>(key, null);
         }
         ByteBuffer value = mapper.slice(curPosition + Integer.BYTES * 2 + keyLen, valLen);
@@ -115,7 +110,7 @@ public class DaoReader {
         int valLen = mapper.getInt();
         ByteBuffer key = mapper.slice(position + Integer.BYTES * 2, keyLen);
         if (valLen == -1) {
-            position = position + Integer.BYTES * 2 + keyLen + valLen;
+            position = position + Integer.BYTES * 2 + keyLen;
             return new BaseEntry<>(key, null);
         }
         ByteBuffer value = mapper.slice(position + Integer.BYTES * 2 + keyLen, valLen);
