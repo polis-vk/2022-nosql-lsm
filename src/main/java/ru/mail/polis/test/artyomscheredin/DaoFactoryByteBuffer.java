@@ -29,7 +29,10 @@ public class DaoFactoryByteBuffer implements DaoFactory.Factory<ByteBuffer, Base
 
     @Override
     public ByteBuffer fromString(String data) {
-        return data == null ? null : ByteBuffer.wrap(data.getBytes(StandardCharsets.UTF_8));
+        if (data == null) {
+            return null;
+        }
+        return ByteBuffer.wrap(data.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override

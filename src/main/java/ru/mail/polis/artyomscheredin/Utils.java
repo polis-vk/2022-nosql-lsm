@@ -39,8 +39,11 @@ public class Utils {
         ByteBuffer curKey = dataBuffer.slice(offset, keySize);
         offset += keySize;
         int valueSize = dataBuffer.getInt(offset);
-        offset += Integer.BYTES;
-        ByteBuffer curValue = dataBuffer.slice(offset, valueSize);
+        ByteBuffer curValue = null;
+        if (valueSize != -1) {
+            offset += Integer.BYTES;
+            curValue = dataBuffer.slice(offset, valueSize);
+        }
         return new BaseEntry<ByteBuffer>(curKey, curValue);
     }
 }

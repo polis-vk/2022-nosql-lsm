@@ -62,17 +62,14 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
         lock.readLock().lock();
         try {
-            if (mappedDiskData.isEmpty()) {
-                return getInMemoryIterator(from, to);
-            }
             List<PeekIterator> iteratorsList = new ArrayList<>();
-
+            int priority = 0;
             for (Utils.mappedBufferedPair pair : mappedDiskData) {
                 iteratorsList.add(new PeekIterator(new FileIterator(pair.getDataBuffer().rewind(),
-                        pair.getIndexBuffer().rewind(), from, to)));
+                        pair.getIndexBuffer().rewind(), from, to), priority++));
             }
             if (!inMemoryData.isEmpty()) {
-                iteratorsList.add(new PeekIterator(getInMemoryIterator(from, to)));
+                iteratorsList.add(new PeekIterator(getInMemoryIterator(from, to), priority));
             }
             return new MergeIterator(iteratorsList);
         } finally {
@@ -223,7 +220,11 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
             int size = 0;
             for (Entry<ByteBuffer> el : inMemoryData.values()) {
-                size += el.key().remaining() + el.value().remaining();
+                if (el.value() != null) {
+                    size += el.key().remaining() + el.value().remaining();
+                } else {
+                    size += el.key().remaining();
+                }
             }
             size += 2 * inMemoryData.size() * Integer.BYTES;
 
@@ -236,8 +237,12 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
                 writeDataBuffer.putInt(el.key().remaining());
                 writeDataBuffer.put(el.key());
-                writeDataBuffer.putInt(el.value().remaining());
-                writeDataBuffer.put(el.value());
+                if (el.value() != null) {
+                    writeDataBuffer.putInt(el.value().remaining());
+                    writeDataBuffer.put(el.value());
+                } else {
+                    writeDataBuffer.putInt(-1);
+                }
             }
         }
 

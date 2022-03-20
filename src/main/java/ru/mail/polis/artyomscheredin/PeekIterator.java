@@ -5,12 +5,14 @@ import ru.mail.polis.BaseEntry;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 
-public class PeekIterator implements Iterator<BaseEntry<ByteBuffer>> {
+public class PeekIterator implements Iterator<BaseEntry<ByteBuffer>>, Comparable<PeekIterator> {
     private final Iterator<BaseEntry<ByteBuffer>> iterator;
     private BaseEntry<ByteBuffer> next = null;
+    private final Integer priority;
 
-    public PeekIterator(Iterator<BaseEntry<ByteBuffer>> iterator) {
+    public PeekIterator(Iterator<BaseEntry<ByteBuffer>> iterator, int priority) {
         this.iterator = iterator;
+        this.priority = priority;
     }
 
     @Override
@@ -31,4 +33,15 @@ public class PeekIterator implements Iterator<BaseEntry<ByteBuffer>> {
         }
         return next;
     }
+
+    @Override
+    public int compareTo(PeekIterator e2) {
+        int keyComparison = this.peek().key().compareTo(e2.peek().key());
+        if (keyComparison != 0) {
+            return keyComparison;
+        } else {
+            return Integer.compare(e2.priority, this.priority);
+        }
+    }
 }
+

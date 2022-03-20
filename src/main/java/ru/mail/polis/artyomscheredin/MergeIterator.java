@@ -3,34 +3,34 @@ package ru.mail.polis.artyomscheredin;
 import ru.mail.polis.BaseEntry;
 
 import java.nio.ByteBuffer;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.NoSuchElementException;
 import java.util.Objects;
-import java.util.Set;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.stream.Collectors;
 
 public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
-    private final List<PeekIterator> iterators;
+    private final Queue<PeekIterator> iteratorQueue;
 
     /**
      * @param iterators - list ordered by ascending iterators priority
      */
     public MergeIterator(List<PeekIterator> iterators) {
         List<PeekIterator> iteratorsCopy = new LinkedList<>(iterators);
-        Collections.reverse(iteratorsCopy);
-        this.iterators = iteratorsCopy.stream().filter(Objects::nonNull)
+        iteratorsCopy = iteratorsCopy.stream().filter(Objects::nonNull)
                 .filter(Iterator::hasNext).collect(Collectors.toList());
+        this.iteratorQueue = new PriorityQueue<PeekIterator>();
+        iteratorQueue.addAll(iteratorsCopy);
+        checkNextValueAndFix();
     }
 
     @Override
     public boolean hasNext() {
-        return !iterators.isEmpty();
+        return !iteratorQueue.isEmpty();
     }
 
     @Override
@@ -38,23 +38,77 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        BaseEntry<ByteBuffer> result = null;
-        for (PeekIterator it : iterators) {
-            BaseEntry<ByteBuffer> curr = it.peek();
-            if ((result == null) || (result.key().compareTo(curr.key()) > 0)) {
-                result = curr;
+        PeekIterator curr = iteratorQueue.poll();
+        BaseEntry<ByteBuffer> result = curr.next();
+        if (curr.hasNext()) {
+            iteratorQueue.add(curr);
+        }
+        while (!iteratorQueue.isEmpty()) {
+            curr = iteratorQueue.poll();
+            if (!curr.hasNext()) {
+                continue;
+            }
+            if (!curr.peek().key().equals(result.key())) {
+                iteratorQueue.add(curr);
+                break;
+            }
+            curr.next();
+            if (curr.hasNext()) {
+                iteratorQueue.add(curr);
             }
         }
-        ListIterator<PeekIterator> listIterator = iterators.listIterator();
-        while (listIterator.hasNext()) {
-            PeekIterator peekIterator = listIterator.next();
-            if (result.key().equals(peekIterator.peek().key())) {
-                peekIterator.next();
-                if (!peekIterator.hasNext()) {
-                    listIterator.remove();
-                }
-            }
-        }
+        checkNextValueAndFix();
         return result;
+    }
+
+    private void checkNextValueAndFix() {
+        if (iteratorQueue.isEmpty()) {
+            return;
+        }
+        /*PeekIterator temp = iteratorQueue.poll();
+        if (temp.peek().value() == null) {
+            ByteBuffer keyToDelete = temp.peek().key();
+            while ((temp.peek().key().equals(keyToDelete))) {
+                temp.next();
+                if (iteratorQueue.isEmpty()) {
+                    return;
+                }
+                temp = iteratorQueue.poll();
+            }
+        }
+        if (temp.peek().value() != null) {
+            iteratorQueue.add(temp);
+        }*/
+        while (iteratorQueue.peek().peek().value() == null) {
+            PeekIterator it = iteratorQueue.poll();
+            ByteBuffer keyToDelete = it.next().key();
+           deleteByKey(keyToDelete);
+            if (it.hasNext()) {
+                iteratorQueue.add(it);
+            }
+
+
+            if (iteratorQueue.isEmpty()){
+                return;
+            }
+        }
+    }
+
+    private void deleteByKey(ByteBuffer keyToDelete) {
+        if (iteratorQueue.isEmpty()) {
+            return;
+        }
+        PeekIterator tem = iteratorQueue.poll();
+        while (tem.peek().key().equals(keyToDelete)) {
+            tem.next();
+            if (tem.hasNext()) {
+
+                iteratorQueue.add(tem);
+            }
+            if (iteratorQueue.isEmpty()) {
+                return;
+            }
+        }
+        iteratorQueue.add(tem);
     }
 }
