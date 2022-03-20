@@ -208,7 +208,9 @@ public class BaseTest {
 
             @Override
             public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                Files.delete(dir);
+                if (!dir.equals(config.basePath())) {
+                    Files.delete(dir);
+                }
                 return FileVisitResult.CONTINUE;
             }
         });
