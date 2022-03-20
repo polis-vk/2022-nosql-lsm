@@ -107,9 +107,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
              FileChannel out = raf.getChannel()) {
             for (BaseEntry<ByteBuffer> entry : collection.values()) {
                 size = sizeOfEntry(entry);
-                if (buffer.capacity() < size) {
-                    buffer = ByteBuffer.allocate(size);
-                }
+
                 buffer.putInt(entry.key().capacity()).put(entry.key());
                 buffer.putInt(entry.value().capacity()).put(entry.value());
                 buffer.flip();
