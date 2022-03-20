@@ -1,9 +1,8 @@
 package ru.mail.polis;
 
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import edu.umd.cs.findbugs.annotations.Nullable;
 
-public record BaseEntry<Data>(@NotNull Data key, @Nullable Data value) implements Entry<Data> {
+public record BaseEntry<Data>(Data key, @Nullable Data value) implements Entry<Data> {
     @Override
     public String toString() {
         return "{" + key + ":" + value + "}";

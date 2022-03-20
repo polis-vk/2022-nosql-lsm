@@ -1,7 +1,6 @@
 package ru.mail.polis;
 
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import edu.umd.cs.findbugs.annotations.Nullable;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -23,7 +22,7 @@ public interface Dao<D, E extends Entry<D>> extends Closeable {
      * @return entry
      */
     @Nullable
-    default E get(@NotNull D key) throws IOException {
+    default E get(D key) throws IOException {
         Iterator<E> iterator = get(key, null);
         if (!iterator.hasNext()) {
             return null;
@@ -65,7 +64,7 @@ public interface Dao<D, E extends Entry<D>> extends Closeable {
      * Inserts of replaces entry.
      * @param entry element to upsert
      */
-    void upsert(@NotNull E entry);
+    void upsert(E entry);
 
     /*
      * Persists data (no-op by default).

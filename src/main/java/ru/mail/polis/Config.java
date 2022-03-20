@@ -1,8 +1,8 @@
 package ru.mail.polis;
 
-import org.jetbrains.annotations.NotNull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 
 import java.nio.file.Path;
 
-public record Config(@NotNull Path basePath) {
+public record Config(@NonNull Path basePath) {
 }
