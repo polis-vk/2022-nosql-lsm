@@ -3,38 +3,34 @@ package ru.mail.polis.artyomscheredin;
 import ru.mail.polis.BaseEntry;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
-    private final List<BaseEntry<ByteBuffer>> buffer; //contains next values of all iterators, order matches iterators
-    private final List<Iterator<BaseEntry<ByteBuffer>>> iterators;
+    private final List<PeekIterator> iterators;
 
-    public MergeIterator(List<Iterator<BaseEntry<ByteBuffer>>> iterators) {
-        Collections.reverse(iterators);
-        this.iterators = iterators;
-        buffer = new ArrayList<>(iterators.size());
-        for (Iterator<BaseEntry<ByteBuffer>> iterator : iterators) {
-            if (iterator.hasNext()) {
-                buffer.add(iterator.next());
-            } else {
-                buffer.add(null);
-            }
-        }
+    /**
+     * @param iterators - list ordered by ascending iterators priority
+     */
+    public MergeIterator(List<PeekIterator> iterators) {
+        List<PeekIterator> iteratorsCopy = new LinkedList<>(iterators);
+        Collections.reverse(iteratorsCopy);
+        this.iterators = iteratorsCopy.stream().filter(Objects::nonNull)
+                .filter(Iterator::hasNext).collect(Collectors.toList());
     }
 
     @Override
     public boolean hasNext() {
-        for (int i = 0; i < iterators.size(); i++) {
-            if (buffer.get(i) != null) {
-                return true;
-            }
-        }
-        return false;
+        return !iterators.isEmpty();
     }
 
     @Override
@@ -42,48 +38,23 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        ByteBuffer minKey = findMinKeyInBuffer();
-        BaseEntry<ByteBuffer> result = findNewestValueForKey(minKey);
-        refreshBuffer(minKey);
-
-        return result;
-    }
-
-    private void refreshBuffer(ByteBuffer minKey) {
-        for (int i = 0; i < buffer.size(); i++) {
-            if ((buffer.get(i) != null) && buffer.get(i).key().equals(minKey)) {
-                Iterator<BaseEntry<ByteBuffer>> it = iterators.get(i);
-                BaseEntry<ByteBuffer> entry = null;
-
-                while (it.hasNext()) {
-                    entry = it.next();
-                    if (!entry.key().equals(minKey)) {
-                        break;
-                    }
-                }
-                buffer.set(i, entry);
-            }
-        }
-    }
-
-    private BaseEntry<ByteBuffer> findNewestValueForKey(ByteBuffer minKey) {
         BaseEntry<ByteBuffer> result = null;
-        for (BaseEntry<ByteBuffer> entry : buffer) {
-            if ((entry != null) && entry.key().equals(minKey)) {
-                result = entry;
-                break;
+        for (PeekIterator it : iterators) {
+            BaseEntry<ByteBuffer> curr = it.peek();
+            if ((result == null) || (result.key().compareTo(curr.key()) > 0)) {
+                result = curr;
+            }
+        }
+        ListIterator<PeekIterator> listIterator = iterators.listIterator();
+        while (listIterator.hasNext()) {
+            PeekIterator peekIterator = listIterator.next();
+            if (result.key().equals(peekIterator.peek().key())) {
+                peekIterator.next();
+                if (!peekIterator.hasNext()) {
+                    listIterator.remove();
+                }
             }
         }
         return result;
-    }
-
-    private ByteBuffer findMinKeyInBuffer() {
-        ByteBuffer minKey = null;
-        for (BaseEntry<ByteBuffer> entry : buffer) {
-            if ((entry != null) && ((minKey == null) || (entry.key().compareTo(minKey) < 0))) {
-                minKey = entry.key();
-            }
-        }
-        return minKey;
     }
 }

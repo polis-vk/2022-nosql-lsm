@@ -2,10 +2,7 @@ package ru.mail.polis.artyomscheredin;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
@@ -14,13 +11,9 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
     private final ByteBuffer indexBuffer;
     private final int upperBound;
 
-    public FileIterator(Utils.Pair<Path> paths, ByteBuffer from, ByteBuffer to) throws IOException {
-        try (FileChannel dataChannel = FileChannel.open(paths.dataPath());
-             FileChannel indexChannel = FileChannel.open(paths.indexPath())) {
-            indexBuffer = indexChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexChannel.size());
-            dataBuffer = dataChannel.map(FileChannel.MapMode.READ_ONLY, 0, dataChannel.size());
-        }
-
+    public FileIterator(ByteBuffer dataBuffer, ByteBuffer indexBuffer, ByteBuffer from, ByteBuffer to) {
+        this.dataBuffer = dataBuffer;
+        this.indexBuffer = indexBuffer;
         int lowerBound = (from == null) ? 0 : findOffset(indexBuffer, dataBuffer, from);
         upperBound = (to == null) ? indexBuffer.limit() : findOffset(indexBuffer, dataBuffer, to);
         indexBuffer.position(lowerBound);
