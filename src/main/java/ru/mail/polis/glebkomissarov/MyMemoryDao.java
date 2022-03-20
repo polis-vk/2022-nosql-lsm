@@ -32,11 +32,13 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         lock.readLock().lock();
         try {
             List<Iterator<BaseEntry<MemorySegment>>> iterators = fileWorker.findEntries(from, to, basePath);
+
+            MemorySegment newFrom = from;
             if (from == null) {
-                from = FIRST_KEY;
+                newFrom = FIRST_KEY;
             }
-            iterators.add(0, to == null ? data.tailMap(from).values().iterator() :
-                    data.subMap(from, to).values().iterator());
+            iterators.add(0, to == null ? data.tailMap(newFrom).values().iterator() :
+                    data.subMap(newFrom, to).values().iterator());
             return new FinalIterator(iterators);
         } finally {
             lock.readLock().unlock();
