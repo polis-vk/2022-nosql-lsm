@@ -14,14 +14,14 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Stream;
 
-public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
+public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final Config config;
     private final int dataCounter;
     private final MapsDeserializeStream deserialize;
 
-    public InMemoryDao(Config config) throws IOException {
+    public PersistentDao(Config config) throws IOException {
         dataCounter = countDataFiles(config);
         this.config = config;
         deserialize = new MapsDeserializeStream(config, dataCounter);
@@ -29,19 +29,23 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        return deserialize.getRange(from, to, new PeekIterator<>(getDataIterator(from, to)));
+        return deserialize.getRange(from, to, new PeekIterator<>(getDataIterator(from, to), -1));
     }
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> value = data.get(key);
-        if (value != null) {
-            return value.value() == null ? null : value;
+        BaseEntry<ByteBuffer> entry = data.get(key);
+        if (entry != null) {
+            return entry.value() == null ? null : entry;
         }
         if (dataCounter == 0) {
             return null;
         }
-        return deserialize.readByKey(key);
+        entry = deserialize.readByKey(key);
+        if (entry != null && entry.value() != null) {
+            return entry;
+        }
+        return null;
     }
 
     @Override

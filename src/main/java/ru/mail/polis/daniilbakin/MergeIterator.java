@@ -78,7 +78,11 @@ public class MergeIterator<E extends Comparable<E>> implements Iterator<BaseEntr
         if (!second.hasNext()) {
             return -1;
         }
-        return first.peek().key().compareTo(second.peek().key());
+        int compare = first.peek().key().compareTo(second.peek().key());
+        if (compare == 0) {
+            return Integer.compare(first.order, second.order);
+        }
+        return compare;
     }
 
 }

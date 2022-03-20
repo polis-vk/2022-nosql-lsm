@@ -2,13 +2,15 @@ package ru.mail.polis.daniilbakin;
 
 import java.util.Iterator;
 
+/** Less order is more priority in merge iterator. */
 public class PeekIterator<E> implements Iterator<E> {
 
+    public int order;
     private final Iterator<E> delegate;
-
     private E current;
 
-    public PeekIterator(Iterator<E> delegate) {
+    public PeekIterator(Iterator<E> delegate, int order) {
+        this.order = order;
         this.delegate = delegate;
     }
 

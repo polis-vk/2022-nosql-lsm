@@ -70,13 +70,9 @@ public class MapsDeserializeStream {
     public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) {
         for (int i = 0; i < dataCount; i++) {
             BaseEntry<ByteBuffer> entry = readByKey(key, i);
-            if (entry == null) {
-                continue;
-            }
-            if (entry.value() != null) {
+            if (entry != null) {
                 return entry;
             }
-            return null;
         }
         return null;
     }
@@ -87,16 +83,16 @@ public class MapsDeserializeStream {
         List<PeekIterator<BaseEntry<ByteBuffer>>> iterators = new ArrayList<>();
         iterators.add(dataIterator);
         for (int i = 0; i < dataCount; i++) {
-            iterators.add(getIterator(from, to, indexesData[i], mapData[i]));
+            iterators.add(getIterator(from, to, i));
         }
         return new MergeIterator<>(iterators);
     }
 
-    private PeekIterator<BaseEntry<ByteBuffer>> getIterator(
-            ByteBuffer from, ByteBuffer to, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer
-    ) {
+    private PeekIterator<BaseEntry<ByteBuffer>> getIterator(ByteBuffer from, ByteBuffer to, int index) {
+        MappedByteBuffer indexesBuffer = indexesData[index];
+        MappedByteBuffer mapBuffer = mapData[index];
         if (indexesBuffer.capacity() < Integer.BYTES) {
-            return new PeekIterator<>(Collections.emptyIterator());
+            return new PeekIterator<>(Collections.emptyIterator(), index);
         }
         int startIndex;
         int endIndex;
@@ -126,7 +122,7 @@ public class MapsDeserializeStream {
             public BaseEntry<ByteBuffer> next() {
                 return readEntry(getInternalIndexByOrder(next++, indexesBuffer), mapBuffer);
             }
-        });
+        }, index);
     }
 
     private BaseEntry<ByteBuffer> readByKey(ByteBuffer key, int index) {
