@@ -28,8 +28,15 @@ public class MergeIterator implements Iterator<Entry<String>> {
         queue.removeIf(item -> !item.hasNext());
 
         // skip deleted entries
-        while (!queue.isEmpty() && queue.peek().peek().value() == null) {
-            updateIterators();
+        if (queue.size() == 1) {
+            PeekingIterator iter = queue.peek();
+            while (iter.hasNext() && iter.peek().value() == null) {
+                iter.next();
+            }
+        } else {
+            while (!queue.isEmpty() && queue.peek().peek().value() == null) {
+                updateIterators();
+            }
         }
         return !queue.isEmpty();
     }
@@ -55,7 +62,12 @@ public class MergeIterator implements Iterator<Entry<String>> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        Entry<String> nextEntry = updateIterators();
+        Entry<String> nextEntry;
+        if (queue.size() > 1) {
+            nextEntry = updateIterators();
+        } else {
+            nextEntry = queue.peek().next();
+        }
         return nextEntry.value() == null ? null : nextEntry;
     }
 }
