@@ -8,6 +8,7 @@ import ru.mail.polis.Config;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 
 class Utils {
     private static final String STORAGE_FILE_NAME = "storage";
@@ -61,9 +62,11 @@ class Utils {
     }
 
     public int countStorageFiles(Path dirPath) throws IOException {
-        return (int) Files.list(dirPath)
-                .filter(path -> path.getFileName().toString().startsWith(STORAGE_FILE_NAME))
-                .count();
+        try (Stream<Path> stream = Files.list(dirPath)) {
+            return (int) stream
+                    .filter(path -> path.getFileName().toString().startsWith(STORAGE_FILE_NAME))
+                    .count();
+        }
     }
 
     public BaseEntry<MemorySegment> checkIfWasDeleted(BaseEntry<MemorySegment> entry) {
