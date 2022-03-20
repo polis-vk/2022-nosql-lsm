@@ -9,8 +9,7 @@ public class Utils {
     private Utils() {
     }
 
-    public record MappedBuffersPair(ByteBuffer dataBuffer, ByteBuffer indexBuffer) {
-    }
+    public record MappedBuffersPair(ByteBuffer dataBuffer, ByteBuffer indexBuffer) {}
 
     public static BaseEntry<ByteBuffer> readEntry(ByteBuffer dataBuffer, int sourceOffset) {
         int offset = sourceOffset;
