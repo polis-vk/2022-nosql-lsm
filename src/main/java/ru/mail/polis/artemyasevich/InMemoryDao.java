@@ -1,6 +1,5 @@
 package ru.mail.polis.artemyasevich;
 
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -64,7 +63,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public BaseEntry<String> get(@NotNull String key) throws IOException {
+    public BaseEntry<String> get(String key) throws IOException {
         BaseEntry<String> entry = dataMap.get(key);
         if (entry != null) {
             return entry;
@@ -74,7 +73,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public void upsert(@NotNull BaseEntry<String> entry) {
+    public void upsert(BaseEntry<String> entry) {
         if (entry.value().length() > maxValueSize) {
             maxValueSize = entry.value().length();
         }

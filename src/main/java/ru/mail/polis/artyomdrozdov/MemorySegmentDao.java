@@ -3,7 +3,6 @@ package ru.mail.polis.artyomdrozdov;
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -90,7 +89,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     }
 
     @Override
-    public Entry<MemorySegment> get(@NotNull MemorySegment key) {
+    public Entry<MemorySegment> get(MemorySegment key) {
         lock.readLock().lock();
         try {
             Entry<MemorySegment> entry = storage.get(key);
@@ -129,7 +128,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     }
 
     @Override
-    public void upsert(@NotNull Entry<MemorySegment> entry) {
+    public void upsert(Entry<MemorySegment> entry) {
         lock.readLock().lock();
         try {
             storage.put(entry.key(), entry);

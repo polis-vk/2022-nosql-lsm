@@ -1,6 +1,5 @@
 package ru.mail.polis.dmitreemaximenko;
 
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
@@ -15,7 +14,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             new ConcurrentSkipListSet<>(new RecordNaturalOrderComparator());
 
     @Override
-    public BaseEntry<byte[]> get(byte @NotNull [] key) {
+    public BaseEntry<byte[]> get(byte[] key) {
         Iterator<BaseEntry<byte[]>> iterator = get(key, null);
         if (!iterator.hasNext()) {
             return null;
@@ -36,7 +35,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public void upsert(@NotNull BaseEntry<byte[]> entry) {
+    public void upsert(BaseEntry<byte[]> entry) {
         data.remove(entry);
         data.add(entry);
     }

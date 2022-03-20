@@ -2,7 +2,6 @@ package ru.mail.polis.nikitadergunov;
 
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
@@ -45,7 +44,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     }
 
     @Override
-    public Entry<MemorySegment> get(@NotNull MemorySegment key) {
+    public Entry<MemorySegment> get(MemorySegment key) {
         lock.readLock().lock();
         try {
             Entry<MemorySegment> value = storage.get(key);
@@ -79,7 +78,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     }
 
     @Override
-    public void upsert(@NotNull Entry<MemorySegment> entry) {
+    public void upsert(Entry<MemorySegment> entry) {
         lock.readLock().lock();
         try {
             storage.put(entry.key(), entry);

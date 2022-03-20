@@ -1,6 +1,5 @@
 package ru.mail.polis.artyomdrozdov;
 
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -50,7 +49,7 @@ public class StringDao implements Dao<String, Entry<String>> {
     }
 
     @Override
-    public Entry<String> get(@NotNull String key) throws IOException {
+    public Entry<String> get(String key) throws IOException {
         Entry<String> entry = storage.get(key);
         if (entry != null) {
             return entry;
@@ -83,7 +82,7 @@ public class StringDao implements Dao<String, Entry<String>> {
     }
 
     @Override
-    public void upsert(@NotNull Entry<String> entry) {
+    public void upsert(Entry<String> entry) {
         lock.readLock().lock();
         try {
             storage.put(entry.key(), entry);

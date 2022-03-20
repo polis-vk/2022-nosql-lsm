@@ -1,6 +1,5 @@
 package ru.mail.polis.medvedevalexey;
 
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -56,13 +55,13 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public BaseEntry<byte[]> get(byte @NotNull [] key) throws IOException {
+    public BaseEntry<byte[]> get(byte[] key) throws IOException {
         BaseEntry<byte[]> entry = storage.get(key);
         return entry == null ? getFromFile(key) : entry;
     }
 
     @Override
-    public void upsert(@NotNull BaseEntry<byte[]> entry) {
+    public void upsert(BaseEntry<byte[]> entry) {
         if (entry == null) {
             throw new IllegalArgumentException();
         }

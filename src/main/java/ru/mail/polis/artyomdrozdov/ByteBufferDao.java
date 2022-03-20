@@ -1,6 +1,5 @@
 package ru.mail.polis.artyomdrozdov;
 
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
@@ -29,12 +28,12 @@ public class ByteBufferDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     }
 
     @Override
-    public Entry<ByteBuffer> get(@NotNull ByteBuffer key) {
+    public Entry<ByteBuffer> get(ByteBuffer key) {
         return storage.get(key);
     }
 
     @Override
-    public void upsert(@NotNull Entry<ByteBuffer> entry) {
+    public void upsert(Entry<ByteBuffer> entry) {
         storage.put(entry.key(), entry);
     }
 }

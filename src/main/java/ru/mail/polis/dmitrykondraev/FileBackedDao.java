@@ -1,7 +1,6 @@
 package ru.mail.polis.dmitrykondraev;
 
 import jdk.incubator.foreign.MemorySegment;
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
@@ -65,13 +64,13 @@ public class FileBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     }
 
     @Override
-    public void upsert(@NotNull Entry<MemorySegment> entry) {
+    public void upsert(Entry<MemorySegment> entry) {
         // implicit check for non-null entry and entry.key()
         map.put(entry.key(), entry);
     }
 
     @Override
-    public Entry<MemorySegment> get(@NotNull MemorySegment key) throws IOException {
+    public Entry<MemorySegment> get(MemorySegment key) throws IOException {
         Entry<MemorySegment> result = map.get(key);
         if (result != null) {
             return result;

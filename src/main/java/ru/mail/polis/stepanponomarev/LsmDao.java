@@ -1,6 +1,5 @@
 package ru.mail.polis.stepanponomarev;
 
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.stepanponomarev.sstable.SSTable;
@@ -39,7 +38,7 @@ public class LsmDao implements Dao<OSXMemorySegment, Entry<OSXMemorySegment>> {
     }
 
     @Override
-    public void upsert(@NotNull Entry<OSXMemorySegment> entry) {
+    public void upsert(Entry<OSXMemorySegment> entry) {
         memTable.put(entry.key(), entry);
     }
 

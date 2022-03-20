@@ -1,6 +1,5 @@
 package ru.mail.polis.lutsenkodmitrii;
 
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -69,7 +68,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public BaseEntry<String> get(@NotNull String key) throws IOException {
+    public BaseEntry<String> get(String key) throws IOException {
         if (data.containsKey(key)) {
             return data.get(key);
         }
@@ -77,7 +76,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public void upsert(@NotNull BaseEntry<String> entry) {
+    public void upsert(BaseEntry<String> entry) {
         data.put(entry.key(), entry);
     }
 

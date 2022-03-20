@@ -2,7 +2,6 @@ package ru.mail.polis.alinashestakova;
 
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 import java.util.Collections;
@@ -33,7 +32,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public void upsert(@NotNull BaseEntry<MemorySegment> entry) {
+    public void upsert(BaseEntry<MemorySegment> entry) {
         if (entry == null) {
             return;
         }

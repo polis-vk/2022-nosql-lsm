@@ -1,6 +1,5 @@
 package ru.mail.polis.alexandratkachenko;
 
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Dao;
 
@@ -28,7 +27,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void upsert(@NotNull BaseEntry<ByteBuffer> entry) {
+    public void upsert(BaseEntry<ByteBuffer> entry) {
         map.put(entry.key(), entry);
     }
 }

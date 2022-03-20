@@ -2,7 +2,6 @@ package ru.mail.polis.nikitazadorotskas;
 
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
-import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -61,7 +60,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     }
 
     @Override
-    public BaseEntry<MemorySegment> get(@NotNull MemorySegment key) throws IOException {
+    public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
         BaseEntry<MemorySegment> result = memory.get(key);
 
         if (result != null) {
@@ -81,7 +80,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     }
 
     @Override
-    public void upsert(@NotNull BaseEntry<MemorySegment> entry) {
+    public void upsert(BaseEntry<MemorySegment> entry) {
         storageSizeInBytes.addAndGet(entry.key().byteSize() + entry.value().byteSize());
         memory.put(entry.key(), entry);
     }
