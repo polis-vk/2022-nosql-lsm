@@ -63,7 +63,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     public BaseEntry<String> get(String key) throws IOException {
         BaseEntry<String> entry = dataMap.get(key);
         if (entry != null) {
-            return entry;
+            return entry.value() == null ? null : entry;
         }
         for (int fileNumber = numberOfFiles - 1; fileNumber >= 0; fileNumber--) {
             if (offsets.get(fileNumber) == null) {
