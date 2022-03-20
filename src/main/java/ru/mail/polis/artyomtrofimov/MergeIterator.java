@@ -26,7 +26,28 @@ public class MergeIterator implements Iterator<Entry<String>> {
     @Override
     public boolean hasNext() {
         queue.removeIf(item -> !item.hasNext());
+
+        // skip deleted entries
+        while (!queue.isEmpty() && queue.peek().peek().value() == null) {
+            updateIterators();
+        }
         return !queue.isEmpty();
+    }
+
+    private Entry<String> updateIterators() {
+        PeekingIterator nextIter = queue.poll();
+        Entry<String> nextEntry = nextIter.next();
+        if (nextIter.hasNext()) {
+            queue.add(nextIter);
+        }
+        while (!queue.isEmpty() && queue.peek().hasNext() && queue.peek().peek().key().equals(nextEntry.key())) {
+            PeekingIterator peek = queue.poll();
+            peek.next();
+            if (peek.hasNext()) {
+                queue.add(peek);
+            }
+        }
+        return nextEntry;
     }
 
     @Override
@@ -34,14 +55,7 @@ public class MergeIterator implements Iterator<Entry<String>> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        PeekingIterator nextIter = queue.poll();
-        Entry<String> nextEntry = nextIter.next();
-        queue.add(nextIter);
-        while (queue.peek().hasNext() && queue.peek().peek().key().equals(nextEntry.key())) {
-            PeekingIterator peek = queue.poll();
-            peek.next();
-            queue.add(peek);
-        }
-        return nextEntry;
+        Entry<String> nextEntry = updateIterators();
+        return nextEntry.value() == null ? null : nextEntry;
     }
 }

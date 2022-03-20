@@ -61,12 +61,12 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             while (left < right) {
                 mid = left + (right - left) / 2;
                 indexInput.seek(mid * Long.BYTES);
-                long index = indexInput.readLong();
-                input.seek(Math.abs(index));
+                input.seek(indexInput.readLong());
+                byte tombstone = input.readByte();
                 String currentKey = input.readUTF();
                 int keyComparing = key.compareTo(currentKey);
                 if (keyComparing == 0) {
-                    return new BaseEntry<>(currentKey, index < 0 ? null : input.readUTF());
+                    return new BaseEntry<>(currentKey, tombstone < 0 ? null : input.readUTF());
                 } else if (keyComparing < 0) {
                     right = mid;
                 } else {
@@ -111,6 +111,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 }
             }
         }
+        if (entry != null && entry.value() == null)
+            return null;
         return entry;
     }
 
@@ -151,15 +153,16 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             output.seek(0);
             output.writeInt(data.size());
             for (Entry<String> value : data.values()) {
-                long fp = output.getFilePointer();
                 String val = value.value();
+                indexOut.writeLong(output.getFilePointer());
                 if (val == null) {
-                    fp = -fp;
-                    val = "";
+                    output.writeByte(-1);
+                    output.writeUTF(value.key());
+                } else {
+                    output.writeByte(1);
+                    output.writeUTF(value.key());
+                    output.writeUTF(val);
                 }
-                indexOut.writeLong(fp);
-                output.writeUTF(value.key());
-                output.writeUTF(val);
             }
             allFilesOut.setLength(0);
             while (!filesList.isEmpty()) {

@@ -13,8 +13,8 @@ import java.util.NoSuchElementException;
 
 public class FileIterator implements Iterator<Entry<String>> {
     private final Path basePath;
-    String from;
-    String to;
+    private final String from;
+    private final String to;
     private RandomAccessFile raf;
     private long lastPos;
     private Entry<String> nextEntry;
@@ -25,9 +25,6 @@ public class FileIterator implements Iterator<Entry<String>> {
         this.basePath = basePath;
         try {
             raf = new RandomAccessFile(basePath.resolve(name + InMemoryDao.DATA_EXT).toString(), "r");
-            if (this.from == null) {
-                this.from = "";
-            }
             findFloorEntry(name);
         } catch (FileNotFoundException | EOFException e) {
             nextEntry = null;
@@ -45,10 +42,10 @@ public class FileIterator implements Iterator<Entry<String>> {
             while (left < right - 1) {
                 mid = left + (right - left) / 2;
                 index.seek(mid * Long.BYTES);
-                long pointer = index.readLong();
-                raf.seek(Math.abs(pointer));
+                raf.seek(index.readLong());
+                byte tombstone = raf.readByte();
                 String currentKey = raf.readUTF();
-                String currentValue = pointer < 0 ? null : raf.readUTF();
+                String currentValue = tombstone < 0 ? null : raf.readUTF();
                 int keyComparing = currentKey.compareTo(from);
                 if (keyComparing == 0) {
                     lastPos = raf.getFilePointer();
@@ -62,12 +59,21 @@ public class FileIterator implements Iterator<Entry<String>> {
                     left = mid;
                 }
             }
+            raf.seek(lastPos);
         }
     }
 
     @Override
     public boolean hasNext() {
-        return (to == null && nextEntry != null) || (nextEntry != null && nextEntry.key().compareTo(to) < 0);
+        boolean retval = (to == null && nextEntry != null) || (nextEntry != null && nextEntry.key().compareTo(to) < 0);
+        if (!retval) {
+            try {
+                raf.close();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+        return retval;
     }
 
     @Override
@@ -77,10 +83,10 @@ public class FileIterator implements Iterator<Entry<String>> {
         }
         Entry<String> retval = nextEntry;
         try {
-            raf.seek(lastPos);
+            byte tombstone = raf.readByte();
             String currentKey = raf.readUTF();
-            nextEntry = new BaseEntry<>(currentKey, raf.readUTF());
-            lastPos = raf.getFilePointer();
+            String currentValue = tombstone < 0 ? null : raf.readUTF();
+            nextEntry = new BaseEntry<>(currentKey, currentValue);
         } catch (EOFException e) {
             nextEntry = null;
         } catch (IOException e) {
