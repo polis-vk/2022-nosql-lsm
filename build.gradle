@@ -31,18 +31,9 @@ dependencies {
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
 }
 
-compileJava {
-    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
-}
-
-compileTestJava {
-    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
-}
-
 test {
     maxHeapSize = "64m"
     useJUnitPlatform()
-    jvmArgs += ["--add-modules", "jdk.incubator.foreign"]
 }
 
 checkstyle {
@@ -50,11 +41,13 @@ checkstyle {
     checkstyleTest.enabled = false
 }
 
-compileJava {
-    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+// Use JDK Incubator Foreign module (for MemorySegment users)
+def incubatorArgs = ["--add-modules", "jdk.incubator.foreign"]
+
+tasks.withType(JavaCompile) {
+    options.compilerArgs += incubatorArgs
 }
 
-compileTestJava {
-    options.compilerArgs += ["--add-modules", "jdk.incubator.foreign"]
+tasks.withType(Test) {
+    jvmArgs += incubatorArgs
 }
-
