@@ -20,17 +20,12 @@ import java.util.NavigableMap;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-import static ru.mail.polis.baidiyarosan.FileUtils.DATA_FILE_HEADER;
-import static ru.mail.polis.baidiyarosan.FileUtils.FILE_EXTENSION;
-import static ru.mail.polis.baidiyarosan.FileUtils.INDEX_FILE_HEADER;
-import static ru.mail.polis.baidiyarosan.FileUtils.INDEX_FOLDER;
-import static ru.mail.polis.baidiyarosan.FileUtils.getEndIndex;
 import static ru.mail.polis.baidiyarosan.FileUtils.getFileNumber;
-import static ru.mail.polis.baidiyarosan.FileUtils.getStartIndex;
+
 import static ru.mail.polis.baidiyarosan.FileUtils.readBuffer;
-import static ru.mail.polis.baidiyarosan.FileUtils.readLong;
+
 import static ru.mail.polis.baidiyarosan.FileUtils.sizeOfEntry;
-import static ru.mail.polis.baidiyarosan.FileUtils.writeEntryToBuffer;
+
 
 public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
@@ -40,7 +35,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     public MemoryAndDiskDao(Config config) throws IOException {
         this.path = config.basePath();
-        Path indexesDir = path.resolve(Paths.get(INDEX_FOLDER));
+        Path indexesDir = path.resolve(Paths.get(FileUtils.INDEX_FOLDER));
         if (Files.exists(path) && Files.notExists(indexesDir)) {
             Files.createDirectory(indexesDir);
         }
@@ -75,10 +70,10 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             int start = 0;
             int end = indexes.length - 1;
             if (from != null) {
-                start = getStartIndex(in, indexes, from, temp);
+                start = FileUtils.getStartIndex(in, indexes, from, temp);
             }
             if (to != null) {
-                end = getEndIndex(in, indexes, to, temp);
+                end = FileUtils.getEndIndex(in, indexes, to, temp);
             }
             if (start == -1 || end == -1) {
                 return Collections.emptyIterator();
@@ -183,9 +178,9 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
         ByteBuffer indexBuffer = ByteBuffer.allocate(collection.size() * Long.BYTES);
         int fileNumber = getLastFileNumber() + 1;
-        Path dataPath = path.resolve(DATA_FILE_HEADER + fileNumber + FILE_EXTENSION);
-        Path indexPath = path.resolve(Paths.get(INDEX_FOLDER,
-                INDEX_FILE_HEADER + fileNumber + FILE_EXTENSION));
+        Path dataPath = path.resolve(FileUtils.DATA_FILE_HEADER + fileNumber + FileUtils.FILE_EXTENSION);
+        Path indexPath = path.resolve(Paths.get(FileUtils.INDEX_FOLDER,
+                FileUtils.INDEX_FILE_HEADER + fileNumber + FileUtils.FILE_EXTENSION));
         try (FileChannel dataOut = FileChannel.open(dataPath,
                 StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
              FileChannel indexOut = FileChannel.open(indexPath,
@@ -199,7 +194,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                 }
 
                 indexBuffer.putLong(dataOut.position());
-                dataOut.write(writeEntryToBuffer(buffer, entry));
+                dataOut.write(FileUtils.writeEntryToBuffer(buffer, entry));
             }
             indexBuffer.flip();
             indexOut.write(indexBuffer);
@@ -212,14 +207,14 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     private long[] getIndexArray(int fileNumber) throws IOException {
         long[] array;
-        Path indexPath = path.resolve(Paths.get(INDEX_FOLDER,
-                INDEX_FILE_HEADER + fileNumber + FILE_EXTENSION));
+        Path indexPath = path.resolve(Paths.get(FileUtils.INDEX_FOLDER,
+                FileUtils.INDEX_FILE_HEADER + fileNumber + FileUtils.FILE_EXTENSION));
         try (FileChannel indexOut = FileChannel.open(indexPath, StandardOpenOption.READ)) {
             int size = (int) (indexOut.size() / Long.BYTES);
             array = new long[size];
             ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
             for (int i = 0; i < size; ++i) {
-                array[i] = readLong(indexOut, buffer);
+                array[i] = FileUtils.readLong(indexOut, buffer);
             }
         }
 

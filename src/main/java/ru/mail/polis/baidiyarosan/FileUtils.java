@@ -23,7 +23,6 @@ public final class FileUtils {
         // Utility class
     }
 
-
     public static int getFileNumber(Path pathToFile) {
         String number = pathToFile.getFileName().toString()
                 .replaceFirst(DATA_FILE_HEADER, "")
@@ -74,7 +73,6 @@ public final class FileUtils {
         }
         return buffer.flip();
     }
-
 
     public static int getStartIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp)
             throws IOException {
