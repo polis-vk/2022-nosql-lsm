@@ -96,11 +96,6 @@ public class UpsertRemoveTest extends BaseTest {
         dao.upsert(entryAt(2));
         dao.upsert(entryAt(1));
 
-        for (Iterator<Entry<String>> it = dao.all(); it.hasNext(); ) {
-            Entry<String> entry = it.next();
-            System.out.println(entry);
-        }
-
         assertSame(
                 dao.all(),
                 entryAt(0),
