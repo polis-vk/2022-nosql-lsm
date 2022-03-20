@@ -1,11 +1,11 @@
 package ru.mail.polis.glebkomissarov;
 
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
+
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 /**
  * Default iterator for data from files

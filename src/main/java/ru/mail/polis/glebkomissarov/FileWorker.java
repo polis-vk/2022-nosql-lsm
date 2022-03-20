@@ -34,7 +34,7 @@ public class FileWorker {
         pathToOffsets = basePath.resolve(FileName.OFFSETS.getName() + count);
 
         try (ResourceScope scopeEntries = ResourceScope.newConfinedScope();
-             ResourceScope scopeOffsets = ResourceScope.newConfinedScope()){
+             ResourceScope scopeOffsets = ResourceScope.newConfinedScope()) {
             entries = createMappedSegment(pathToEntries, fileSize,
                     FileChannel.MapMode.READ_WRITE, scopeEntries);
             offsets = createMappedSegment(pathToOffsets, 3L * Long.BYTES * data.size() + 1,
@@ -60,7 +60,7 @@ public class FileWorker {
 
     public BaseEntry<MemorySegment> findEntry(MemorySegment key, Path basePath) throws IOException {
         long fileCount = getFileCount(basePath);
-        if (fileCount == 0) {
+        if (fileCount == 0 || key == null) {
             return null;
         }
 

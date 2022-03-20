@@ -1,11 +1,11 @@
 package ru.mail.polis.glebkomissarov;
 
+import jdk.incubator.foreign.MemorySegment;
+import ru.mail.polis.BaseEntry;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-
-import jdk.incubator.foreign.MemorySegment;
-import ru.mail.polis.BaseEntry;
 
 public class FinalIterator implements Iterator<BaseEntry<MemorySegment>> {
 

@@ -4,6 +4,10 @@ import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 
 public final class SegmentsComparator {
+
+    private SegmentsComparator() {
+    }
+
     public static int compare(MemorySegment o1, MemorySegment o2) {
         long offset = o1.mismatch(o2);
 
