@@ -136,6 +136,39 @@ public class PersistentDeleteTest extends BaseTest {
     }
 
     @DaoTest(stage = 3)
+    void rangeStressTest(Dao<String, Entry<String>> dao) throws IOException {
+        dao.upsert(entryAt(1));
+        for(int i = 2; i < 10; i++) {
+            dao.upsert(entry(keyAt(i), null));
+        }
+        dao.upsert(entryAt(10));
+
+        assertFalse(dao.get(keyAt(2), keyAt(9)).hasNext());
+        assertSame(dao.allTo(keyAt(9)), 1);
+        assertSame(dao.allFrom(keyAt(2)), 10);
+
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        assertFalse(dao.get(keyAt(2), keyAt(9)).hasNext());
+        assertSame(dao.allTo(keyAt(9)), 1);
+        assertSame(dao.allFrom(keyAt(2)), 10);
+
+        dao.upsert(entryAt(5));
+
+        assertSame(dao.get(keyAt(2), keyAt(9)), 5);
+        assertSame(dao.allTo(keyAt(9)), 1, 5);
+        assertSame(dao.allFrom(keyAt(2)), 5, 10);
+
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+
+        assertSame(dao.get(keyAt(2), keyAt(9)), 5);
+        assertSame(dao.allTo(keyAt(9)), 1, 5);
+        assertSame(dao.allFrom(keyAt(2)), 5, 10);
+    }
+
+    @DaoTest(stage = 3)
     void checkFlow(Dao<String, Entry<String>> dao) throws IOException {
         NavigableSet<Entry<String>> values = new TreeSet<>(Comparator.comparing(Entry::key));
         for(int i = 1; i <= 100; i++) {
