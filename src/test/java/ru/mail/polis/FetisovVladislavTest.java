@@ -23,7 +23,7 @@ public class FetisovVladislavTest extends BaseTest {
         assertSame(dao.get("k2"), entry("k2", "v2"));
         assertSame(dao.get("k14"), entry("k14", "v14"));
         assertSame(dao.get("k13"), entry("k13", "v13"));
-        Assertions.assertNull(dao.get("k121"));
+        Assertions.assertNull(dao.get("k25"));
         Assertions.assertNull(dao.get("k0"));
 
     }
