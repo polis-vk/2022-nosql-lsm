@@ -12,17 +12,25 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
-import java.util.*;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.NavigableMap;
+import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Stream;
 
 public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    private static final String
-            DATA_FILE_HEADER = "data",
-            INDEX_FOLDER = "indexes",
-            INDEX_FILE_HEADER = "index",
-            FILE_EXTENSION = ".log";
+    private static final String DATA_FILE_HEADER = "data";
+
+    private static final String INDEX_FOLDER = "indexes";
+
+    private static final String INDEX_FILE_HEADER = "index";
+
+    private static final String FILE_EXTENSION = ".log";
 
     private final NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection = new ConcurrentSkipListMap<>();
 
@@ -116,10 +124,12 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     private int getStartIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp)
             throws IOException {
-        int min = 0, max = indexes.length - 1, mid, comparison;
+        int min = 0;
+        int max = indexes.length - 1;
+        int mid;
+        int comparison;
         while (min <= max) {
-            comparison = key.compareTo(readBuffer(in, indexes[min], temp));
-            if (comparison <= 0) {
+            if (key.compareTo(readBuffer(in, indexes[min], temp)) <= 0) {
                 return min;
             }
             comparison = key.compareTo(readBuffer(in, indexes[max], temp));
@@ -145,19 +155,18 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     private int getEndIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp)
             throws IOException {
-        int min = 0, max = indexes.length - 1, mid, comparison;
+        int min = 0;
+        int max = indexes.length - 1;
+        int mid;
         while (min <= max) {
-            comparison = key.compareTo(readBuffer(in, indexes[min], temp));
-            if (comparison <= 0) {
+            if (key.compareTo(readBuffer(in, indexes[min], temp)) <= 0) {
                 return -1;
             }
-            comparison = key.compareTo(readBuffer(in, indexes[max], temp));
-            if (comparison > 0) {
+            if (key.compareTo(readBuffer(in, indexes[max], temp)) > 0) {
                 return max;
             }
             mid = min + 1 + (max - min) / 2;
-            comparison = key.compareTo(readBuffer(in, indexes[mid], temp));
-            if (comparison > 0) {
+            if (key.compareTo(readBuffer(in, indexes[mid], temp)) > 0) {
                 min = mid;
             } else {
                 max = mid - 1;
@@ -173,7 +182,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         if (from == null && to == null) {
             return collection.values().iterator();
         }
-        boolean flag = (to == null || !to.equals(collection.floorKey(to)));
+        final boolean flag = (to == null || !to.equals(collection.floorKey(to)));
         from = (from == null ? collection.firstKey() : collection.ceilingKey(from));
         to = (to == null ? collection.lastKey() : collection.floorKey(to));
 
