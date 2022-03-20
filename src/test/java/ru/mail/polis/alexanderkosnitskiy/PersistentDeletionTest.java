@@ -15,7 +15,7 @@ import java.util.TreeSet;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-public class PersistentDeleteTest extends BaseTest {
+public class PersistentDeletionTest extends BaseTest {
     
     @DaoTest(stage = 3)
     void deleteOldValueFromFile(Dao<String, Entry<String>> dao) throws IOException {
