@@ -7,7 +7,6 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -45,7 +44,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
         }
 
         try {
-            return (int) Files.list(config.basePath()).count() / 2;
+            return utils.countStorageFiles(config.basePath());
         } catch (NoSuchFileException e) {
             return 0;
         }
@@ -100,7 +99,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
             BaseEntry<MemorySegment> result = memory.get(key);
 
             if (result != null) {
-                return checkIfWasDeleted(result);
+                return utils.checkIfWasDeleted(result);
             }
 
             if (readers.length == 0) {
@@ -110,7 +109,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
             for (int i = readers.length - 1; i >= 0; i--) {
                 BaseEntry<MemorySegment> res = readers[i].getFromDisk(key);
                 if (res != null) {
-                    return checkIfWasDeleted(res);
+                    return utils.checkIfWasDeleted(res);
                 }
             }
 
@@ -118,10 +117,6 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
         } finally {
             lock.readLock().unlock();
         }
-    }
-
-    private BaseEntry<MemorySegment> checkIfWasDeleted(BaseEntry<MemorySegment> entry) {
-        return entry.value() == null ? null : entry;
     }
 
     @Override
@@ -150,7 +145,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
 
         lock.writeLock().lock();
         try (ResourceScope confinedScope = ResourceScope.newConfinedScope()) {
-            utils.createFilesIfNotExist(numberOfFiles);
+            utils.createFiles(numberOfFiles);
             MemorySegmentWriter segmentWriter = new MemorySegmentWriter(
                     memory.size(),
                     storageSizeInBytes.get(),

@@ -20,7 +20,8 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
     }
 
     private int comparePeekIterators(PeekIterator first, PeekIterator second) {
-        return utils.compareBaseEntries(first.current(), second.current());
+        int compare = utils.compareBaseEntries(first.current(), second.current());
+        return compare == 0 ? Integer.compare(second.getNumber(), first.getNumber()) : compare;
     }
 
     private void addIteratorsToHeap(List<PeekIterator> iterators) {
@@ -37,12 +38,12 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
 
         while (result == null && minHeap.size() > 0) {
             PeekIterator iterator = minHeap.poll();
-            BaseEntry<MemorySegment> current = iterator.current();
+            result = iterator.current();
 
-            List<PeekIterator> iterators = getIteratorsWithSameValues(current);
+            List<PeekIterator> iterators = getIteratorsWithSameKeys(result);
             iterators.add(iterator);
 
-            result = getActualEntry(iterators);
+            result = utils.checkIfWasDeleted(result);
             addIteratorsToHeap(iterators);
         }
 
@@ -61,7 +62,7 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
         return result;
     }
 
-    private List<PeekIterator> getIteratorsWithSameValues(BaseEntry<MemorySegment> current) {
+    private List<PeekIterator> getIteratorsWithSameKeys(BaseEntry<MemorySegment> current) {
         List<PeekIterator> result = new ArrayList<>();
 
         while (minHeap.size() > 0 && utils.compareBaseEntries(minHeap.peek().current(), current) == 0) {
@@ -69,17 +70,5 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
         }
 
         return result;
-    }
-
-    private BaseEntry<MemorySegment> getActualEntry(List<PeekIterator> iterators) {
-        int maxNumber = iterators.get(0).getNumber();
-        BaseEntry<MemorySegment> result = iterators.get(0).current();
-        for (int i = 1; i < iterators.size(); i++) {
-            if (iterators.get(i).getNumber() > maxNumber) {
-                maxNumber = iterators.get(i).getNumber();
-                result = iterators.get(i).current();
-            }
-        }
-        return result.value() == null ? null : result;
     }
 }

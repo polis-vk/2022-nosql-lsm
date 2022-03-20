@@ -55,14 +55,18 @@ class Utils {
         return compareMemorySegment(first.key(), second.key());
     }
 
-    public void createFilesIfNotExist(int number) throws IOException {
-        createFileIfNotExist(getIndexesPath(number));
-        createFileIfNotExist(getStoragePath(number));
+    public void createFiles(int number) throws IOException {
+        Files.createFile(getIndexesPath(number));
+        Files.createFile(getStoragePath(number));
     }
 
-    private void createFileIfNotExist(Path path) throws IOException {
-        if (!Files.exists(path)) {
-            Files.createFile(path);
-        }
+    public int countStorageFiles(Path dirPath) throws IOException {
+        return (int) Files.list(dirPath)
+                .filter(path -> path.getFileName().toString().startsWith(STORAGE_FILE_NAME))
+                .count();
+    }
+
+    public BaseEntry<MemorySegment> checkIfWasDeleted(BaseEntry<MemorySegment> entry) {
+        return entry.value() == null ? null : entry;
     }
 }
