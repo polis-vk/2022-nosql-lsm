@@ -7,7 +7,7 @@ import java.util.Iterator;
 
 public class PeekIterator implements Iterator<BaseEntry<ByteBuffer>>, Comparable<PeekIterator> {
     private final Iterator<BaseEntry<ByteBuffer>> iterator;
-    private BaseEntry<ByteBuffer> next = null;
+    private BaseEntry<ByteBuffer> next;
     private final Integer priority;
 
     public PeekIterator(Iterator<BaseEntry<ByteBuffer>> iterator, int priority) {
@@ -37,10 +37,10 @@ public class PeekIterator implements Iterator<BaseEntry<ByteBuffer>>, Comparable
     @Override
     public int compareTo(PeekIterator e2) {
         int keyComparison = this.peek().key().compareTo(e2.peek().key());
-        if (keyComparison != 0) {
-            return keyComparison;
-        } else {
+        if (keyComparison == 0) {
             return Integer.compare(e2.priority, this.priority);
+        } else {
+            return keyComparison;
         }
     }
 }

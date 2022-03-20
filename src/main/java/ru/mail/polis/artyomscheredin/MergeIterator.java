@@ -17,6 +17,8 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
     private final Queue<PeekIterator> iteratorQueue;
 
     /**
+     * create Merge iterator from PeekIterators
+     *
      * @param iterators - list ordered by ascending iterators priority
      */
     public MergeIterator(List<PeekIterator> iterators) {
@@ -52,30 +54,15 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (iteratorQueue.isEmpty()) {
             return;
         }
-        /*PeekIterator temp = iteratorQueue.poll();
-        if (temp.peek().value() == null) {
-            ByteBuffer keyToDelete = temp.peek().key();
-            while ((temp.peek().key().equals(keyToDelete))) {
-                temp.next();
-                if (iteratorQueue.isEmpty()) {
-                    return;
-                }
-                temp = iteratorQueue.poll();
-            }
-        }
-        if (temp.peek().value() != null) {
-            iteratorQueue.add(temp);
-        }*/
         while (iteratorQueue.peek().peek().value() == null) {
             PeekIterator it = iteratorQueue.poll();
             ByteBuffer keyToDelete = it.next().key();
-           deleteByKey(keyToDelete);
+            deleteByKey(keyToDelete);
             if (it.hasNext()) {
                 iteratorQueue.add(it);
             }
 
-
-            if (iteratorQueue.isEmpty()){
+            if (iteratorQueue.isEmpty()) {
                 return;
             }
         }
