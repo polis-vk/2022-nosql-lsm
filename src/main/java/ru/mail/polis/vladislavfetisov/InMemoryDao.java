@@ -30,6 +30,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     public InMemoryDao(Config config) throws IOException {
         this.config = config;
         Path table = config.basePath().resolve(Path.of(TABLE_NAME));
+
         if (!Files.exists(table)) {
             mapFile = null;
             mapIndex = null;
