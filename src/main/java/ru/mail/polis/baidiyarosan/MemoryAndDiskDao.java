@@ -21,6 +21,11 @@ import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Stream;
 
+import static ru.mail.polis.baidiyarosan.FileUtils.readBuffer;
+import static ru.mail.polis.baidiyarosan.FileUtils.readLong;
+import static ru.mail.polis.baidiyarosan.FileUtils.sizeOfEntry;
+import static ru.mail.polis.baidiyarosan.FileUtils.writeEntryToBuffer;
+
 public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private static final String DATA_FILE_HEADER = "data";
@@ -30,8 +35,6 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     private static final String INDEX_FILE_HEADER = "index";
 
     private static final String FILE_EXTENSION = ".log";
-
-    private static final int NULL_SIZE_FLAG = -1;
 
     private final NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection = new ConcurrentSkipListMap<>();
 
@@ -46,41 +49,11 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     }
 
-    private static int sizeOfEntry(BaseEntry<ByteBuffer> entry) {
-        return 2 * Integer.BYTES + entry.key().capacity() + (entry.value() == null ? 0 : entry.value().capacity());
-    }
-
     private static int getFileNumber(Path pathToFile) {
         String number = pathToFile.getFileName().toString()
                 .replaceFirst(DATA_FILE_HEADER, "")
                 .replaceFirst(FILE_EXTENSION, "");
         return Integer.parseInt(number);
-    }
-
-    private static int readInt(FileChannel in, ByteBuffer temp) throws IOException {
-        temp.clear();
-        in.read(temp);
-        return temp.flip().getInt();
-    }
-
-    private static long readLong(FileChannel in, ByteBuffer temp) throws IOException {
-        temp.clear();
-        in.read(temp);
-        return temp.flip().getLong();
-    }
-
-    private static ByteBuffer readBuffer(FileChannel in, int size) throws IOException {
-        if (size == NULL_SIZE_FLAG) {
-            return null;
-        }
-        ByteBuffer buffer = ByteBuffer.allocate(size);
-        in.read(buffer);
-        return buffer.flip();
-    }
-
-    private static ByteBuffer readBuffer(FileChannel in, long pos, ByteBuffer temp) throws IOException {
-        in.position(pos);
-        return readBuffer(in, readInt(in, temp));
     }
 
     @Override
@@ -121,7 +94,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             }
 
             for (int i = start; i <= end; ++i) {
-                list.add(new BaseEntry<>(readBuffer(in, indexes[i], temp), readBuffer(in, readInt(in, temp))));
+                list.add(new BaseEntry<>(readBuffer(in, indexes[i], temp), readBuffer(in, temp)));
             }
             return list.iterator();
         }
@@ -238,7 +211,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                     return null;
                 }
                 if (comparison == 0) {
-                    return new BaseEntry<>(key, readBuffer(in, readInt(in, temp)));
+                    return new BaseEntry<>(key, readBuffer(in, temp));
                 }
 
                 comparison = key.compareTo(readBuffer(in, indexes[max], temp));
@@ -246,13 +219,13 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                     return null;
                 }
                 if (comparison == 0) {
-                    return new BaseEntry<>(key, readBuffer(in, readInt(in, temp)));
+                    return new BaseEntry<>(key, readBuffer(in, temp));
                 }
 
                 mid = min + (max - min) / 2;
                 comparison = key.compareTo(readBuffer(in, indexes[mid], temp));
                 if (comparison == 0) {
-                    return new BaseEntry<>(key, readBuffer(in, readInt(in, temp)));
+                    return new BaseEntry<>(key, readBuffer(in, temp));
                 }
                 if (comparison > 0) {
                     min = mid + 1;
@@ -284,20 +257,12 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                 size = sizeOfEntry(entry);
                 if (buffer.capacity() < size) {
                     buffer = ByteBuffer.allocate(size);
-                }
-
-                buffer.putInt(entry.key().capacity()).put(entry.key());
-                if (entry.value() == null) {
-                    buffer.putInt(NULL_SIZE_FLAG);
                 } else {
-                    buffer.putInt(entry.value().capacity()).put(entry.value());
+                    buffer.clear();
                 }
-                buffer.flip();
 
                 indexBuffer.putLong(dataOut.position());
-                dataOut.write(buffer);
-
-                buffer.clear();
+                dataOut.write(writeEntryToBuffer(buffer, entry));
             }
             indexBuffer.flip();
             indexOut.write(indexBuffer);
