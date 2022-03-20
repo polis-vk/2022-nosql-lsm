@@ -46,7 +46,7 @@ public class FileIterator implements Iterator<Entry<String>> {
                 mid = left + (right - left) / 2;
                 index.seek(mid * Long.BYTES);
                 long pointer = index.readLong();
-                raf.seek(pointer & 0x7fffffff);
+                raf.seek(Math.abs(pointer));
                 String currentKey = raf.readUTF();
                 String currentValue = pointer < 0 ? null : raf.readUTF();
                 int keyComparing = currentKey.compareTo(from);

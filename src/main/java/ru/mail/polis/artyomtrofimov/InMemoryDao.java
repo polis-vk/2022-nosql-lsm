@@ -62,7 +62,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 mid = left + (right - left) / 2;
                 indexInput.seek(mid * Long.BYTES);
                 long index = indexInput.readLong();
-                input.seek(index & 0x7fffffff);
+                input.seek(Math.abs(index));
                 String currentKey = input.readUTF();
                 int keyComparing = key.compareTo(currentKey);
                 if (keyComparing == 0) {
@@ -135,7 +135,10 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         if (commit) {
             return;
         }
-        String name = generateString();
+        String name;
+        do {
+            name = generateString();
+        } while (filesList.contains(name));
         Path file = basePath.resolve(name + DATA_EXT);
         Path index = basePath.resolve(name + INDEX_EXT);
         filesList.addFirst(name);
