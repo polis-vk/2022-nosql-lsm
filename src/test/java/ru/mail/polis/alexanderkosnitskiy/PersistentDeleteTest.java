@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.NavigableSet;
-import java.util.SortedSet;
 import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -143,28 +142,28 @@ public class PersistentDeleteTest extends BaseTest {
         }
         dao.upsert(entryAt(10));
 
-        assertFalse(dao.get(keyAt(2), keyAt(9)).hasNext());
-        assertSame(dao.allTo(keyAt(9)), 1);
+        assertFalse(dao.get(keyAt(2), keyAt(10)).hasNext());
+        assertSame(dao.allTo(keyAt(10)), 1);
         assertSame(dao.allFrom(keyAt(2)), 10);
 
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
 
-        assertFalse(dao.get(keyAt(2), keyAt(9)).hasNext());
-        assertSame(dao.allTo(keyAt(9)), 1);
+        assertFalse(dao.get(keyAt(2), keyAt(10)).hasNext());
+        assertSame(dao.allTo(keyAt(10)), 1);
         assertSame(dao.allFrom(keyAt(2)), 10);
 
         dao.upsert(entryAt(5));
 
-        assertSame(dao.get(keyAt(2), keyAt(9)), 5);
-        assertSame(dao.allTo(keyAt(9)), 1, 5);
+        assertSame(dao.get(keyAt(2), keyAt(10)), 5);
+        assertSame(dao.allTo(keyAt(10)), 1, 5);
         assertSame(dao.allFrom(keyAt(2)), 5, 10);
 
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
 
-        assertSame(dao.get(keyAt(2), keyAt(9)), 5);
-        assertSame(dao.allTo(keyAt(9)), 1, 5);
+        assertSame(dao.get(keyAt(2), keyAt(10)), 5);
+        assertSame(dao.allTo(keyAt(10)), 1, 5);
         assertSame(dao.allFrom(keyAt(2)), 5, 10);
     }
 
@@ -217,14 +216,13 @@ public class PersistentDeleteTest extends BaseTest {
         int oneForth = values.size() / 4;
         for(int i = 1; i < 4; i++) {
             assertSame(dao.allFrom(keyAt(i * oneForth)),
-                    List.copyOf(values.tailSet(entryAt(i * oneForth), true)));
+                    List.copyOf(values.tailSet(entryAt(i * oneForth))));
             assertSame(dao.allTo(keyAt(i * oneForth)),
-                    List.copyOf(values.headSet(entryAt(i * oneForth), false)));
+                    List.copyOf(values.headSet(entryAt(i * oneForth))));
         }
         int size = values.size();
         assertSame(dao.get(keyAt(size / 4), keyAt(size - size / 4)),
-                List.copyOf(values.subSet(entryAt(size / 4), true,
-                        entryAt(size - size / 4), false)));
+                List.copyOf(values.subSet(entryAt(size / 4), entryAt(size - size / 4))));
     }
 
     void removeValue(int value, Dao<String, Entry<String>> dao, NavigableSet<Entry<String>> values) {
