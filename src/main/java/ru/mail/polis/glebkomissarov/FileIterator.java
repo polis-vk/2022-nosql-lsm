@@ -7,9 +7,6 @@ import ru.mail.polis.BaseEntry;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
-/**
- * Default iterator for data from files
- */
 public class FileIterator implements Iterator<BaseEntry<MemorySegment>> {
 
     private final MemorySegment entries;
