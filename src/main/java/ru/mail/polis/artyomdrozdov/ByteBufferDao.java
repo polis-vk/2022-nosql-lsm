@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class ByteBufferDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
-    private static final ByteBuffer VERY_FIRST_KEY = ByteBuffer.allocateDirect(0);  // ???
+    private static final ByteBuffer VERY_FIRST_KEY = ByteBuffer.allocateDirect(0); // ???
 
     private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> storage = new ConcurrentSkipListMap<>();
 
