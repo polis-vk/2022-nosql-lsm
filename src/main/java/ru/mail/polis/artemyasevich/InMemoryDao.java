@@ -59,7 +59,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (!allMetaProcessed) {
             processAllMeta();
         }
-        return new MergeIterator(from, to, numberOfFiles, getDataMapIterator(from, to), pathToDirectory, offsets);
+        List<FileIterator> iterators = new ArrayList<>(numberOfFiles);
+        for (int fileNumber = 0; fileNumber < numberOfFiles; fileNumber++) {
+            Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
+            FileIterator fileIterator = new FileIterator(from, to, fileNumber, path, offsets.get(fileNumber));
+            iterators.add(fileIterator);
+        }
+        return new MergeIterator(iterators, getDataMapIterator(from, to));
     }
 
     @Override

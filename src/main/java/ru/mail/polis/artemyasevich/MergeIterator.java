@@ -2,30 +2,23 @@ package ru.mail.polis.artemyasevich;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.IOException;
-import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
 import java.util.PriorityQueue;
 
 public class MergeIterator implements Iterator<BaseEntry<String>> {
-    private static final String DATA_FILE = "data";
-    private static final String FILE_EXTENSION = ".txt";
     private final PriorityQueue<PeekIterator> queue;
     private String keyToSkip;
     private BaseEntry<String> next;
 
-    public MergeIterator(String from, String to, int numberOfFiles, Iterator<BaseEntry<String>> dataMapIterator,
-                         Path pathToDirectory, List<long[]> offsets) throws IOException {
+    public MergeIterator(List<FileIterator> fileIterators, Iterator<BaseEntry<String>> dataMapIterator) {
         this.queue = new PriorityQueue<>();
         if (dataMapIterator.hasNext()) {
             queue.add(new PeekIterator(dataMapIterator, 0));
         }
-        for (int fileNumber = 0; fileNumber < numberOfFiles; fileNumber++) {
-            Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
-            Iterator<BaseEntry<String>> fileIterator = new FileIterator(from, to, path, offsets.get(fileNumber));
-            if (fileIterator.hasNext()) {
-                queue.add(new PeekIterator(fileIterator, numberOfFiles - fileNumber));
+        for (FileIterator iterator : fileIterators) {
+            if (iterator.hasNext()) {
+                queue.add(new PeekIterator(iterator, fileIterators.size() - iterator.getFileNumber()));
             }
         }
         next = getNext();
