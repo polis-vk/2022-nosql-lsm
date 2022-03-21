@@ -54,6 +54,10 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             if (result == null) {
                 result = reader.findEntry(key, basePath);
             }
+
+            if (result != null && result.value() == null) {
+                return null;
+            }
             return result;
         } finally {
             lock.readLock().unlock();

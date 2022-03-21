@@ -17,6 +17,8 @@ import java.util.List;
 
 public class FileWorker {
     private static final long NOT_FOUND = -1;
+    private static final long WRONG_SIZE = -1;
+    private static final MemorySegment ALTERNATIVE = MemorySegment.ofArray(new byte[]{});
 
     private MemorySegment entries;
     private MemorySegment offsets;
@@ -26,7 +28,8 @@ public class FileWorker {
 
     public void writeEntries(Collection<BaseEntry<MemorySegment>> data, Path basePath) throws IOException {
         long fileSize = data.stream()
-                .mapToLong(entry -> entry.value().byteSize() + entry.key().byteSize())
+                .mapToLong(entry -> entry.key().byteSize() +
+                        (entry.value() == null ? Byte.BYTES : entry.value().byteSize()))
                 .sum() + 2L * Long.BYTES * data.size();
 
         long count = createFiles(basePath);
@@ -44,7 +47,7 @@ public class FileWorker {
             long offset = 0L;
             for (BaseEntry<MemorySegment> entry : data) {
                 long keySize = entry.key().byteSize();
-                long valueSize = entry.value().byteSize();
+                long valueSize = entry.value() == null ? WRONG_SIZE : entry.value().byteSize();
 
                 MemoryAccess.setLongAtIndex(offsets, index++, offset);
                 MemoryAccess.setLongAtIndex(offsets, index++, keySize);
@@ -52,8 +55,9 @@ public class FileWorker {
 
                 entries.asSlice(offset).copyFrom(entry.key());
                 offset += keySize;
-                entries.asSlice(offset).copyFrom(entry.value());
-                offset += valueSize;
+                entries.asSlice(offset).copyFrom(valueSize == WRONG_SIZE ?
+                        ALTERNATIVE : entry.value());
+                offset += valueSize == WRONG_SIZE ? ALTERNATIVE.byteSize() : valueSize;
             }
         }
     }
@@ -71,10 +75,16 @@ public class FileWorker {
                     SearchMode.SPECIFIC);
 
             if (result != NOT_FOUND) {
-                return new BaseEntry<>(key, entries.asSlice(
-                        MemoryAccess.getLongAtIndex(offsets, result * 3) + key.byteSize(),
-                        MemoryAccess.getLongAtIndex(offsets, result * 3 + 2)
-                ));
+                BaseEntry<MemorySegment> found;
+                try {
+                    found = new BaseEntry<>(key, entries.asSlice(
+                            MemoryAccess.getLongAtIndex(offsets, result * 3) + key.byteSize(),
+                            MemoryAccess.getLongAtIndex(offsets, result * 3 + 2)
+                    ));
+                } catch (IndexOutOfBoundsException e) {
+                    return null;
+                }
+                return found;
             }
         }
         return null;

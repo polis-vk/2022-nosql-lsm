@@ -39,10 +39,16 @@ public class FileIterator implements Iterator<BaseEntry<MemorySegment>> {
                 MemoryAccess.getLongAtIndex(offsets, idx * 3),
                 MemoryAccess.getLongAtIndex(offsets, idx * 3 + 1)
         );
-        MemorySegment value = entries.asSlice(
-                MemoryAccess.getLongAtIndex(offsets, idx * 3) + key.byteSize(),
-                MemoryAccess.getLongAtIndex(offsets, idx * 3 + 2)
-        );
+
+        MemorySegment value;
+        try {
+            value = entries.asSlice(
+                    MemoryAccess.getLongAtIndex(offsets, idx * 3) + key.byteSize(),
+                    MemoryAccess.getLongAtIndex(offsets, idx * 3 + 2)
+            );
+        } catch (IndexOutOfBoundsException e) {
+            value = null;
+        }
 
         idx++;
         return new BaseEntry<>(key, value);
