@@ -8,70 +8,151 @@ import java.util.Iterator;
 public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
     private final Iterator<BaseEntry<byte[]>> memoryIterator;
     private final Iterator<BaseEntry<byte[]>> diskIterator;
-    private BaseEntry<byte[]> currentMemoryEntry;
-    private BaseEntry<byte[]> currentDiskEntry;
+    private BaseEntry<byte[]> nextMemoryEntry;
+    private BaseEntry<byte[]> nextDiskEntry;
 
     public MergeIterator(Iterator<BaseEntry<byte[]>> memoryIterator, Iterator<BaseEntry<byte[]>> diskIterator) {
         this.memoryIterator = memoryIterator;
         this.diskIterator = diskIterator;
-        currentMemoryEntry = memoryIterator.hasNext() ? memoryIterator.next() : null;
-        currentDiskEntry = diskIterator.hasNext() ? diskIterator.next() : null;
+        nextMemoryEntry = memoryIterator.hasNext() ? memoryIterator.next() : null;
+        nextDiskEntry = diskIterator.hasNext() ? diskIterator.next() : null;
     }
 
     @Override
     public boolean hasNext() {
-        if (currentMemoryEntry != null && currentMemoryEntry.value() == null && !memoryIterator.hasNext()) {
-            return false;
+        if (nextMemoryEntry != null && nextMemoryEntry.value() == null && nextDiskEntry == null) {
+            while (memoryIterator.hasNext() && nextMemoryEntry != null && nextMemoryEntry.value() == null) {
+                nextMemoryEntry = memoryIterator.next();
+            }
+            if (nextMemoryEntry != null && nextMemoryEntry.value() == null && nextDiskEntry != null
+                    && Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key()) == 0) {
+                return false;
+            }
+            if (nextMemoryEntry != null && nextMemoryEntry.value() == null) {
+                nextMemoryEntry = null;
+            }
         }
-        if (currentDiskEntry != null && currentDiskEntry.value() == null && !diskIterator.hasNext()) {
-            return false;
+        if (nextDiskEntry != null && nextDiskEntry.value() == null && nextMemoryEntry == null) {
+            while (diskIterator.hasNext() && nextDiskEntry != null && nextDiskEntry.value() == null) {
+                nextDiskEntry = diskIterator.next();
+            }
+            if (nextDiskEntry != null && nextDiskEntry.value() == null && nextMemoryEntry != null
+                    && Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key()) == 0) {
+                return false;
+            }
+            if (nextDiskEntry != null && nextDiskEntry.value() == null) {
+                nextDiskEntry = null;
+            }
         }
-        skipNullValues();
-        return currentMemoryEntry != null
-                || currentDiskEntry != null
-                || memoryIterator.hasNext()
-                || diskIterator.hasNext();
+        if (nextMemoryEntry != null && nextMemoryEntry.value() == null && nextDiskEntry != null
+                && Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key()) == 0) {
+            if (!memoryIterator.hasNext() && !diskIterator.hasNext()) {
+                return false;
+            }
+            if (memoryIterator.hasNext()) {
+                nextMemoryEntry = memoryIterator.next();
+            }
+            if (diskIterator.hasNext()) {
+                nextDiskEntry = diskIterator.next();
+            }
+            return hasNext();
+        }
+        return nextMemoryEntry != null || nextDiskEntry != null;
     }
 
     @Override
     public BaseEntry<byte[]> next() {
-        if (memoryIterator.hasNext() && currentMemoryEntry == null) {
-            currentMemoryEntry = memoryIterator.next();
-        }
-        if (diskIterator.hasNext() && currentDiskEntry == null) {
-            currentDiskEntry = diskIterator.next();
-        }
-        skipNullValues();
         BaseEntry<byte[]> buffer;
-        if (currentMemoryEntry == null) {
-            buffer = currentDiskEntry;
-            currentDiskEntry = null;
-        } else if (currentDiskEntry == null) {
-            buffer = currentMemoryEntry;
-            currentMemoryEntry = null;
-        } else {
-            int compare = Arrays.compare(currentMemoryEntry.key(), currentDiskEntry.key());
+        if (nextDiskEntry != null && nextMemoryEntry != null) {
+            int compare = Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key());
             if (compare > 0) {
-                buffer = currentDiskEntry;
-                currentDiskEntry = null;
-            } else if (compare < 0) {
-                buffer = currentMemoryEntry;
-                currentMemoryEntry = null;
+                if (nextDiskEntry.value() == null) {
+                    while (diskIterator.hasNext() && nextDiskEntry != null && nextDiskEntry.value() == null
+                            && Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key()) > 0) {
+                        nextDiskEntry = diskIterator.next();
+                    }
+                    return next();
+                } else {
+                    buffer = nextDiskEntry;
+                    if (diskIterator.hasNext()) {
+                        nextDiskEntry = diskIterator.next();
+                    } else {
+                        nextDiskEntry = null;
+                    }
+                    return buffer;
+                }
             } else {
-                buffer = currentMemoryEntry;
-                currentMemoryEntry = null;
-                currentDiskEntry = null;
+                if (nextMemoryEntry.value() == null) {
+                    while (memoryIterator.hasNext() && nextMemoryEntry != null && nextMemoryEntry.value() == null
+                            && Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key()) < 0) {
+                        nextMemoryEntry = memoryIterator.next();
+                    }
+                    if (nextMemoryEntry != null && nextMemoryEntry.value() == null) {
+                        nextMemoryEntry = null;
+                    }
+                    if (nextDiskEntry != null && nextDiskEntry.value() != null) {
+                        buffer = nextDiskEntry;
+                        if (diskIterator.hasNext()) {
+                            nextDiskEntry = diskIterator.next();
+                        } else {
+                            nextDiskEntry = null;
+                        }
+                        return buffer;
+                    }
+                    return next();
+                } else {
+                    buffer = nextMemoryEntry;
+                    if (memoryIterator.hasNext()) {
+                        nextMemoryEntry = memoryIterator.next();
+                    } else {
+                        nextMemoryEntry = null;
+                    }
+                    if (compare == 0) {
+                        if (diskIterator.hasNext()) {
+                            nextDiskEntry = diskIterator.next();
+                        } else {
+                            nextDiskEntry = null;
+                        }
+                    }
+                    return buffer;
+                }
             }
-        }
-        return buffer;
-    }
-
-    private void skipNullValues() {
-        while (currentMemoryEntry != null && currentMemoryEntry.value() == null && memoryIterator.hasNext()) {
-            currentMemoryEntry = memoryIterator.next();
-        }
-        while (currentDiskEntry != null && currentDiskEntry.value() == null && diskIterator.hasNext()) {
-            currentDiskEntry = diskIterator.next();
+        } else if (nextMemoryEntry == null) {
+            if (nextDiskEntry != null && nextDiskEntry.value() == null) {
+                while (diskIterator.hasNext() && nextDiskEntry != null && nextDiskEntry.value() == null) {
+                    nextDiskEntry = diskIterator.next();
+                }
+                if (nextDiskEntry != null && nextDiskEntry.value() == null) {
+                    nextDiskEntry = null;
+                }
+                return null;
+            } else {
+                buffer = nextDiskEntry;
+                if (diskIterator.hasNext()) {
+                    nextDiskEntry = diskIterator.next();
+                } else {
+                    nextDiskEntry = null;
+                }
+                return buffer;
+            }
+        } else {
+            if (nextMemoryEntry.value() == null) {
+                while (memoryIterator.hasNext() && nextMemoryEntry != null && nextMemoryEntry.value() == null) {
+                    nextMemoryEntry = memoryIterator.next();
+                }
+                if (nextMemoryEntry != null && nextMemoryEntry.value() == null) {
+                    nextMemoryEntry = null;
+                }
+                return null;
+            } else {
+                buffer = nextMemoryEntry;
+                if (memoryIterator.hasNext()) {
+                    nextMemoryEntry = memoryIterator.next();
+                } else {
+                    nextMemoryEntry = null;
+                }
+                return buffer;
+            }
         }
     }
 }
