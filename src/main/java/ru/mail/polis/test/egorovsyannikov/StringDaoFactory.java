@@ -9,7 +9,7 @@ import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
 
-@DaoFactory(stage = 2, week = 2)
+@DaoFactory(stage = 2, week = 3)
 public class StringDaoFactory implements DaoFactory.Factory<String, BaseEntry<String>> {
     @Override
     public Dao<String, BaseEntry<String>> createDao(Config config) throws IOException {

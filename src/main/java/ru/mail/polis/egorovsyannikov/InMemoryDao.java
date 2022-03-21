@@ -4,12 +4,12 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
-import java.util.List;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -19,14 +19,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private final Path path;
     private static final String FILE_NAME = "cache";
-    private static final String NEW_LINE = "\n";
 
     public InMemoryDao(Config config) throws IOException {
         path = config.basePath().resolve(FILE_NAME);
     }
 
     @Override
-    public BaseEntry<String> get(String key) throws IOException {
+    public BaseEntry<String> get(String key) {
         BaseEntry<String> resultFromMap = stringConcurrentSkipListMap.get(key);
 
         if (resultFromMap != null) {
@@ -37,16 +36,15 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return null;
         }
 
-        try (BufferedReader reader = Files.newBufferedReader(path)) {
+        try (DataInputStream reader = new DataInputStream(Files.newInputStream(path))) {
             for (; ; ) {
-                String line = reader.readLine();
-                if (line == null) {
-                    return null;
-                }
-                if (line.equals(key)) {
-                    return new BaseEntry<>(line, reader.readLine());
+                BaseEntry<String> entry = new BaseEntry<>(reader.readUTF(), reader.readUTF());
+                if (entry.key().equals(key)) {
+                    return entry;
                 }
             }
+        } catch (IOException e) {
+            return null;
         }
     }
 
@@ -79,11 +77,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             Files.createFile(path);
         }
 
-        List<String> entries = stringConcurrentSkipListMap
-                .values()
-                .stream()
-                .map(entry -> entry.key() + NEW_LINE + entry.value())
-                .toList();
-        Files.write(path, entries);
+        try (DataOutputStream writer = new DataOutputStream(Files.newOutputStream(path))) {
+            for(BaseEntry<String> entry: stringConcurrentSkipListMap.values()) {
+                writer.writeUTF(entry.key());
+                writer.writeUTF(entry.value());
+            }
+        }
     }
 }
