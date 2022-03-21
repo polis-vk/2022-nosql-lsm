@@ -31,7 +31,7 @@ public final class CustomIterators {
     }
 
     /**
-     * Merging two iterators
+     * Merging two iterators.
      *
      * @param it1 first iterator
      * @param it2 second iterator, also has more priority than {@code it1}
