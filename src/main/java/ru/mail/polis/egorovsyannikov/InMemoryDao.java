@@ -78,7 +78,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
 
         try (DataOutputStream writer = new DataOutputStream(Files.newOutputStream(path))) {
-            for(BaseEntry<String> entry: stringConcurrentSkipListMap.values()) {
+            for (BaseEntry<String> entry : stringConcurrentSkipListMap.values()) {
                 writer.writeUTF(entry.key());
                 writer.writeUTF(entry.value());
             }
