@@ -137,16 +137,19 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
                 getNextDiskEntry();
                 return buffer;
             }
-        } else if (nextMemoryEntry != null && nextMemoryEntry.value() == null) {
-            skipLargeValues();
-            return next();
-        } else {
-            buffer = nextMemoryEntry;
-            getNextMemoryEntry();
-            if (compare == 0) {
-                getNextDiskEntry();
+        } else if (nextMemoryEntry != null) {
+            if (nextMemoryEntry.value() == null) {
+                skipLargeValues();
+                return next();
+            } else {
+                buffer = nextMemoryEntry;
+                getNextMemoryEntry();
+                if (compare == 0) {
+                    getNextDiskEntry();
+                }
+                return buffer;
             }
-            return buffer;
         }
+        return null;
     }
 }
