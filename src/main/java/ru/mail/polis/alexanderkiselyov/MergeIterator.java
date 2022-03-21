@@ -123,11 +123,11 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
     }
 
     private BaseEntry<byte[]> compareNotNullEntries() {
-        BaseEntry<byte[]> buffer;
-        int compare = 0;
-        if (nextMemoryEntry != null) {
-            compare = Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key());
+        if (nextMemoryEntry == null) {
+            return null;
         }
+        BaseEntry<byte[]> buffer;
+        int compare = Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key());
         if (compare > 0) {
             if (nextDiskEntry.value() == null) {
                 skipSmallValues();
@@ -137,21 +137,16 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
                 getNextDiskEntry();
                 return buffer;
             }
+        } else if (nextMemoryEntry != null && nextMemoryEntry.value() == null) {
+            skipLargeValues();
+            return next();
         } else {
-            if (nextMemoryEntry != null) {
-                if (nextMemoryEntry.value() == null) {
-                    skipLargeValues();
-                    return next();
-                } else {
-                    buffer = nextMemoryEntry;
-                    getNextMemoryEntry();
-                    if (compare == 0) {
-                        getNextDiskEntry();
-                    }
-                    return buffer;
-                }
+            buffer = nextMemoryEntry;
+            getNextMemoryEntry();
+            if (compare == 0) {
+                getNextDiskEntry();
             }
-            return null;
+            return buffer;
         }
     }
 }
