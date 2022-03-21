@@ -20,8 +20,8 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
 
     @Override
     public boolean hasNext() {
-        missMemoryNullValues();
-        missDiskNullValues();
+        skipMemoryNullValues();
+        skipDiskNullValues();
         if (nextMemoryEntry != null && nextMemoryEntry.value() == null && nextDiskEntry != null
                 && Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key()) == 0) {
             if (!memoryIterator.hasNext() && !diskIterator.hasNext()) {
@@ -43,7 +43,7 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
         BaseEntry<byte[]> buffer;
         if (nextDiskEntry == null && nextMemoryEntry != null) {
             if (nextMemoryEntry.value() == null) {
-                missMemoryNullValues();
+                skipMemoryNullValues();
                 return null;
             } else {
                 buffer = nextMemoryEntry;
@@ -52,7 +52,7 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
             }
         } else if (nextMemoryEntry == null && nextDiskEntry != null) {
             if (nextDiskEntry.value() == null) {
-                missDiskNullValues();
+                skipDiskNullValues();
                 return null;
             } else {
                 buffer = nextDiskEntry;
@@ -60,39 +60,11 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
                 return buffer;
             }
         } else {
-            int compare = 0;
-            if (nextMemoryEntry != null) {
-                compare = Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key());
-            }
-            if (compare > 0) {
-                if (nextDiskEntry.value() == null) {
-                    skipSmallValues(true);
-                    return next();
-                } else {
-                    buffer = nextDiskEntry;
-                    getNextDiskEntry();
-                    return buffer;
-                }
-            } else {
-                if (nextMemoryEntry != null) {
-                    if (nextMemoryEntry.value() == null) {
-                        skipSmallValues(false);
-                        return next();
-                    } else {
-                        buffer = nextMemoryEntry;
-                        getNextMemoryEntry();
-                        if (compare == 0) {
-                            getNextDiskEntry();
-                        }
-                        return buffer;
-                    }
-                }
-                return null;
-            }
+            return compareNotNullEntries();
         }
     }
 
-    private void missMemoryNullValues() {
+    private void skipMemoryNullValues() {
         if (nextMemoryEntry != null && nextMemoryEntry.value() == null && nextDiskEntry == null) {
             while (memoryIterator.hasNext() && nextMemoryEntry != null && nextMemoryEntry.value() == null) {
                 nextMemoryEntry = memoryIterator.next();
@@ -103,7 +75,7 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
         }
     }
 
-    private void missDiskNullValues() {
+    private void skipDiskNullValues() {
         if (nextDiskEntry != null && nextDiskEntry.value() == null && nextMemoryEntry == null) {
             while (diskIterator.hasNext() && nextDiskEntry != null && nextDiskEntry.value() == null) {
                 nextDiskEntry = diskIterator.next();
@@ -130,21 +102,56 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
         }
     }
 
-    private void skipSmallValues(boolean isLarger) {
-        int compare = Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key());
-        if (isLarger) {
-            while (diskIterator.hasNext() && nextDiskEntry != null && nextDiskEntry.value() == null
-                    && compare > 0) {
-                nextDiskEntry = diskIterator.next();
-            }
-        } else {
-            while (memoryIterator.hasNext() && nextMemoryEntry != null && nextMemoryEntry.value() == null
-                    && compare < 0) {
-                nextMemoryEntry = memoryIterator.next();
-            }
+    private void skipSmallValues() {
+        while (diskIterator.hasNext() && nextDiskEntry != null && nextDiskEntry.value() == null
+                && Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key()) > 0) {
+            nextDiskEntry = diskIterator.next();
         }
         if (nextMemoryEntry != null && nextMemoryEntry.value() == null) {
             nextMemoryEntry = null;
+        }
+    }
+
+    private void skipLargeValues() {
+        while (memoryIterator.hasNext() && nextMemoryEntry != null && nextMemoryEntry.value() == null
+                && Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key()) < 0) {
+            nextMemoryEntry = memoryIterator.next();
+        }
+        if (nextMemoryEntry != null && nextMemoryEntry.value() == null) {
+            nextMemoryEntry = null;
+        }
+    }
+
+    private BaseEntry<byte[]> compareNotNullEntries() {
+        BaseEntry<byte[]> buffer;
+        int compare = 0;
+        if (nextMemoryEntry != null) {
+            compare = Arrays.compare(nextMemoryEntry.key(), nextDiskEntry.key());
+        }
+        if (compare > 0) {
+            if (nextDiskEntry.value() == null) {
+                skipSmallValues();
+                return next();
+            } else {
+                buffer = nextDiskEntry;
+                getNextDiskEntry();
+                return buffer;
+            }
+        } else {
+            if (nextMemoryEntry != null) {
+                if (nextMemoryEntry.value() == null) {
+                    skipLargeValues();
+                    return next();
+                } else {
+                    buffer = nextMemoryEntry;
+                    getNextMemoryEntry();
+                    if (compare == 0) {
+                        getNextDiskEntry();
+                    }
+                    return buffer;
+                }
+            }
+            return null;
         }
     }
 }
