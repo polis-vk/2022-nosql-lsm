@@ -1,7 +1,5 @@
 package ru.mail.polis.pavelkovalenko;
 
-import java.util.List;
-
 public final class Utils {
 
     public static final int OFFSET_VALUES_DISTANCE = Integer.BYTES + Character.BYTES;
