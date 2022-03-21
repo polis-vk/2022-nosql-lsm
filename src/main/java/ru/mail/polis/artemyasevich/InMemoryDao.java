@@ -33,6 +33,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final ConcurrentNavigableMap<String, BaseEntry<String>> dataMap = new ConcurrentSkipListMap<>();
     private final Path pathToDirectory;
     private final List<long[]> offsets;
+    private boolean allMetaProcessed;
     private int numberOfFiles;
 
     public InMemoryDao(Config config) throws IOException {
@@ -55,7 +56,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (to != null && to.equals(from)) {
             return Collections.emptyIterator();
         }
-        processAllMeta();
+        if (!allMetaProcessed) {
+            processAllMeta();
+        }
         return new MergeIterator(from, to, numberOfFiles, getDataMapIterator(from, to), pathToDirectory, offsets);
     }
 
@@ -113,10 +116,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         BaseEntry<String> res = null;
         try (RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r")) {
             int left = 0;
-            int middle;
             int right = fileOffsets.length - 2;
             while (left <= right) {
-                middle = (right - left) / 2 + left;
+                int middle = (right - left) / 2 + left;
                 long pos = fileOffsets[middle];
                 reader.seek(pos);
                 String entryKey = reader.readUTF();
@@ -208,5 +210,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 offsets.set(i, readOffsets(i));
             }
         }
+        allMetaProcessed = true;
     }
 }
