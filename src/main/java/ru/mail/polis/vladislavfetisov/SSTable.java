@@ -76,14 +76,14 @@ public final class SSTable {
             MemoryAccess.setLongAtOffset(indexMap, indexOffset, fileOffset);
             indexOffset += Long.BYTES;
 
-            fileOffset = Utils.writeSegment(entry.key(), fileMap, fileOffset);
+            fileOffset += Utils.writeSegment(entry.key(), fileMap, fileOffset);
 
             if (entry.value() == null) {
                 MemoryAccess.setLongAtOffset(fileMap, fileOffset, -1);
                 fileOffset += Long.BYTES;
                 continue;
             }
-            fileOffset = Utils.writeSegment(entry.value(), fileMap, fileOffset);
+            fileOffset += Utils.writeSegment(entry.value(), fileMap, fileOffset);
         }
         Utils.rename(tableTemp, table);
         Utils.rename(indexTemp, index);
@@ -94,10 +94,8 @@ public final class SSTable {
     public Iterator<Entry<MemorySegment>> range(MemorySegment from, MemorySegment to) {
         MemorySegment readOnlyFile = mapFile.asReadOnly();
         MemorySegment readOnlyIndex = mapIndex.asReadOnly();
-        long li;
-        if (from == null) {
-            li = 0;
-        } else {
+        long li = 0;
+        if (from != null) {
             li = Utils.binarySearch(from, readOnlyFile, readOnlyIndex);
             if (li < 0) {
                 if (li != -1) {
@@ -106,10 +104,8 @@ public final class SSTable {
                 li = 0;
             }
         }
-        long ri;
-        if (to == null) {
-            ri = readOnlyIndex.byteSize() / Long.BYTES;
-        } else {
+        long ri = readOnlyIndex.byteSize() / Long.BYTES;
+        if (to != null) {
             ri = Utils.binarySearch(to, readOnlyFile, readOnlyIndex);
             if (ri < 0) {
                 if (ri == -1) {

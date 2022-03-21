@@ -69,9 +69,10 @@ public final class Utils {
         long offset = getLength(mapIndex, index * Long.BYTES);
 
         long keyLength = getLength(mapFile, offset);
-        MemorySegment key = mapFile.asSlice(offset + Long.BYTES, keyLength);
+        offset += Long.BYTES;
+        MemorySegment key = mapFile.asSlice(offset, keyLength);
 
-        offset += Long.BYTES + keyLength;
+        offset += keyLength;
         long valueLength = getLength(mapFile, offset);
         MemorySegment value;
         if (valueLength == -1) {
@@ -90,10 +91,9 @@ public final class Utils {
         long length = segment.byteSize();
         MemoryAccess.setLongAtOffset(fileMap, fileOffset, length);
 
-        fileOffset += Long.BYTES;
-        fileMap.asSlice(fileOffset).copyFrom(segment);
+        fileMap.asSlice(fileOffset + Long.BYTES).copyFrom(segment);
 
-        return fileOffset + length;
+        return Long.BYTES + length;
     }
 
     public static MemorySegment map(Path table, long length, FileChannel.MapMode mapMode) throws IOException {

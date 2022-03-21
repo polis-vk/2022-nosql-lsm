@@ -3,9 +3,9 @@ package ru.mail.polis.vladislavfetisov;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
-public  class PeekingIterator<T> implements Iterator<T> {
+public class PeekingIterator<T> implements Iterator<T> {
     private final Iterator<T> iterator;
-    private T current = null;
+    private T current;
 
     public PeekingIterator(Iterator<T> iterator) {
         this.iterator = iterator;
