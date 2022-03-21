@@ -25,8 +25,9 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         Iterator<Entry<MemorySegment>> memory = fromMemory(from, to);
         Iterator<Entry<MemorySegment>> disc = tablesRange(from, to);
 
-        return CustomIterators.mergeTwo(new PeekingIterator<>(disc),
+        PeekingIterator<Entry<MemorySegment>> merged = CustomIterators.mergeTwo(new PeekingIterator<>(disc),
                 new PeekingIterator<>(memory));
+        return CustomIterators.filter(merged);
     }
 
     private Iterator<Entry<MemorySegment>> tablesRange(MemorySegment from, MemorySegment to) {

@@ -74,4 +74,26 @@ public final class CustomIterators {
         });
     }
 
+    public static Iterator<Entry<MemorySegment>> filter(PeekingIterator<Entry<MemorySegment>> iterator) {
+        return new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                while (true) {
+                    if (!iterator.hasNext()) {
+                        return false;
+                    }
+                    Entry<MemorySegment> entry = iterator.peek();
+                    if (!Utils.isTombstone(entry)) {
+                        return true;
+                    }
+                    iterator.next();
+                }
+            }
+
+            @Override
+            public Entry<MemorySegment> next() {
+                return iterator.next();
+            }
+        };
+    }
 }

@@ -23,7 +23,6 @@ public final class SSTable {
     private final MemorySegment mapIndex;
 
     private SSTable(Path tableName, Path indexName) throws IOException {
-
         mapFile = Utils.map(tableName, Files.size(tableName), FileChannel.MapMode.READ_ONLY);
         mapIndex = Utils.map(indexName, Files.size(indexName), FileChannel.MapMode.READ_ONLY);
     }
@@ -77,14 +76,14 @@ public final class SSTable {
             MemoryAccess.setLongAtOffset(indexMap, indexOffset, fileOffset);
             indexOffset += Long.BYTES;
 
-            fileOffset += Utils.writeSegment(entry.key(), fileMap, fileOffset);
+            fileOffset = Utils.writeSegment(entry.key(), fileMap, fileOffset);
 
             if (entry.value() == null) {
                 MemoryAccess.setLongAtOffset(fileMap, fileOffset, -1);
                 fileOffset += Long.BYTES;
                 continue;
             }
-            fileOffset += Utils.writeSegment(entry.value(), fileMap, fileOffset);
+            fileOffset = Utils.writeSegment(entry.value(), fileMap, fileOffset);
         }
         Utils.rename(tableTemp, table);
         Utils.rename(indexTemp, index);

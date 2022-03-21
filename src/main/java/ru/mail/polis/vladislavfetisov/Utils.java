@@ -90,9 +90,10 @@ public final class Utils {
         long length = segment.byteSize();
         MemoryAccess.setLongAtOffset(fileMap, fileOffset, length);
 
-        fileMap.asSlice(fileOffset + Long.BYTES).copyFrom(segment);
+        fileOffset += Long.BYTES;
+        fileMap.asSlice(fileOffset).copyFrom(segment);
 
-        return Long.BYTES + length;
+        return fileOffset + length;
     }
 
     public static MemorySegment map(Path table, long length, FileChannel.MapMode mapMode) throws IOException {
@@ -113,4 +114,7 @@ public final class Utils {
         return path.resolveSibling(path.getFileName() + suffix);
     }
 
+    public static boolean isTombstone(Entry<MemorySegment> entry) {
+        return entry.value() == null;
+    }
 }
