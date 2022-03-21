@@ -3,8 +3,6 @@ package ru.mail.polis.alexanderkosnitskiy;
 import ru.mail.polis.BaseEntry;
 
 import java.nio.ByteBuffer;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
 import java.util.Iterator;
 
 public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {

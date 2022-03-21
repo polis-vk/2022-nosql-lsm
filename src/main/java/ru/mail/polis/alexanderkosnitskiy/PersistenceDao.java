@@ -35,8 +35,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             } else {
                 List<Path> paths = files.toList();
                 numberOfFiles = paths.size();
-                for(Path path : paths) {
-                    if(!path.toString().endsWith(EXTENSION)) {
+                for (Path path : paths) {
+                    if (!path.toString().endsWith(EXTENSION)) {
                         --numberOfFiles;
                     }
                 }
@@ -46,7 +46,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             numberOfFiles = 0;
         }
         this.amountOfFiles = numberOfFiles;
-        for(long i = amountOfFiles - 1; i >= 0; i--) {
+        for (long i = amountOfFiles - 1; i >= 0; i--) {
             readers.add(new DaoReader(config.basePath().resolve(FILE + i + EXTENSION),
                     config.basePath().resolve(INDEX + i + EXTENSION)));
         }
