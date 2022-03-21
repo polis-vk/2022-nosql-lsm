@@ -30,8 +30,9 @@ public final class CustomIterators {
                 .orElse(new PeekingIterator<>(Collections.emptyIterator()));
     }
 
-
     /**
+     * Merging two iterators
+     *
      * @param it1 first iterator
      * @param it2 second iterator, also has more priority than {@code it1}
      * @return merged iterator of {@code it1} and {@code it2}
