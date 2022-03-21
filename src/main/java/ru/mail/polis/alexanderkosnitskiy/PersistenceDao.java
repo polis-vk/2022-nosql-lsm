@@ -24,6 +24,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final Config config;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory = new ConcurrentSkipListMap<>();
     private long amountOfFiles;
+    private final List<DaoReader> readers = new ArrayList<>();
 
     public PersistenceDao(Config config) throws IOException {
         long numberOfFiles;
@@ -32,12 +33,23 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             if (files == null) {
                 numberOfFiles = 0;
             } else {
-                numberOfFiles = files.count() / 2;
+                List<Path> paths = files.toList();
+                numberOfFiles = paths.size();
+                for(Path path : paths) {
+                    if(!path.toString().endsWith(EXTENSION)) {
+                        --numberOfFiles;
+                    }
+                }
+                numberOfFiles = numberOfFiles / 2;
             }
         } catch (NoSuchFileException e) {
             numberOfFiles = 0;
         }
         this.amountOfFiles = numberOfFiles;
+        for(long i = amountOfFiles - 1; i >= 0; i--) {
+            readers.add(new DaoReader(config.basePath().resolve(FILE + i + EXTENSION),
+                    config.basePath().resolve(INDEX + i + EXTENSION)));
+        }
     }
 
     @Override
@@ -91,8 +103,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private BaseEntry<ByteBuffer> findInFiles(ByteBuffer key) {
         BaseEntry<ByteBuffer> result;
-        for (long i = amountOfFiles - 1; i >= 0; i--) {
-            result = findInFile(key, i);
+        for (DaoReader reader : readers) {
+            result = reader.binarySearch(key);
             if (result != null) {
                 if (result.value() == null) {
                     return null;
@@ -101,16 +113,6 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
         }
         return null;
-    }
-
-    private BaseEntry<ByteBuffer> findInFile(ByteBuffer key, long num) {
-        try {
-            DaoReader finder = new DaoReader(config.basePath().resolve(FILE + num + EXTENSION),
-                    config.basePath().resolve(INDEX + num + EXTENSION));
-            return finder.binarySearch(key);
-        } catch (NoSuchFileException e) {
-            return null;
-        }
     }
 
     private class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
@@ -122,17 +124,15 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         public MergeIterator(ByteBuffer from, ByteBuffer to) {
             list = new ArrayList<>();
             memIter = getMemory(from, to);
-            for (long i = amountOfFiles - 1; i >= 0; i--) {
-                list.add(new FileIterator(
-                        config.basePath().resolve(FILE + i + EXTENSION),
-                        config.basePath().resolve(INDEX + i + EXTENSION),
-                        from, to));
+            for (DaoReader reader : readers) {
+                list.add(new FileIterator(reader, from, to));
             }
             queue = new PriorityQueue<>((l, r) -> {
-                if (l.entry.key().compareTo(r.entry.key()) > 0) {
+                int comparison = l.entry.key().compareTo(r.entry.key());
+                if (comparison > 0) {
                     return 1;
                 }
-                if (l.entry.key().compareTo(r.entry.key()) < 0) {
+                if (comparison < 0) {
                     return -1;
                 }
                 return Integer.compare(l.index, r.index);
@@ -163,28 +163,25 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return temp;
         }
 
+        private PriorityConstruction getConstruction() {
+            PriorityConstruction construction = queue.remove();
+            if (construction.index == 0) {
+                if (memIter.hasNext()) {
+                    queue.add(new PriorityConstruction(0, memIter.next()));
+                }
+            } else if (list.get(construction.index - 1).hasNext()) {
+                queue.add(new PriorityConstruction(construction.index, list.get(construction.index - 1).next()));
+            }
+            return construction;
+        }
+
         private BaseEntry<ByteBuffer> getNextElement() {
             if (queue.isEmpty()) {
                 return null;
             }
-            PriorityConstruction curr = queue.remove();
-            if (curr.index == 0) {
-                if (memIter.hasNext()) {
-                    queue.add(new PriorityConstruction(0, memIter.next()));
-                }
-            } else if (list.get(curr.index - 1).hasNext()) {
-                queue.add(new PriorityConstruction(curr.index, list.get(curr.index - 1).next()));
-            }
-            PriorityConstruction similar;
+            PriorityConstruction curr = getConstruction();
             while (!queue.isEmpty() && queue.peek().entry.key().equals(curr.entry.key())) {
-                similar = queue.remove();
-                if (similar.index == 0) {
-                    if (memIter.hasNext()) {
-                        queue.add(new PriorityConstruction(0, memIter.next()));
-                    }
-                } else if (list.get(similar.index - 1).hasNext()) {
-                    queue.add(new PriorityConstruction(similar.index, list.get(similar.index - 1).next()));
-                }
+                getConstruction();
             }
             if (curr.entry.value() == null) {
                 return getNextElement();
