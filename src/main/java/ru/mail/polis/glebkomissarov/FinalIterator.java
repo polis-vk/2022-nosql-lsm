@@ -20,7 +20,8 @@ public class FinalIterator implements Iterator<BaseEntry<MemorySegment>> {
             if (iterators.get(i).hasNext()) {
                 entries.add(iterators.get(i).next());
             } else {
-                iterators.remove(iterators.get(i--));
+                iterators.remove(iterators.get(i));
+                i--;
             }
         }
     }
@@ -58,8 +59,11 @@ public class FinalIterator implements Iterator<BaseEntry<MemorySegment>> {
                 if (compare == 0) {
                     if (nextOrRemove(i)) {
                         i--;
+                        continue;
                     }
-                } else if (compare < 0) {
+                }
+
+                if (compare < 0) {
                     idx = i;
                     min = entries.get(i);
                 }

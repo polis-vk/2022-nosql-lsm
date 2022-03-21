@@ -28,8 +28,8 @@ public class FileWorker {
 
     public void writeEntries(Collection<BaseEntry<MemorySegment>> data, Path basePath) throws IOException {
         long fileSize = data.stream()
-                .mapToLong(entry -> entry.key().byteSize() +
-                        (entry.value() == null ? Byte.BYTES : entry.value().byteSize()))
+                .mapToLong(entry -> entry.key().byteSize()
+                        + (entry.value() == null ? Byte.BYTES : entry.value().byteSize()))
                 .sum() + 2L * Long.BYTES * data.size();
 
         long count = createFiles(basePath);
@@ -55,8 +55,8 @@ public class FileWorker {
 
                 entries.asSlice(offset).copyFrom(entry.key());
                 offset += keySize;
-                entries.asSlice(offset).copyFrom(valueSize == WRONG_SIZE ?
-                        ALTERNATIVE : entry.value());
+                entries.asSlice(offset).copyFrom(valueSize == WRONG_SIZE
+                        ? ALTERNATIVE : entry.value());
                 offset += valueSize == WRONG_SIZE ? ALTERNATIVE.byteSize() : valueSize;
             }
         }
