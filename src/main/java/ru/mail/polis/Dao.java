@@ -1,7 +1,6 @@
 package ru.mail.polis;
 
-import edu.umd.cs.findbugs.annotations.Nullable;
-
+import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;

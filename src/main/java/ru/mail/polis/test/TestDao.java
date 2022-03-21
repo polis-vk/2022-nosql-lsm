@@ -5,9 +5,11 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
+import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.IOException;
 import java.util.Iterator;
 
+@ParametersAreNonnullByDefault
 class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
 
     Dao<D, E> delegate;

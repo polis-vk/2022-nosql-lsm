@@ -3,7 +3,6 @@ plugins {
     id 'application'
     id 'net.ltgt.errorprone' version '2.0.2'
     id 'checkstyle'
-    id 'com.github.spotbugs' version '5.0.6'
 }
 
 java {
@@ -19,7 +18,9 @@ dependencies {
     // Checks
     errorprone 'com.google.errorprone:error_prone_core:2.11.0'
     checkstyle 'com.puppycrawl.tools:checkstyle:9.3'
-    compileOnly 'com.github.spotbugs:spotbugs:4.6.0'
+
+    // Annotations
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
 
     // Logging
     implementation 'org.slf4j:slf4j-api:1.7.36'
