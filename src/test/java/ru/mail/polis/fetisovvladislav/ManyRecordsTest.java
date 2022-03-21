@@ -1,11 +1,15 @@
-package ru.mail.polis;
+package ru.mail.polis.fetisovvladislav;
 
 import org.junit.jupiter.api.Assertions;
+import ru.mail.polis.BaseTest;
+import ru.mail.polis.Dao;
+import ru.mail.polis.DaoTest;
+import ru.mail.polis.Entry;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
 
-public class FetisovVladislavTest extends BaseTest {
+public class ManyRecordsTest extends BaseTest {
     @DaoTest(stage = 2)
     void manyRecords(Dao<String, Entry<String>> dao) throws IOException {
         dao.upsert(entry("k1", "v1"));

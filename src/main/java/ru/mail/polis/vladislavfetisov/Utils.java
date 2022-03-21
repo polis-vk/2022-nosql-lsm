@@ -40,11 +40,10 @@ public final class Utils {
 
     public static long binarySearch(MemorySegment key,
                                     MemorySegment mapFile,
-                                    MemorySegment mapIndex,
-                                    boolean fromSearch) {
+                                    MemorySegment mapIndex) {
         long l = 0;
-        long rb = mapIndex.byteSize() / Long.BYTES;
-        long r = rb;
+        long rightBound = mapIndex.byteSize() / Long.BYTES;
+        long r = rightBound;
         while (l <= r) {
             long middle = (l + r) >>> 1;
             Entry<MemorySegment> middleEntry = getByIndex(mapFile, mapIndex, middle);
@@ -56,18 +55,12 @@ public final class Utils {
             } else {
                 r = middle - 1;
             }
-            if (l == rb) {
-                if (fromSearch) {
-                    return -1;
-                }
-                return rb;
+            if (l == rightBound) {
+                return -(l + 1);
             }
         }
         if (r == -1) {
-            if (fromSearch) {
-                return 0;
-            }
-            return -1;
+            return -(l + 1);
         }
         return l;
     }
@@ -118,15 +111,6 @@ public final class Utils {
 
     public static Path withSuffix(Path path, String suffix) {
         return path.resolveSibling(path.getFileName() + suffix);
-    }
-
-    public static MemorySegment nextMemorySegment(MemorySegment source) {
-        long size = source.byteSize();
-        MemorySegment next = MemorySegment.allocateNative(source.byteSize(), source.scope());
-        next.copyFrom(source);
-        byte incrementedLastByte = (byte) (MemoryAccess.getByteAtOffset(next, size - 1) + 1);
-        MemoryAccess.setByteAtOffset(next, size - 1, incrementedLastByte);
-        return next;
     }
 
 }

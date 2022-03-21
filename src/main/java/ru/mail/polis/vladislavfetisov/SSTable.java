@@ -99,26 +99,35 @@ public final class SSTable {
         if (from == null) {
             li = 0;
         } else {
-            li = Utils.binarySearch(from, readOnlyFile, readOnlyIndex, true);
-            if (li == -1) {
-                return Collections.emptyIterator();
+            li = Utils.binarySearch(from, readOnlyFile, readOnlyIndex);
+            if (li < 0) {
+                if (li != -1) {
+                    return Collections.emptyIterator();
+                }
+                li = 0;
             }
         }
         long ri;
         if (to == null) {
             ri = readOnlyIndex.byteSize() / Long.BYTES;
         } else {
-            ri = Utils.binarySearch(to, readOnlyFile, readOnlyIndex, false);
-            if (ri == -1) {
-                return Collections.emptyIterator();
+            ri = Utils.binarySearch(to, readOnlyFile, readOnlyIndex);
+            if (ri < 0) {
+                if (ri == -1) {
+                    return Collections.emptyIterator();
+                }
+                ri = readOnlyIndex.byteSize() / Long.BYTES;
             }
         }
+
+        long finalLi = li;
+        long finalRi = ri;
         return new Iterator<>() {
-            long left = li;
+            long left = finalLi;
 
             @Override
             public boolean hasNext() {
-                return left < ri;
+                return left < finalRi;
             }
 
             @Override

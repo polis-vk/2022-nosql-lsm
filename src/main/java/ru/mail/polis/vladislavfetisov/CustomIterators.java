@@ -30,6 +30,12 @@ public final class CustomIterators {
                 .orElse(new PeekingIterator<>(Collections.emptyIterator()));
     }
 
+
+    /**
+     * @param it1 first iterator
+     * @param it2 second iterator, also has more priority than {@code it1}
+     * @return merged iterator of {@code it1} and {@code it2}
+     */
     public static PeekingIterator<Entry<MemorySegment>> mergeTwo(PeekingIterator<Entry<MemorySegment>> it1,
                                                                  PeekingIterator<Entry<MemorySegment>> it2) {
         return new PeekingIterator<>(new Iterator<>() {
@@ -59,49 +65,13 @@ public final class CustomIterators {
                 } else if (compare == 0) {
                     it1.next();
                     it2.next();
-                    return e2;
+                    return e2; //it2 has more priority than it1
                 } else {
                     it2.next();
                     return e2;
                 }
             }
         });
-    }
-
-    public static class PeekingIterator<T> implements Iterator<T> {
-        private final Iterator<T> iterator;
-        private T current = null;
-
-        public PeekingIterator(Iterator<T> iterator) {
-            this.iterator = iterator;
-        }
-
-        public T peek() {
-            if (current == null) {
-                if (!hasNext()) {
-                    throw new NoSuchElementException();
-                }
-                current = iterator.next();
-                return current;
-            }
-            return current;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return iterator.hasNext() || current != null;
-        }
-
-        @Override
-        public T next() {
-            if (!hasNext()) {
-                throw new NoSuchElementException();
-            }
-            T res = peek();
-            current = null;
-            return res;
-        }
-
     }
 
 }

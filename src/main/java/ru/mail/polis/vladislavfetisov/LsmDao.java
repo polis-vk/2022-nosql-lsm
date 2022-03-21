@@ -7,18 +7,15 @@ import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NavigableMap;
+import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
+public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private final Config config;
     private final List<SSTable> tables = new ArrayList<>();
     private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage = getStorage();
 
-    public InMemoryDao(Config config) {
+    public LsmDao(Config config) {
         this.config = config;
         tables.addAll(SSTable.getAllTables(config.basePath()));
     }
@@ -28,8 +25,8 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         Iterator<Entry<MemorySegment>> memory = fromMemory(from, to);
         Iterator<Entry<MemorySegment>> disc = tablesRange(from, to);
 
-        return CustomIterators.mergeTwo(new CustomIterators.PeekingIterator<>(disc),
-                new CustomIterators.PeekingIterator<>(memory));
+        return CustomIterators.mergeTwo(new PeekingIterator<>(disc),
+                new PeekingIterator<>(memory));
     }
 
     private Iterator<Entry<MemorySegment>> tablesRange(MemorySegment from, MemorySegment to) {
@@ -42,15 +39,24 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     private Iterator<Entry<MemorySegment>> fromMemory(MemorySegment from, MemorySegment to) {
         if (from == null && to == null) {
-            return fullStorage();
+            return storage.values().iterator();
         }
+        return subMap(from, to).values().iterator();
+    }
+
+    private SortedMap<MemorySegment, Entry<MemorySegment>> subMap(MemorySegment from, MemorySegment to) {
         if (from == null) {
-            return to(to);
+            return storage.headMap(to);
         }
         if (to == null) {
-            return from(from);
+            return storage.tailMap(from);
         }
-        return storage.subMap(from, to).values().iterator();
+        return storage.subMap(from, to);
+    }
+
+    @Override
+    public void upsert(Entry<MemorySegment> entry) {
+        storage.put(entry.key(), entry);
     }
 
     @Override
@@ -66,23 +72,6 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return desired;
     }
 
-    private Iterator<Entry<MemorySegment>> from(MemorySegment from) {
-        return storage.tailMap(from).values().iterator();
-    }
-
-    private Iterator<Entry<MemorySegment>> to(MemorySegment to) {
-        return storage.headMap(to).values().iterator();
-    }
-
-    private Iterator<Entry<MemorySegment>> fullStorage() {
-        return storage.values().iterator();
-    }
-
-    @Override
-    public void upsert(Entry<MemorySegment> entry) {
-        storage.put(entry.key(), entry);
-    }
-
     @Override
     public void flush() throws IOException {
         tables.add(writeSSTable());
@@ -93,7 +82,7 @@ public class InMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return SSTable.writeTable(tableName, storage.values());
     }
 
-    private ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> getStorage() {
+    private static ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> getStorage() {
         return new ConcurrentSkipListMap<>(Utils::compareMemorySegments);
     }
 }
