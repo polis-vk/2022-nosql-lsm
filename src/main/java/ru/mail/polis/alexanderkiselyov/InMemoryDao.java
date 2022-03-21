@@ -4,6 +4,7 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
+import javax.annotation.Nullable;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
@@ -37,7 +38,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public Iterator<BaseEntry<byte[]>> get(byte[] from, byte[] to) {
+    public Iterator<BaseEntry<byte[]>> get(@Nullable byte[] from, @Nullable byte[] to) {
         if (from == null && to == null) {
             return pairs.values().iterator();
         } else if (from == null) {

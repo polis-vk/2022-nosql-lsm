@@ -1,5 +1,6 @@
 package ru.mail.polis;
 
+import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
@@ -12,13 +13,14 @@ public interface Dao<D, E extends Entry<D>> extends Closeable {
      * @param to upper bound of range (exclusive)
      * @return entries [from;to)
      */
-    Iterator<E> get(D from, D to) throws IOException;
+    Iterator<E> get(@Nullable D from, @Nullable D to) throws IOException;
 
     /**
      * Returns entry by key. Note: default implementation is far from optimal.
      * @param key entry`s key
      * @return entry
      */
+    @Nullable
     default E get(D key) throws IOException {
         Iterator<E> iterator = get(key, null);
         if (!iterator.hasNext()) {
