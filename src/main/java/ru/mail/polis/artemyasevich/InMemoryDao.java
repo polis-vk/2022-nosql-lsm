@@ -12,6 +12,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
@@ -29,7 +30,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private static final String DATA_FILE = "data";
     private static final String META_FILE = "meta";
     private static final String FILE_EXTENSION = ".txt";
-    private final static OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
+    private static final OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
 
     private final ConcurrentNavigableMap<String, BaseEntry<String>> dataMap = new ConcurrentSkipListMap<>();
     private final Path pathToDirectory;
@@ -75,9 +76,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return entry.value() == null ? null : entry;
         }
         for (int fileNumber = numberOfFiles - 1; fileNumber >= 0; fileNumber--) {
-            if (offsets.get(fileNumber) == null) {
-                offsets.put(fileNumber, readOffsets(fileNumber));
-            }
+            offsets.computeIfAbsent(fileNumber, this::readOffsets);
             entry = getFromFile(key, fileNumber);
             if (entry != null) {
                 return entry.value() == null ? null : entry;
@@ -185,7 +184,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
     }
 
-    private List<Long> readOffsets(int fileNumber) throws IOException {
+    private List<Long> readOffsets(int fileNumber) {
         List<Long> fileOffsets;
         try (DataInputStream metaStream = new DataInputStream(new BufferedInputStream(
                 Files.newInputStream(pathToFile(fileNumber, META_FILE))))) {
@@ -202,6 +201,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     fileOffsets.add(currentOffset);
                 }
             }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
         return fileOffsets;
     }
@@ -210,11 +211,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return pathToDirectory.resolve(fileName + fileNumber + FILE_EXTENSION);
     }
 
-    private void processAllMeta() throws IOException {
+    private void processAllMeta() {
         for (int i = 0; i < numberOfFiles; i++) {
-            if (offsets.get(i) == null) {
-                offsets.put(i, readOffsets(i));
-            }
+            offsets.computeIfAbsent(i, this::readOffsets);
         }
         allMetaProcessed = true;
     }
