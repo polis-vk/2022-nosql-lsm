@@ -41,9 +41,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-
-        BaseEntry<ByteBuffer> value = collection.get(key);
-        return value;
+        return collection.get(key);
     }
 
     @Override
@@ -53,4 +51,5 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
         throw new UnsupportedOperationException("Not implemented yet");
     }
+
 }
