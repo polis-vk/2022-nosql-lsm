@@ -19,7 +19,7 @@ import java.util.Comparator;
 final class SortedStringTable implements Closeable {
     public static final String INDEX_FILENAME = "index";
     public static final String DATA_FILENAME = "data";
-    private static final Comparator<MemorySegment> lexicographically = new MemorySegmentComparator();
+    private static final Comparator<MemorySegment> LEXICOGRAPHICALLY = new MemorySegmentComparator();
 
     private final Path indexFile;
     private final Path dataFile;
@@ -89,7 +89,7 @@ final class SortedStringTable implements Closeable {
         while (low <= high) {
             int mid = (low + high) >>> 1;
             MemorySegment midVal = mappedKey(mid);
-            int compare = lexicographically.compare(midVal, key);
+            int compare = LEXICOGRAPHICALLY.compare(midVal, key);
             if (compare < 0) {
                 low = mid + 1;
             } else if (compare > 0) {
