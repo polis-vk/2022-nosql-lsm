@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -28,11 +29,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private static final String DATA_FILE = "data";
     private static final String META_FILE = "meta";
     private static final String FILE_EXTENSION = ".txt";
+    private final static OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
 
-    private final OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
     private final ConcurrentNavigableMap<String, BaseEntry<String>> dataMap = new ConcurrentSkipListMap<>();
     private final Path pathToDirectory;
-    private final List<long[]> offsets;
+    private final Map<Integer, List<Long>> offsets;
     private boolean allMetaProcessed;
     private int numberOfFiles;
 
@@ -40,10 +41,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         this.pathToDirectory = config.basePath();
         File[] files = pathToDirectory.toFile().listFiles();
         this.numberOfFiles = files == null ? 0 : files.length / 2;
-        this.offsets = new ArrayList<>(this.numberOfFiles);
-        for (int i = 0; i < this.numberOfFiles; i++) {
-            offsets.add(null);
-        }
+        this.offsets = new HashMap<>(numberOfFiles);
     }
 
     public InMemoryDao() {
@@ -59,13 +57,15 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (!allMetaProcessed) {
             processAllMeta();
         }
-        List<FileIterator> iterators = new ArrayList<>(numberOfFiles);
+        List<PeekIterator> iterators = new ArrayList<>(numberOfFiles);
+        iterators.add(new PeekIterator(getDataMapIterator(from, to), 0));
         for (int fileNumber = 0; fileNumber < numberOfFiles; fileNumber++) {
-            Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
-            FileIterator fileIterator = new FileIterator(from, to, fileNumber, path, offsets.get(fileNumber));
-            iterators.add(fileIterator);
+            Path path = pathToFile(fileNumber, DATA_FILE);
+            List<Long> fileOffsets = Collections.unmodifiableList(offsets.get(fileNumber));
+            int sourceNumber = numberOfFiles - fileNumber;
+            iterators.add(new PeekIterator(new FileIterator(from, to, path, fileOffsets), sourceNumber));
         }
-        return new MergeIterator(iterators, getDataMapIterator(from, to));
+        return new MergeIterator(iterators);
     }
 
     @Override
@@ -76,7 +76,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         for (int fileNumber = numberOfFiles - 1; fileNumber >= 0; fileNumber--) {
             if (offsets.get(fileNumber) == null) {
-                offsets.set(fileNumber, readOffsets(fileNumber));
+                offsets.put(fileNumber, readOffsets(fileNumber));
             }
             entry = getFromFile(key, fileNumber);
             if (entry != null) {
@@ -117,20 +117,20 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private BaseEntry<String> getFromFile(String key, int fileNumber) throws IOException {
-        Path path = pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
-        long[] fileOffsets = offsets.get(fileNumber);
+        List<Long> fileOffsets = offsets.get(fileNumber);
         BaseEntry<String> res = null;
-        try (RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r")) {
+        try (RandomAccessFile reader = new RandomAccessFile(pathToFile(fileNumber, DATA_FILE).toFile(), "r")) {
             int left = 0;
-            int right = fileOffsets.length - 2;
+            int right = fileOffsets.size() - 2;
             while (left <= right) {
                 int middle = (right - left) / 2 + left;
-                long pos = fileOffsets[middle];
+                long pos = fileOffsets.get(middle);
                 reader.seek(pos);
                 String entryKey = reader.readUTF();
                 int comparison = key.compareTo(entryKey);
                 if (comparison == 0) {
-                    String entryValue = reader.getFilePointer() == fileOffsets[middle + 1] ? null : reader.readUTF();
+                    String entryValue = reader.getFilePointer() == fileOffsets.get(middle + 1)
+                            ? null : reader.readUTF();
                     res = new BaseEntry<>(entryKey, entryValue);
                     break;
                 } else if (comparison > 0) {
@@ -148,12 +148,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (!dataIterator.hasNext()) {
             return;
         }
-        Path pathToData = pathToDirectory.resolve(DATA_FILE + numberOfFiles + FILE_EXTENSION);
-        Path pathToOffsets = pathToDirectory.resolve(META_FILE + numberOfFiles + FILE_EXTENSION);
         try (DataOutputStream dataStream = new DataOutputStream(new BufferedOutputStream(
-                Files.newOutputStream(pathToData, writeOptions)));
+                Files.newOutputStream(pathToFile(numberOfFiles, DATA_FILE), writeOptions)));
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
-                     Files.newOutputStream(pathToOffsets, writeOptions)
+                     Files.newOutputStream(pathToFile(numberOfFiles, META_FILE), writeOptions)
              ))) {
             Entry<String> entry = dataIterator.next();
             dataStream.writeUTF(entry.key());
@@ -187,33 +185,35 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
     }
 
-    private long[] readOffsets(int fileNumber) throws IOException {
-        long[] fileOffsets;
+    private List<Long> readOffsets(int fileNumber) throws IOException {
+        List<Long> fileOffsets;
         try (DataInputStream metaStream = new DataInputStream(new BufferedInputStream(
-                Files.newInputStream(pathToDirectory.resolve(META_FILE + fileNumber + FILE_EXTENSION))))) {
+                Files.newInputStream(pathToFile(fileNumber, META_FILE))))) {
             int dataSize = metaStream.readInt();
-            fileOffsets = new long[dataSize + 1];
+            fileOffsets = new ArrayList<>(dataSize + 1);
 
             long currentOffset = 0;
-            fileOffsets[0] = currentOffset;
-            int i = 1;
+            fileOffsets.add(currentOffset);
             while (metaStream.available() > 0) {
                 int numberOfEntries = metaStream.readInt();
                 int entryBytesSize = metaStream.readInt();
                 for (int j = 0; j < numberOfEntries; j++) {
                     currentOffset += entryBytesSize;
-                    fileOffsets[i] = currentOffset;
-                    i++;
+                    fileOffsets.add(currentOffset);
                 }
             }
         }
         return fileOffsets;
     }
 
+    private Path pathToFile(int fileNumber, String fileName) {
+        return pathToDirectory.resolve(fileName + fileNumber + FILE_EXTENSION);
+    }
+
     private void processAllMeta() throws IOException {
         for (int i = 0; i < numberOfFiles; i++) {
             if (offsets.get(i) == null) {
-                offsets.set(i, readOffsets(i));
+                offsets.put(i, readOffsets(i));
             }
         }
         allMetaProcessed = true;
