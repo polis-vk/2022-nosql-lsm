@@ -156,16 +156,16 @@ public class DaoFilesManager {
             int comparison = from.compareTo(key);
             if (comparison <= 0) {
                 String value = reader.getFilePointer() == offsets[middle + 1] ? null : reader.readUTF();
-                if (comparison != 0) {
-                    right = middle - 1;
-                    validKey = key;
-                    validValue = value;
-                    validEntryIndex = middle;
-                } else {
+                if (comparison == 0) {
                     if (entryToReadWrapper != null) {
                         entryToReadWrapper[0] = middle + 1;
                     }
                     return new BaseEntry<>(key, value);
+                } else {
+                    right = middle - 1;
+                    validKey = key;
+                    validValue = value;
+                    validEntryIndex = middle;
                 }
             } else {
                 left = middle + 1;
@@ -187,13 +187,13 @@ public class DaoFilesManager {
         private final int[] entryToRead;
         private BaseEntry<String> next;
 
-        public FileIterator(String from, String to, Path pathToData, long[] offsets) throws IOException {
+        private FileIterator(String from, String to, Path pathToData, long[] offsets) throws IOException {
             this.entryToRead = new int[1];
             this.offsets = offsets;
             this.reader = new RandomAccessFile(pathToData.toFile(), "r");
             this.to = to;
-            BaseEntry<String> entry = from == null ?
-                    readEntry() : findValidClosest(from, to, reader, offsets, entryToRead);
+            BaseEntry<String> entry = from == null
+                    ? readEntry() : findValidClosest(from, to, reader, offsets, entryToRead);
             if (entry == null) {
                 reader.close();
             }
