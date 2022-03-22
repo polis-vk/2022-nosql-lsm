@@ -4,7 +4,7 @@ import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.dmitrykondraev.FileBackedDao;
+import ru.mail.polis.dmitrykondraev.FilesBackedDao;
 import ru.mail.polis.test.DaoFactory;
 
 /**
@@ -16,12 +16,12 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
 
     @Override
     public Dao<MemorySegment, Entry<MemorySegment>> createDao(Config config) {
-        return new FileBackedDao(config);
+        return new FilesBackedDao(config);
     }
 
     @Override
     public Dao<MemorySegment, Entry<MemorySegment>> createDao() {
-        return new FileBackedDao();
+        return new FilesBackedDao();
     }
 
     @Override

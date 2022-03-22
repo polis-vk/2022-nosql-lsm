@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
  * Author: Dmitry Kondraev.
  */
 
-public class FileBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
+public class FilesBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     private static final Comparator<MemorySegment> LEXICOGRAPHICALLY = new MemorySegmentComparator();
 
@@ -27,14 +27,14 @@ public class FileBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private SortedStringTable sortedStringTable;
     private final Path basePath;
 
-    public FileBackedDao(Config config) {
+    public FilesBackedDao(Config config) {
         basePath = config == null ? null : config.basePath();
     }
 
     /**
      * Constructs FileBackedDao that behaves like in-memory DAO.
      */
-    public FileBackedDao() {
+    public FilesBackedDao() {
         this(null);
     }
 
