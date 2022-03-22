@@ -5,7 +5,13 @@ import ru.mail.polis.BaseEntry;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.List;
+import java.util.NavigableMap;
+import java.util.stream.Stream;
 
 public final class FileUtils {
 
@@ -21,6 +27,12 @@ public final class FileUtils {
 
     private FileUtils() {
         // Utility class
+    }
+
+    public static List<Path> getPaths(Path path) throws IOException {
+        try (Stream<Path> s = Files.list(path)) {
+            return s.filter(Files::isRegularFile).toList();
+        }
     }
 
     public static int getFileNumber(Path pathToFile) {
@@ -72,6 +84,34 @@ public final class FileUtils {
             buffer.putInt(entry.value().capacity()).put(entry.value());
         }
         return buffer.flip();
+    }
+
+    public static void writeCollectionOnDisk(NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, Path path) throws IOException {
+        int size;
+        ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
+        ByteBuffer indexBuffer = ByteBuffer.allocate(collection.size() * Long.BYTES);
+        int fileNumber = getPaths(path).size() + 1;
+        Path dataPath = path.resolve(FileUtils.DATA_FILE_HEADER + fileNumber + FileUtils.FILE_EXTENSION);
+        Path indexPath = path.resolve(Paths.get(FileUtils.INDEX_FOLDER,
+                FileUtils.INDEX_FILE_HEADER + fileNumber + FileUtils.FILE_EXTENSION));
+        try (FileChannel dataOut = FileChannel.open(dataPath,
+                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+             FileChannel indexOut = FileChannel.open(indexPath,
+                     StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+            for (BaseEntry<ByteBuffer> entry : collection.values()) {
+                size = sizeOfEntry(entry);
+                if (buffer.capacity() < size) {
+                    buffer = ByteBuffer.allocate(size);
+                } else {
+                    buffer.clear();
+                }
+
+                indexBuffer.putLong(dataOut.position());
+                dataOut.write(FileUtils.writeEntryToBuffer(buffer, entry));
+            }
+            indexBuffer.flip();
+            indexOut.write(indexBuffer);
+        }
     }
 
     public static int getStartIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp)
