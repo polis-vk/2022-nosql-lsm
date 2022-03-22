@@ -78,7 +78,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (Files.exists(path) && Files.notExists(indexesDir)) {
             Files.createDirectory(indexesDir);
         }
-        FileUtils.writeCollectionOnDisk(collection, path);
+        FileUtils.writeOnDisk(collection, path);
     }
 
 }

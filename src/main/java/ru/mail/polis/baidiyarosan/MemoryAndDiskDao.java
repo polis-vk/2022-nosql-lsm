@@ -21,7 +21,7 @@ import java.util.PriorityQueue;
 import static ru.mail.polis.baidiyarosan.FileUtils.getFileNumber;
 import static ru.mail.polis.baidiyarosan.FileUtils.getPaths;
 import static ru.mail.polis.baidiyarosan.FileUtils.readBuffer;
-import static ru.mail.polis.baidiyarosan.FileUtils.writeCollectionOnDisk;
+import static ru.mail.polis.baidiyarosan.FileUtils.writeOnDisk;
 
 public class MemoryAndDiskDao extends InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
@@ -160,7 +160,7 @@ public class MemoryAndDiskDao extends InMemoryDao implements Dao<ByteBuffer, Bas
         if (collection.isEmpty()) {
             return;
         }
-        writeCollectionOnDisk(collection, path);
+        writeOnDisk(collection, path);
     }
 
     private long[] getIndexArray(int fileNumber) throws IOException {

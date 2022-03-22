@@ -86,7 +86,8 @@ public final class FileUtils {
         return buffer.flip();
     }
 
-    public static void writeCollectionOnDisk(NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, Path path) throws IOException {
+    public static void writeOnDisk(NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, Path path)
+            throws IOException {
         int size;
         ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
         ByteBuffer indexBuffer = ByteBuffer.allocate(collection.size() * Long.BYTES);
