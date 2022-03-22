@@ -8,6 +8,7 @@ import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -21,7 +22,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import static java.nio.file.Files.readAllBytes;
+import java.nio.file.Files;
 
 public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String DATA_FILE_NAME = "data";
@@ -40,7 +41,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             throw new IllegalArgumentException();
         }
         this.config = config;
-        mappedDiskData = mapDiskData();
+        this.mappedDiskData = mapDiskData();
     }
 
     private List<Utils.MappedBuffersPair> mapDiskData() throws IOException {
@@ -68,8 +69,8 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             List<PeekIterator> iteratorsList = new ArrayList<>();
             int priority = 0;
             for (Utils.MappedBuffersPair pair : mappedDiskData) {
-                iteratorsList.add(new PeekIterator(new FileIterator(pair.getDataBuffer().rewind(),
-                        pair.getIndexBuffer().rewind(), from, to), priority++));
+                iteratorsList.add(new PeekIterator(new FileIterator(pair.getDataBuffer(),
+                        pair.getIndexBuffer(), from, to), priority++));
             }
             if (!inMemoryData.isEmpty()) {
                 iteratorsList.add(new PeekIterator(getInMemoryIterator(from, to), priority));
@@ -124,7 +125,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private int readPrevIndex() throws IOException {
         Path pathToReadMetaInfo = config.basePath().resolve(META_INFO_FILE_NAME + EXTENSION);
         try {
-            ByteBuffer temp = ByteBuffer.wrap(readAllBytes(pathToReadMetaInfo));
+            ByteBuffer temp = ByteBuffer.wrap(Files.readAllBytes(pathToReadMetaInfo));
             temp.rewind();
             return temp.getInt();
         } catch (NoSuchFileException e) {
@@ -136,7 +137,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (data == null) {
             return;
         }
-        int index = readPrevIndex() + 1;
+        int index = mappedDiskData.size() + 1;
 
         Path pathToWriteData = config.basePath().resolve(DATA_FILE_NAME + index + EXTENSION);
         Path pathToWriteIndexes = config.basePath().resolve(INDEXES_FILE_NAME + index + EXTENSION);

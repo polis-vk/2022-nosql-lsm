@@ -10,13 +10,13 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
     private final ByteBuffer dataBuffer;
     private final ByteBuffer indexBuffer;
     private final int upperBound;
+    private int cursor;
 
     public FileIterator(ByteBuffer dataBuffer, ByteBuffer indexBuffer, ByteBuffer from, ByteBuffer to) {
         this.dataBuffer = dataBuffer;
         this.indexBuffer = indexBuffer;
-        int lowerBound = (from == null) ? 0 : findOffset(indexBuffer, dataBuffer, from);
+        cursor = (from == null) ? 0 : findOffset(indexBuffer, dataBuffer, from);
         upperBound = (to == null) ? indexBuffer.limit() : findOffset(indexBuffer, dataBuffer, to);
-        indexBuffer.position(lowerBound);
     }
 
     private static int findOffset(ByteBuffer indexBuffer, ByteBuffer dataBuffer, ByteBuffer key) {
@@ -30,21 +30,19 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
             ByteBuffer curKey = dataBuffer.slice(offset + Integer.BYTES, keySize);
             if (curKey.compareTo(key) < 0) {
-                low = ++mid;
+                low = 1 + mid;
             } else if (curKey.compareTo(key) > 0) {
                 high = mid - 1;
             } else if (curKey.compareTo(key) == 0) {
                 return mid * Integer.BYTES;
             }
         }
-        indexBuffer.rewind();
-        dataBuffer.rewind();
-        return mid * Integer.BYTES;
+        return low * Integer.BYTES;
     }
 
     @Override
     public boolean hasNext() {
-        return indexBuffer.position() < upperBound;
+        return cursor < upperBound;
     }
 
     @Override
@@ -52,6 +50,8 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        return Utils.readEntry(dataBuffer, indexBuffer.getInt());
+            BaseEntry<ByteBuffer> result = Utils.readEntry(dataBuffer, indexBuffer.getInt(cursor));
+            cursor += Integer.BYTES;
+            return result;
     }
 }

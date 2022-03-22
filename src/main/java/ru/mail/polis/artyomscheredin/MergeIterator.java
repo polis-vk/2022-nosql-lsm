@@ -22,12 +22,11 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
      * @param iterators - list ordered by ascending iterators priority
      */
     public MergeIterator(List<PeekIterator> iterators) {
-        List<PeekIterator> iteratorsCopy = new LinkedList<>(iterators);
-        iteratorsCopy = iteratorsCopy.stream().filter(Objects::nonNull)
+        List<PeekIterator> iteratorsCopy = new LinkedList<>(iterators).stream().filter(Objects::nonNull)
                 .filter(Iterator::hasNext).collect(Collectors.toList());
-        this.iteratorQueue = new PriorityQueue<PeekIterator>();
+        this.iteratorQueue = new PriorityQueue<>();
         iteratorQueue.addAll(iteratorsCopy);
-        checkNextValueAndFix();
+        skipTombStones();
     }
 
     @Override
@@ -46,11 +45,11 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
             iteratorQueue.add(curr);
         }
         deleteByKey(result.key());
-        checkNextValueAndFix();
+        skipTombStones();
         return result;
     }
 
-    private void checkNextValueAndFix() {
+    private void skipTombStones() {
         if (iteratorQueue.isEmpty()) {
             return;
         }
