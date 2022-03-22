@@ -110,9 +110,14 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
         BaseEntry<ByteBuffer> value = collection.get(key);
-        if (value != null) {
-            return value.value() == null ? null : value;
+        if (value == null) {
+            return getInFile(key);
         }
+        return value.value() == null ? null : value;
+    }
+
+    private BaseEntry<ByteBuffer> getInFile(ByteBuffer key) throws IOException {
+        BaseEntry<ByteBuffer> value = null;
         if (!Files.exists(path)) {
             return null;
         }
