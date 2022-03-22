@@ -10,10 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.NavigableMap;
-import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
@@ -31,13 +29,11 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (collection.isEmpty()) {
             return Collections.emptyIterator();
         }
-        PriorityQueue<PeekIterator<BaseEntry<ByteBuffer>>> heap =
-                new PriorityQueue<>(Comparator.comparing(o -> o.peek().key()));
-        Iterator<BaseEntry<ByteBuffer>> temp = getInMemoryIterator(from, to);
-        if (temp.hasNext()) {
-            heap.add(new PeekIterator<>(temp, Integer.MAX_VALUE));
+        Iterator<BaseEntry<ByteBuffer>> iter = getInMemoryIterator(from, to);
+        if (!iter.hasNext()) {
+            return Collections.emptyIterator();
         }
-        return new DaoIterator(heap);
+        return new SimpleDaoIterator(new PeekIterator<>(iter, Integer.MAX_VALUE));
     }
 
     protected Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(ByteBuffer from, ByteBuffer to) {
