@@ -21,6 +21,9 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
 
     @Override
     public String toString(ByteBuffer in) {
+        if (in == null) {
+            return null;
+        }
         ByteBuffer data = in.asReadOnlyBuffer();
         byte[] bytes = new byte[data.limit()];
         data.position(0);

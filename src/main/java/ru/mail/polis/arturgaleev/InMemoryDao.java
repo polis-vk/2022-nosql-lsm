@@ -3,15 +3,17 @@ package ru.mail.polis.arturgaleev;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
-import ru.mail.polis.test.arturgaleev.FileDBReader;
+import ru.mail.polis.test.arturgaleev.DBReader;
 import ru.mail.polis.test.arturgaleev.FileDBWriter;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -21,12 +23,15 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> dataBase = new ConcurrentSkipListMap<>();
     private final Config config;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private static int newFileNumber = 1;
+    private final DBReader reader;
 
     public InMemoryDao(Config config) throws IOException {
         this.config = config;
         if (!Files.isDirectory(config.basePath())) {
             Files.createDirectories(config.basePath());
         }
+        reader = new DBReader(config.basePath());
     }
 
     @Override
@@ -34,15 +39,27 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         lock.readLock().lock();
         try {
             if (from == null && to == null) {
-                return dataBase.values().iterator();
+                return new PeakingIterator(
+                        new PriorityIterator<>(1, dataBase.values().iterator()),
+                        new PriorityIterator<>(0, reader.get(null, null))
+                );
             }
             if (from != null && to == null) {
-                return dataBase.tailMap(from).values().iterator();
+                return new PeakingIterator(
+                        new PriorityIterator<>(1, dataBase.tailMap(from).values().iterator()),
+                        new PriorityIterator<>(0, reader.get(from, to))
+                );
             }
             if (from == null) {
-                return dataBase.headMap(to).values().iterator();
+                return new PeakingIterator(
+                        new PriorityIterator<>(1, dataBase.headMap(to).values().iterator()),
+                        new PriorityIterator<>(0, reader.get(from, to))
+                );
             }
-            return dataBase.subMap(from, to).values().iterator();
+            return new PeakingIterator(
+                    new PriorityIterator<>(1, dataBase.subMap(from, to).values().iterator()),
+                    new PriorityIterator<>(0, reader.get(from, to))
+            );
         } finally {
             lock.readLock().unlock();
         }
@@ -54,19 +71,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         try {
             BaseEntry<ByteBuffer> entry = dataBase.get(key);
             if (entry != null) {
-                return entry;
+                return entry.value() != null ? entry : null;
             }
 
-            BaseEntry<ByteBuffer> value = dataBase.get(key);
-            if (value != null) {
-                return value;
-            }
-            if (!Files.exists(config.basePath().resolve("1.txt"))) {
-                return null;
-            }
-            try (FileDBReader reader = new FileDBReader(config.basePath().resolve("1.txt"))) {
-                return reader.getByKey(key);
-            }
+            return reader.get(key);
         } finally {
             lock.readLock().unlock();
         }
@@ -86,15 +94,161 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public void flush() throws IOException {
         lock.writeLock().lock();
         try {
-            final int[] sz = {Integer.BYTES + dataBase.size() * Integer.BYTES};
-            dataBase.forEach((key, val) -> sz[0] += key.limit() + val.value().limit() + 2 * Integer.BYTES);
-            try (FileDBWriter writer = new FileDBWriter(config.basePath().resolve("1.txt"), sz[0])) {
+            try (FileDBWriter writer = new FileDBWriter(config.basePath().resolve(newFileNumber + ".txt"))) {
                 writer.writeMap(dataBase);
             } catch (Exception e) {
                 e.printStackTrace();
             }
         } finally {
+            newFileNumber++;
             lock.writeLock().unlock();
+        }
+    }
+
+    public class PriorityIterator<E> implements Iterator<E> {
+        private final int priority;
+        private final Iterator<E> delegate;
+        private E current = null;
+
+        private PriorityIterator(int priority, Iterator<E> delegate) {
+            this.priority = priority;
+            this.delegate = delegate;
+        }
+
+        public int getPriority() {
+            return priority;
+        }
+
+        public E peek() {
+            if (current == null) {
+                current = delegate.next();
+            }
+            return current;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return current != null || delegate.hasNext();
+        }
+
+        @Override
+        public E next() {
+            E peek = peek();
+            current = null;
+            return peek;
+        }
+    }
+
+    private class PeakingIterator implements Iterator<BaseEntry<ByteBuffer>> {
+        private final PriorityBlockingQueue<PriorityIterator<BaseEntry<ByteBuffer>>> iteratorsQueue;
+        private BaseEntry<ByteBuffer> current = null;
+
+        public PeakingIterator(PriorityIterator<BaseEntry<ByteBuffer>> inFilesIterator,
+                               PriorityIterator<BaseEntry<ByteBuffer>> inMemoryIterator
+        ) {
+
+            iteratorsQueue = new PriorityBlockingQueue<>(2,
+                    (PriorityIterator<BaseEntry<ByteBuffer>> it1, PriorityIterator<BaseEntry<ByteBuffer>> it2) -> {
+                        if (it1.peek().key().compareTo(it2.peek().key()) < 0) {
+                            return -1;
+                        } else if (it1.peek().key().compareTo(it2.peek().key()) == 0) {
+                            return Integer.compare(it1.getPriority(), it2.getPriority());
+                        } else {
+                            return 1;
+                        }
+                    }
+            );
+            if (inMemoryIterator.hasNext()) {
+                iteratorsQueue.put(new PriorityIterator<>(1, inMemoryIterator));
+            }
+            if (inFilesIterator.hasNext()) {
+                iteratorsQueue.put(new PriorityIterator<>(0, inFilesIterator));
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (current == null) {
+                try {
+                    current = next();
+                } catch (IndexOutOfBoundsException e) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        @Override
+        public BaseEntry<ByteBuffer> next() {
+            if (current != null) {
+                String str = toString(current.key()) + "" + toString(current.value());
+                BaseEntry<ByteBuffer> prev = current;
+                current = null;
+                return prev;
+            }
+            if (iteratorsQueue.isEmpty()) {
+                throw new IndexOutOfBoundsException();
+            }
+
+            BaseEntry<ByteBuffer> entry = getNotRemovedDeletedElement();
+            //String str = toString(entry.key()) + "" + toString(entry.value());
+
+            if (entry.value() == null) {
+                throw new IndexOutOfBoundsException();
+            }
+            return entry;
+        }
+
+        public String toString(ByteBuffer in) {
+            ByteBuffer data = in.asReadOnlyBuffer();
+            byte[] bytes = new byte[data.remaining()];
+            data.get(bytes);
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+
+        private BaseEntry<ByteBuffer> getNotRemovedDeletedElement() {
+            PriorityIterator<BaseEntry<ByteBuffer>> iterator = iteratorsQueue.poll();
+            BaseEntry<ByteBuffer> entry = iterator.next();
+            if (iterator.hasNext()) {
+                iteratorsQueue.put(iterator);
+            }
+            removeElementsWithKey(entry.key());
+
+            while (!iteratorsQueue.isEmpty() && entry.value() == null) {
+                iterator = iteratorsQueue.poll();
+                entry = iterator.next();
+                String s = toString(entry.key());
+                if (s.equals("k0000000060")) {
+                    int l = 0;
+                }
+                if (iterator.hasNext()) {
+                    iteratorsQueue.put(iterator);
+                }
+                removeElementsWithKey(entry.key());
+            }
+            return entry;
+        }
+
+        private void removeElementsWithKey(ByteBuffer lastKey) {
+            while (!iteratorsQueue.isEmpty() && lastKey.equals(iteratorsQueue.peek().peek().key())) {
+                System.out.println("\nREMOVING: Entered key: " + toString(lastKey));
+                PriorityIterator<BaseEntry<ByteBuffer>> poll = iteratorsQueue.poll();
+                if (poll.hasNext()) {
+
+                    BaseEntry<ByteBuffer> entry = poll.next();
+                    System.out.println("\telement " + toString(entry.key()) + " " + (entry.value() == null ? null : toString(entry.value())));
+                    if (poll.hasNext()) {
+                        iteratorsQueue.put(poll);
+                    }
+                }
+            }
+        }
+
+        public BaseEntry<ByteBuffer> peek() {
+            if (current == null) {
+                current = next();
+            }
+            return current;
         }
     }
 }
