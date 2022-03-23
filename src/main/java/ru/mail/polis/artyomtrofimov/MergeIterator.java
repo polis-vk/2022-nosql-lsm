@@ -28,7 +28,7 @@ public class MergeIterator implements Iterator<Entry<String>> {
         queue.removeIf(item -> !item.hasNext());
 
         // skip deleted entries
-        if (queue.size() == 1) {
+        if (queue.size() == 1) { // for optimization
             PeekingIterator iter = queue.peek();
             while (iter.hasNext() && iter.peek().value() == null) {
                 iter.next();
