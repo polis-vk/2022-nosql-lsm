@@ -99,7 +99,6 @@ public class MapsDeserializeStream {
                 : binarySearchIndex(to, indexesBuffer, mapBuffer, true);
 
         return new PeekIterator<>(new Iterator<>() {
-
             private final int size = endIndex;
             private int next = startIndex;
 
