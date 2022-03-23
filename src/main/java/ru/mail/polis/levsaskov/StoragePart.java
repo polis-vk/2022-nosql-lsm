@@ -33,7 +33,6 @@ public class StoragePart implements AutoCloseable {
     }
 
     public BaseEntry<ByteBuffer> get(ByteBuffer key) {
-        //TODO: Correction from stage 2
         int position = binarySearch(entrysC - 1, key);
         BaseEntry<ByteBuffer> res = readEntry(position);
         return res.key().equals(key) ? res : null;
@@ -52,7 +51,6 @@ public class StoragePart implements AutoCloseable {
     }
 
     private int binarySearch(int inLast, ByteBuffer key) {
-        //TODO: correction from stage 2
         if (key == null) {
             return 0;
         }
@@ -75,31 +73,25 @@ public class StoragePart implements AutoCloseable {
     }
 
     private BaseEntry<ByteBuffer> readEntry(int entryN) {
-        // TODO: Переделать запись на инты
         int ind = (int) indexBB.getLong(entryN * BYTES_IN_LONG);
-        byte[] key = readBytes(ind);
-        assert key != null;
+
+        int len = memoryBB.getInt(ind);
+        ind += BYTES_IN_INT;
+        byte[] key = new byte[len];
+        memoryBB.get(ind, key);
         ind += BYTES_IN_INT + key.length;
 
-        byte[] value = readBytes(ind);
-        return new BaseEntry<>(ByteBuffer.wrap(key), value == null ? null : ByteBuffer.wrap(value));
-    }
-
-    /**
-     * Read integer and bytes, how many was in this integer, from memoryBB.
-     * Reading begins from ind.
-     */
-    private byte[] readBytes(int ind) {
-        int currInd = ind;
-        int len = memoryBB.getInt(currInd);
+        byte[] value;
+        len = memoryBB.getInt(ind);
         if (len == LEN_FOR_NULL) {
-            return null;
+            value = null;
+        } else {
+            ind += BYTES_IN_INT;
+            value = new byte[len];
+            memoryBB.get(ind, value);
         }
 
-        currInd += BYTES_IN_INT;
-        byte[] bytes = new byte[len];
-        memoryBB.get(currInd, bytes);
-        return bytes;
+        return new BaseEntry<>(ByteBuffer.wrap(key), value == null ? null : ByteBuffer.wrap(value));
     }
 
     private static MappedByteBuffer mapFile(Path filePath) throws IOException {
