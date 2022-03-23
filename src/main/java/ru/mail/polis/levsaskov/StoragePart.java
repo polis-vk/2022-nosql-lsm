@@ -91,10 +91,11 @@ public class StoragePart implements AutoCloseable {
     }
 
     private byte[] readBytes(int ind) {
-        int len = memoryBB.getInt(ind);
-        ind += BYTES_IN_INT;
+        int currInd = ind;
+        int len = memoryBB.getInt(currInd);
+        currInd += BYTES_IN_INT;
         byte[] bytes = new byte[len];
-        memoryBB.get(ind, bytes);
+        memoryBB.get(currInd, bytes);
         return bytes;
     }
 
