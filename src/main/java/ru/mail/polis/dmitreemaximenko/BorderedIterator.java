@@ -13,7 +13,7 @@ import java.util.List;
 public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     private static final long NULL_VALUE_SIZE = -1;
     private final List<Source> sources;
-    static private final Comparator<MemorySegment> comparator = new NaturalOrderComparator();;
+    private static final Comparator<MemorySegment> comparator = new NaturalOrderComparator();
     static class Source {
         Iterator<Entry<MemorySegment>> iterator;
         Entry<MemorySegment> element;
@@ -49,6 +49,9 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     @Override
     public Entry<MemorySegment> next() {
         Source source = peekIterator();
+        if (source == null) {
+            return null;
+        }
         Entry<MemorySegment> result = source.element;
         moveAllIteratorsWithSuchKey(result.key());
         removeNextNullValues();
@@ -96,9 +99,9 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
 
     static class FileEntryIterator implements Iterator<Entry<MemorySegment>> {
         private long offset;
-        private MemorySegment log;
+        private final MemorySegment log;
         private final MemorySegment last;
-        private BaseEntry<MemorySegment> next = null;
+        private BaseEntry<MemorySegment> next;
 
         private FileEntryIterator(MemorySegment from, MemorySegment last, MemorySegment log) {
             offset = 0;
@@ -116,10 +119,10 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
                     }
                     offset += keySize + valueSize;
                 } else {
-                    if (valueSize != NULL_VALUE_SIZE) {
-                        next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
-                    } else {
+                    if (valueSize == NULL_VALUE_SIZE) {
                         next = new BaseEntry<>(currentKey, null);
+                    } else {
+                        next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
                     }
                     if (valueSize == NULL_VALUE_SIZE) {
                         valueSize = 0;
@@ -150,10 +153,10 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
                 offset += Long.BYTES;
 
                 MemorySegment currentKey = log.asSlice(offset, keySize);
-                if (valueSize != NULL_VALUE_SIZE) {
-                    next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
-                } else {
+                if (valueSize == NULL_VALUE_SIZE) {
                     next = new BaseEntry<>(currentKey, null);
+                } else {
+                    next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
                 }
                 if (valueSize == NULL_VALUE_SIZE) {
                     valueSize = 0;

@@ -23,7 +23,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
-    private final static Comparator<MemorySegment> comparator = new NaturalOrderComparator();
+    private static final Comparator<MemorySegment> comparator = new NaturalOrderComparator();
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
             new ConcurrentSkipListMap<>(comparator);
     private static final String LOG_NAME = "log";
@@ -41,14 +41,15 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
         lock.readLock().lock();
+        MemorySegment fromValue = from;
         try {
             if (from == null) {
-                from = VERY_FIRST_KEY;
+                fromValue = VERY_FIRST_KEY;
             }
             if (to == null) {
-                return new BorderedIterator(from, null, data.tailMap(from).values().iterator(), readPages);
+                return new BorderedIterator(fromValue, null, data.tailMap(from).values().iterator(), readPages);
             }
-            return new BorderedIterator(from, to, data.subMap(from, to).values().iterator(), readPages);
+            return new BorderedIterator(fromValue, to, data.subMap(from, to).values().iterator(), readPages);
         } finally {
             lock.readLock().unlock();
         }
@@ -132,10 +133,10 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
 
                     MemorySegment currentKey = readPage.asSlice(offset, keySize);
                     if (key.mismatch(currentKey) == -1) {
-                        if (valueSize != NULL_VALUE_SIZE) {
-                            return new BaseEntry<>(key, readPage.asSlice(offset + keySize, valueSize));
-                        } else {
+                        if (valueSize == NULL_VALUE_SIZE) {
                             return null;
+                        } else {
+                            return new BaseEntry<>(key, readPage.asSlice(offset + keySize, valueSize));
                         }
                     }
                     offset += keySize + valueSize;
