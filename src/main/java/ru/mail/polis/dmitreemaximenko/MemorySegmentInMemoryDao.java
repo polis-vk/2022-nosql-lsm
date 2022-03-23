@@ -109,7 +109,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             if (entry != null) {
                 return entry.value() == null ? null : entry;
             }
-            
+
             return checkLogsForKey(key);
         } finally {
             lock.readLock().unlock();
@@ -166,8 +166,8 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
         if (!scope.isAlive()) {
             return;
         }
-        scope.close();
 
+        scope.close();
         lock.writeLock().lock();
         try (ResourceScope writeScope = ResourceScope.newConfinedScope()) {
             long size = 0;
