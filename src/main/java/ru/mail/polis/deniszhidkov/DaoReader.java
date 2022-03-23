@@ -11,7 +11,6 @@ public class DaoReader {
     private final Path pathToDataFile;
     private final String endReadFactor;
     private int startReadIndex;
-    private BaseEntry<String> nextEntry;
     private final long[] offsets;
 
     public DaoReader(Path pathToDataFile, Path pathToOffsetsFile, String from, String to) throws IOException {
@@ -24,7 +23,6 @@ public class DaoReader {
             }
         }
         this.startReadIndex = from == null ? 0 : findByRange(from, to);
-        readNextEntry();
     }
 
     public DaoReader(Path pathToDataFile, Path pathToOffsetsFile) throws IOException {
@@ -49,13 +47,12 @@ public class DaoReader {
                     return null;
                 }
                 reader.seek(offsets[middle]);
-                boolean hasKey = reader.readBoolean();
                 String currentKey = reader.readUTF();
-                boolean hasValue = reader.readBoolean();
                 int comparison = currentKey.compareTo(key);
                 if (comparison < 0) {
                     start = middle + 1;
                 } else if (comparison == 0) {
+                    boolean hasValue = reader.readBoolean();
                     result = !hasValue
                             ? new BaseEntry<>(currentKey, null)
                             : new BaseEntry<>(currentKey, reader.readUTF());
@@ -70,22 +67,21 @@ public class DaoReader {
 
     public BaseEntry<String> readNextEntry() throws IOException {
         try (RandomAccessFile reader = new RandomAccessFile(pathToDataFile.toString(), "r")) {
-            BaseEntry<String> result = nextEntry;
+            BaseEntry<String> result;
             if (startReadIndex < offsets.length && startReadIndex != -1) {
                 reader.seek(offsets[startReadIndex]);
-                boolean hasKey = reader.readBoolean();
                 String currentKey = reader.readUTF();
                 if (endReadFactor != null && currentKey.compareTo(endReadFactor) >= 0) {
-                    nextEntry = null;
+                    result = null;
                 } else {
                     boolean hasValue = reader.readBoolean();
-                    nextEntry = !hasValue
+                    result = !hasValue
                             ? new BaseEntry<>(currentKey, null)
                             : new BaseEntry<>(currentKey, reader.readUTF());
                 }
                 startReadIndex += 1;
             } else {
-                nextEntry = null;
+                result = null;
             }
             return result;
         }
@@ -102,9 +98,7 @@ public class DaoReader {
                     return resultIndex;
                 }
                 reader.seek(offsets[middle]);
-                boolean hasKey = reader.readBoolean();
                 String currentKey = reader.readUTF();
-                boolean hasValue = reader.readBoolean();
                 int comparisonWithFrom = currentKey.compareTo(from);
                 if (comparisonWithFrom < 0) {
                     start = middle + 1;

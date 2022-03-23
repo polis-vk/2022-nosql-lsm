@@ -6,13 +6,11 @@ import ru.mail.polis.Dao;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.Iterator;
-import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -62,8 +60,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     queueOfIterators.add(new PeekIterator(fileIterator));
                 }
             }
-        } catch (NoSuchFileException ignore) {
-            // Если нет какого-то одного файла, не факт, что нет и других
         } finally {
             lock.readLock().unlock();
         }

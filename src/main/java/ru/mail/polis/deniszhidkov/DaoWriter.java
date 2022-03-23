@@ -39,7 +39,6 @@ public class DaoWriter {
             offsetsWriter.writeInt(map.size());
             offsetsWriter.writeLong(dataWriter.size());
             for (BaseEntry<String> entry : map.values()) {
-                dataWriter.writeBoolean(true);
                 dataWriter.writeUTF(entry.key());
                 if (entry.value() == null) {
                     dataWriter.writeBoolean(false);

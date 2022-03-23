@@ -14,7 +14,7 @@ public class FileIterator implements Iterator<BaseEntry<String>> {
 
     public FileIterator(String from, String to, Path pathToDataFile, Path pathToOffsetsFile) throws IOException {
         this.reader = new DaoReader(pathToDataFile, pathToOffsetsFile, from, to);
-        next();
+        this.next = getNextEntry();
     }
 
     @Override
@@ -25,8 +25,14 @@ public class FileIterator implements Iterator<BaseEntry<String>> {
     @Override
     public BaseEntry<String> next() {
         BaseEntry<String> result = next;
+        next = getNextEntry();
+        return result;
+    }
+
+    private BaseEntry<String> getNextEntry() {
+        BaseEntry<String> result;
         try {
-            next = reader.readNextEntry();
+            result = reader.readNextEntry();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
