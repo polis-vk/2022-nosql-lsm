@@ -83,7 +83,7 @@ public class StoragePart implements AutoCloseable {
         byte[] value;
         try {
             value = readBytes(ind);
-        } catch (NullPointerException e) {
+        } catch (Exception e) {
             value = null;
         }
 
@@ -94,11 +94,11 @@ public class StoragePart implements AutoCloseable {
      * Read integer and bytes, how many was in this integer, from memoryBB.
      * Reading begins from ind.
      */
-    private byte[] readBytes(int ind) {
+    private byte[] readBytes(int ind) throws Exception {
         int currInd = ind;
         int len = memoryBB.getInt(currInd);
         if (len == LEN_FOR_NULL) {
-            throw new NullPointerException();
+            throw new Exception("Value is null");
         }
 
         currInd += BYTES_IN_INT;
