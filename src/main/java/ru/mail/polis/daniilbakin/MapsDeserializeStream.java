@@ -94,20 +94,9 @@ public class MapsDeserializeStream {
         if (indexesBuffer.capacity() < Integer.BYTES) {
             return new PeekIterator<>(Collections.emptyIterator(), index);
         }
-        int startIndex;
-        int endIndex;
-
-        if (from == null) {
-            startIndex = 0;
-        } else {
-            startIndex = binarySearchIndex(from, indexesBuffer, mapBuffer, true);
-        }
-
-        if (to == null) {
-            endIndex = indexesBuffer.capacity() / Integer.BYTES;
-        } else {
-            endIndex = binarySearchIndex(to, indexesBuffer, mapBuffer, true);
-        }
+        int startIndex = (from == null) ? 0 : binarySearchIndex(from, indexesBuffer, mapBuffer, true);
+        int endIndex = (to == null) ? indexesBuffer.capacity() / Integer.BYTES
+                : binarySearchIndex(to, indexesBuffer, mapBuffer, true);
 
         return new PeekIterator<>(new Iterator<>() {
 
