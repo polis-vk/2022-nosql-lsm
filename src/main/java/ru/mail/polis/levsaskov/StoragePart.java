@@ -74,11 +74,15 @@ public class StoragePart implements AutoCloseable {
 
     private BaseEntry<ByteBuffer> readEntry(int entryN) {
         int ind = (int) indexBB.getLong(entryN * BYTES_IN_LONG);
-        byte[] key = readBytes(ind);
-        ind += BYTES_IN_INT + key.length;
+        int len = memoryBB.getInt(ind);
+        ind += BYTES_IN_INT;
+        byte[] key = new byte[len];
+        memoryBB.get(ind, key);
+
+        ind += key.length;
 
         byte[] value;
-        int len = memoryBB.getInt(ind);
+        len = memoryBB.getInt(ind);
         ind += BYTES_IN_INT;
         if (len == LEN_FOR_NULL) {
             value = null;
@@ -88,15 +92,6 @@ public class StoragePart implements AutoCloseable {
         }
 
         return new BaseEntry<>(ByteBuffer.wrap(key), value == null ? null : ByteBuffer.wrap(value));
-    }
-
-    private byte[] readBytes(int ind) {
-        int currInd = ind;
-        int len = memoryBB.getInt(currInd);
-        currInd += BYTES_IN_INT;
-        byte[] bytes = new byte[len];
-        memoryBB.get(currInd, bytes);
-        return bytes;
     }
 
     private static MappedByteBuffer mapFile(Path filePath) throws IOException {
