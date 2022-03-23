@@ -93,10 +93,11 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
             public MemorySegmentEntry next() {
                 IndexedEntry indexedEntry = entries.poll();
                 Iterator<MemorySegmentEntry> iterator = iterators.get(indexedEntry.index);
-                if (iterator.hasNext()) {
+                while (iterator.hasNext()) {
                     MemorySegmentEntry entry = iterator.next();
                     if (keys.add(entry.key()) && entry.value() != null) {
                         entries.offer(new IndexedEntry(indexedEntry.index, entry));
+                        break;
                     }
                 }
                 return indexedEntry.entry();
