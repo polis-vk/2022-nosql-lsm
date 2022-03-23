@@ -8,31 +8,30 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.Scanner;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
+    private final static Comparator<MemorySegment> comparator = new NaturalOrderComparator();
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
-            new ConcurrentSkipListMap<>(new NaturalOrderComparator());
+            new ConcurrentSkipListMap<>(comparator);
     private static final String LOG_NAME = "log";
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Config config;
-    private final MemorySegment readPage;
+    private final List<MemorySegment> readPages;
     private final ResourceScope scope = ResourceScope.newSharedScope();
 
     public MemorySegmentInMemoryDao() throws IOException {
@@ -40,7 +39,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
     }
 
     @Override
-    public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
+    public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
         lock.readLock().lock();
         try {
             if (from == null) {
@@ -48,10 +47,10 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             }
 
             if (to == null) {
-                return data.tailMap(from).values().iterator();
+                return new BorderedIterator(from, null, data.tailMap(from).values().iterator(), readPages);
             }
 
-            return data.subMap(from, to).values().iterator();
+            return new BorderedIterator(from, to, data.subMap(from, to).values().iterator(), readPages);
         } finally {
             lock.readLock().unlock();
         }
@@ -59,21 +58,49 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
 
     public MemorySegmentInMemoryDao(Config config) throws IOException {
         this.config = config;
-        Path path = getDataPath();
-        MemorySegment page;
-        try {
-            long size = Files.size(path);
+        List<Path> logPaths = getLogPaths();
+        readPages = new ArrayList<>(logPaths.size());
 
-            page = MemorySegment.mapFile(path, 0, size, FileChannel.MapMode.READ_ONLY, scope);
-        } catch (NoSuchFileException e) {
-            page = null;
-        }
-
-        readPage = page;
+        for (Path logPath : logPaths) {
+            MemorySegment page;
+            try {
+                long size = Files.size(logPath);
+                page = MemorySegment.mapFile(logPath, 0, size, FileChannel.MapMode.READ_ONLY, scope);
+            } catch (NoSuchFileException e) {
+                page = null;
+            }
+            readPages.add(page);
+        };
     }
 
-    private Path getDataPath() {
-        return config.basePath().resolve("data.dat");
+    private List<Path> getLogPaths() {
+        List<Path> result = new LinkedList<>();
+        Integer logIndex = 0;
+        while (true) {
+            Path filename = config.basePath().resolve(LOG_NAME + logIndex);
+            if (Files.exists(filename)) {
+                logIndex++;
+                result.add(filename);
+            } else {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private Path getLogName() {
+        Integer logIndex = 0;
+        while (true) {
+            Path filename = config.basePath().resolve(LOG_NAME + logIndex);
+            if (Files.exists(filename)) {
+                logIndex++;
+            } else {
+                break;
+            }
+        }
+
+        return config.basePath().resolve(LOG_NAME + logIndex);
     }
 
     @Override
@@ -85,28 +112,27 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                 return entry;
             }
 
-            if (readPage == null) {
-                return null;
-            }
+            for (int i = readPages.size() - 1; i >= 0; i--) {
+                MemorySegment readPage = readPages.get(i);
+                long offset = 0;
 
-            long offset = 0;
+                while (offset < readPage.byteSize()) {
+                    long keySize = MemoryAccess.getLongAtOffset(readPage, offset);
+                    offset += Long.BYTES;
+                    long valueSize = MemoryAccess.getLongAtOffset(readPage, offset);
+                    offset += Long.BYTES;
 
-            while (offset < readPage.byteSize()) {
-                long keySize = MemoryAccess.getLongAtOffset(readPage, offset);
-                offset += Long.BYTES;
-                long valueSize = MemoryAccess.getLongAtOffset(readPage, offset);
-                offset += Long.BYTES;
+                    if (keySize != key.byteSize()) {
+                        offset += keySize + valueSize;
+                        continue;
+                    }
 
-                if (keySize != key.byteSize()) {
+                    MemorySegment currentKey = readPage.asSlice(offset, keySize);
+                    if (key.mismatch(currentKey) == -1) {
+                        return new BaseEntry<>(key, readPage.asSlice(offset + keySize, valueSize));
+                    }
                     offset += keySize + valueSize;
-                    continue;
                 }
-
-                MemorySegment currentKey = readPage.asSlice(offset, keySize);
-                if (key.mismatch(currentKey) == -1) {
-                    return new BaseEntry<>(key, readPage.asSlice(offset + keySize, valueSize));
-                }
-                offset += keySize + valueSize;
             }
 
             return null;
@@ -155,11 +181,11 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             }
             size += 2L * data.size() * Long.BYTES;
 
-            Files.deleteIfExists(getDataPath());
-            Files.createFile(getDataPath());
+            Path newLogFile = getLogName();
+            Files.createFile(newLogFile);
             MemorySegment page =
                     MemorySegment.mapFile(
-                            getDataPath(),
+                            newLogFile,
                             0,
                             size,
                             FileChannel.MapMode.READ_WRITE,
@@ -181,6 +207,128 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
 
         } finally {
             lock.writeLock().unlock();
+        }
+    }
+
+    static class BorderedIterator implements Iterator<Entry<MemorySegment>> {
+        private final List<Source> sources;
+
+        static class Source {
+            Iterator<Entry<MemorySegment>> iterator;
+            Entry<MemorySegment> element;
+
+            public Source(Iterator<Entry<MemorySegment>> iterator, Entry<MemorySegment> element) {
+                this.iterator = iterator;
+                this.element = element;
+            }
+        }
+
+        private BorderedIterator(MemorySegment from, MemorySegment last, Iterator<Entry<MemorySegment>> iterator,
+                                 List<MemorySegment> readPages) {
+            sources = new LinkedList<>();
+            if (iterator.hasNext()) {
+                sources.add(new Source(iterator, iterator.next()));
+            }
+
+            for (int i = readPages.size() - 1; i >= 0; i--) {
+                Iterator<Entry<MemorySegment>> fileIterator = new FileEntryIterator(from, last, readPages.get(i));
+                if (fileIterator.hasNext()) {
+                    sources.add(new Source(fileIterator, fileIterator.next()));
+                }
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return !sources.isEmpty();
+        }
+
+        @Override
+        public Entry<MemorySegment> next() {
+            Source source = peekIterator();
+            Entry<MemorySegment> result = source.element;
+            moveAllIteratorsWithSuchKey(result.key());
+            return result;
+        }
+
+        private Source peekIterator() {
+            MemorySegment minKey = sources.get(0).element.key();
+            Source minSource = sources.get(0);
+            for (Source source : sources) {
+                if (comparator.compare(source.element.key(), minKey) < 0) {
+                    minKey = source.element.key();
+                    minSource = source;
+                }
+            }
+
+            return minSource;
+        }
+
+        private void moveAllIteratorsWithSuchKey(MemorySegment key) {
+            List<Source> toRemove = new LinkedList<>();
+            for (Source source : sources) {
+                if (comparator.compare(source.element.key(), key) == 0) {
+                    if (source.iterator.hasNext()) {
+                        source.element = source.iterator.next();
+                    } else {
+                        toRemove.add(source);
+                    }
+                }
+            }
+            sources.removeAll(toRemove);
+        }
+
+        static class FileEntryIterator implements Iterator<Entry<MemorySegment>> {
+            private long offset;
+            private MemorySegment log;
+            private final MemorySegment last;
+            private BaseEntry<MemorySegment> next = null;
+
+            private FileEntryIterator(MemorySegment from, MemorySegment last, MemorySegment log) {
+                offset = 0;
+                this.log = log;
+                while (offset < log.byteSize()) {
+                    long keySize = MemoryAccess.getLongAtOffset(log, offset);
+                    offset += Long.BYTES;
+                    long valueSize = MemoryAccess.getLongAtOffset(log, offset);
+                    offset += Long.BYTES;
+
+                    MemorySegment currentKey = log.asSlice(offset, keySize);
+                    if (comparator.compare(from, currentKey) > 0) {
+                        offset += keySize + valueSize;
+                    } else {
+                        next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
+                        offset += keySize + valueSize;
+                        break;
+                    }
+
+                }
+
+                this.last = last == null ? null : MemorySegment.ofArray(last.toByteArray());
+            }
+
+            @Override
+            public boolean hasNext() {
+                return next != null && (last == null || comparator.compare(next.key(), last) < 0);
+            }
+
+            @Override
+            public Entry<MemorySegment> next() {
+                Entry<MemorySegment> result = next;
+                next = null;
+
+                if (offset < log.byteSize()) {
+                    long keySize = MemoryAccess.getLongAtOffset(log, offset);
+                    offset += Long.BYTES;
+                    long valueSize = MemoryAccess.getLongAtOffset(log, offset);
+                    offset += Long.BYTES;
+
+                    MemorySegment currentKey = log.asSlice(offset, keySize);
+                    next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
+                    offset += keySize + valueSize;
+                }
+                return result;
+            }
         }
     }
 }
