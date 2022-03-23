@@ -14,6 +14,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     private static final long NULL_VALUE_SIZE = -1;
     private final List<Source> sources;
     private static final Comparator<MemorySegment> comparator = new NaturalOrderComparator();
+    
     static class Source {
         Iterator<Entry<MemorySegment>> iterator;
         Entry<MemorySegment> element;

@@ -110,40 +110,44 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                 return entry.value() == null ? null : entry;
             }
 
-            for (int i = readPages.size() - 1; i >= 0; i--) {
-                MemorySegment readPage = readPages.get(i);
-                long offset = 0;
-
-                while (offset < readPage.byteSize()) {
-                    long keySize = MemoryAccess.getLongAtOffset(readPage, offset);
-                    offset += Long.BYTES;
-                    long valueSize = MemoryAccess.getLongAtOffset(readPage, offset);
-                    offset += Long.BYTES;
-
-                    if (keySize != key.byteSize()) {
-                        if (valueSize == NULL_VALUE_SIZE) {
-                            valueSize = 0;
-                        }
-                        offset += keySize + valueSize;
-                        continue;
-                    }
-
-                    MemorySegment currentKey = readPage.asSlice(offset, keySize);
-                    if (key.mismatch(currentKey) == -1) {
-                        if (valueSize == NULL_VALUE_SIZE) {
-                            return null;
-                        } else {
-                            return new BaseEntry<>(key, readPage.asSlice(offset + keySize, valueSize));
-                        }
-                    }
-                    offset += keySize + valueSize;
-                }
-            }
-
-            return null;
+            return checkPagesForKey(key);
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    private Entry<MemorySegment> checkPagesForKey(MemorySegment key) {
+        for (int i = readPages.size() - 1; i >= 0; i--) {
+            MemorySegment readPage = readPages.get(i);
+            long offset = 0;
+
+            while (offset < readPage.byteSize()) {
+                long keySize = MemoryAccess.getLongAtOffset(readPage, offset);
+                offset += Long.BYTES;
+                long valueSize = MemoryAccess.getLongAtOffset(readPage, offset);
+                offset += Long.BYTES;
+
+                if (keySize != key.byteSize()) {
+                    if (valueSize == NULL_VALUE_SIZE) {
+                        valueSize = 0;
+                    }
+                    offset += keySize + valueSize;
+                    continue;
+                }
+
+                MemorySegment currentKey = readPage.asSlice(offset, keySize);
+                if (key.mismatch(currentKey) == -1) {
+                    if (valueSize == NULL_VALUE_SIZE) {
+                        return null;
+                    } else {
+                        return new BaseEntry<>(key, readPage.asSlice(offset + keySize, valueSize));
+                    }
+                }
+                offset += keySize + valueSize;
+            }
+        }
+
+        return null;
     }
 
     @Override
