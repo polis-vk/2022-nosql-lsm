@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class StorageSystem {
+public class StorageSystem implements AutoCloseable {
     private static final int DEFAULT_ALLOC_SIZE = 2048;
     private static final int BYTES_IN_INT = 4;
     private static final int BYTES_IN_LONG = 8;
@@ -25,6 +25,7 @@ public class StorageSystem {
     private int storagePartsC;
     private Path location;
     private final List<StoragePart> storageParts = new ArrayList<>();
+    private boolean isClosed = false;
 
     public boolean init(Path location) throws IOException {
         if (!location.toFile().exists()) {
@@ -87,6 +88,10 @@ public class StorageSystem {
     }
 
     public void save(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> entrys) throws IOException {
+        if (entrys.size() == 0) {
+            return;
+        }
+
         ByteBuffer bufferForIndexes = ByteBuffer.allocate(entrys.size() * BYTES_IN_LONG);
         lock.writeLock().lock();
         try {
@@ -100,9 +105,13 @@ public class StorageSystem {
         storagePartsC++;
     }
 
+    @Override
     public void close() {
-        for (StoragePart storagePart : storageParts) {
-            storagePart.close();
+        if (!isClosed) {
+            for (StoragePart storagePart : storageParts) {
+                storagePart.close();
+            }
+            isClosed = true;
         }
     }
 
