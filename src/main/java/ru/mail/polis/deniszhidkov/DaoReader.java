@@ -52,9 +52,10 @@ public class DaoReader {
                     start = middle + 1;
                 } else if (comparison == 0) {
                     boolean hasValue = reader.readBoolean();
-                    return !hasValue
-                            ? new BaseEntry<>(currentKey, null)
-                            : new BaseEntry<>(currentKey, reader.readUTF());
+                    if (!hasValue) {
+                        return new BaseEntry<>(currentKey, null);
+                    }
+                    return new BaseEntry<>(currentKey, reader.readUTF());
                 } else {
                     finish = middle - 1;
                 }
@@ -73,9 +74,10 @@ public class DaoReader {
                     return null;
                 } else {
                     boolean hasValue = reader.readBoolean();
-                    return !hasValue
-                            ? new BaseEntry<>(currentKey, null)
-                            : new BaseEntry<>(currentKey, reader.readUTF());
+                    if (!hasValue) {
+                        return new BaseEntry<>(currentKey, null);
+                    }
+                    return new BaseEntry<>(currentKey, reader.readUTF());
                 }
             } else {
                 return null;

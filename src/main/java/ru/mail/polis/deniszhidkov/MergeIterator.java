@@ -29,45 +29,53 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
     }
 
     private BaseEntry<String> getNextEntry() {
-        BaseEntry<String> result;
+        BaseEntry<String> result = null;
         if (!iteratorsQueue.isEmpty()) {
             PeekIterator startIterator = iteratorsQueue.peek();
             PeekIterator currentIterator = iteratorsQueue.poll();
-            result = currentIterator.peek();
-            iteratorsQueue.add(currentIterator);
-            PeekIterator nextIterator = iteratorsQueue.poll();
-            while (nextIterator != null && !nextIterator.equals(currentIterator)) {
-                if (nextIterator.hasNext()) {
-                    BaseEntry<String> newNext = nextIterator.peek();
-                    int keyComparison = result == null ? -1 : result.key().compareTo(newNext.key());
-                    if (keyComparison > 0) {
-                        result = newNext;
-                        currentIterator = nextIterator;
-                    } else if (keyComparison == 0) {
-                        nextIterator.next();
-                    }
-                    iteratorsQueue.add(nextIterator);
-                }
-                nextIterator = iteratorsQueue.poll();
-            }
-            currentIterator.next();
-            if (currentIterator.hasNext()) {
-                iteratorsQueue.addFirst(currentIterator);
-            }
-            for (int i = 0; i < iteratorsQueue.size(); i++) {
-                nextIterator = iteratorsQueue.peek();
-                if (nextIterator.equals(startIterator)) {
-                    break;
-                }
-                iteratorsQueue.poll();
-                iteratorsQueue.add(nextIterator);
-            }
+            result = searchForNextEntry(currentIterator);
+            backToStart(startIterator);
             if (result == null || result.value() == null) {
                 result = getNextEntry();
             }
-        } else {
-            return null;
         }
         return result == null || result.value() == null ? null : result;
+    }
+
+    private void backToStart(PeekIterator startIterator) {
+        for (int i = 0; i < iteratorsQueue.size(); i++) {
+            PeekIterator nextIterator = iteratorsQueue.peek();
+            if (nextIterator.equals(startIterator)) {
+                break;
+            }
+            iteratorsQueue.poll();
+            iteratorsQueue.add(nextIterator);
+        }
+    }
+
+    private BaseEntry<String> searchForNextEntry(PeekIterator currentIterator) {
+        PeekIterator resultIterator = currentIterator;
+        BaseEntry<String> result = currentIterator.peek();
+        iteratorsQueue.add(resultIterator);
+        PeekIterator nextIterator = iteratorsQueue.poll();
+        while (nextIterator != null && !nextIterator.equals(resultIterator)) {
+            if (nextIterator.hasNext()) {
+                BaseEntry<String> newNext = nextIterator.peek();
+                int keyComparison = result == null ? -1 : result.key().compareTo(newNext.key());
+                if (keyComparison > 0) {
+                    result = newNext;
+                    resultIterator = nextIterator;
+                } else if (keyComparison == 0) {
+                    nextIterator.next();
+                }
+                iteratorsQueue.add(nextIterator);
+            }
+            nextIterator = iteratorsQueue.poll();
+        }
+        resultIterator.next();
+        if (resultIterator.hasNext()) {
+            iteratorsQueue.addFirst(resultIterator);
+        }
+        return result;
     }
 }
