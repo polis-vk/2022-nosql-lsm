@@ -121,23 +121,33 @@ public class StoragePart {
     }
 
     private static MappedByteBuffer mapFile(Path filePath) throws IOException {
+
         MappedByteBuffer mappedFile;
         try (
                 FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath, EnumSet.of(StandardOpenOption.READ))
         ) {
             mappedFile = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
         }
+
+        //LOG
+        System.out.println(mappedFile);
+        System.out.println("Mapped!");
+
         return mappedFile;
     }
 
     private static void unmap(MappedByteBuffer buffer) {
         try {
+            //LOG
+            System.out.println(buffer);
+
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
             Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
             unsafeField.setAccessible(true);
             Object unsafe = unsafeField.get(null);
             Method invokeCleaner = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
             invokeCleaner.invoke(unsafe, buffer);
+            System.out.println("Unmapped!");
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
