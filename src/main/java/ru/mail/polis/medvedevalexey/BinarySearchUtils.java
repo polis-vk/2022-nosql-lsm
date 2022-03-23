@@ -9,7 +9,11 @@ import static ru.mail.polis.medvedevalexey.InMemoryDao.NUM_OF_ROWS_SIZE;
 import static ru.mail.polis.medvedevalexey.InMemoryDao.OFFSET_VALUE_SIZE;
 import static ru.mail.polis.medvedevalexey.InMemoryDao.VALUE_LENGTH_SIZE;
 
-class BinarySearchUtils {
+final class BinarySearchUtils {
+
+    private BinarySearchUtils() {
+
+    }
 
     static ByteBuffer binarySearch(FileChannel channel, int rows, ByteBuffer requiredKey) throws IOException {
         int left = 0;
