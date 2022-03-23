@@ -43,7 +43,7 @@ public final class FileUtils {
     }
 
     public static int sizeOfEntry(BaseEntry<ByteBuffer> entry) {
-        return 2 * Integer.BYTES + entry.key().capacity() + (entry.value() == null ? 0 : entry.value().capacity());
+        return 2 * Integer.BYTES + entry.key().remaining() + (entry.value() == null ? 0 : entry.value().remaining());
     }
 
     public static int readInt(FileChannel in, ByteBuffer temp) throws IOException {
@@ -68,20 +68,20 @@ public final class FileUtils {
     }
 
     public static ByteBuffer readBuffer(FileChannel in, ByteBuffer temp) throws IOException {
-        return readBuffer(in, FileUtils.readInt(in, temp));
+        return readBuffer(in, readInt(in, temp));
     }
 
     public static ByteBuffer readBuffer(FileChannel in, long pos, ByteBuffer temp) throws IOException {
         in.position(pos);
-        return readBuffer(in, FileUtils.readInt(in, temp));
+        return readBuffer(in, readInt(in, temp));
     }
 
     public static ByteBuffer writeEntryToBuffer(ByteBuffer buffer, BaseEntry<ByteBuffer> entry) {
-        buffer.putInt(entry.key().capacity()).put(entry.key());
+        buffer.putInt(entry.key().remaining()).put(entry.key());
         if (entry.value() == null) {
             buffer.putInt(NULL_SIZE_FLAG);
         } else {
-            buffer.putInt(entry.value().capacity()).put(entry.value());
+            buffer.putInt(entry.value().remaining()).put(entry.value());
         }
         return buffer.flip();
     }
@@ -90,28 +90,28 @@ public final class FileUtils {
             throws IOException {
         int size;
         ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
-        ByteBuffer indexBuffer = ByteBuffer.allocate(collection.size() * Long.BYTES);
+        ByteBuffer indexBuffer = ByteBuffer.allocate(Long.BYTES);
         int fileNumber = getPaths(path).size() + 1;
-        Path dataPath = path.resolve(FileUtils.DATA_FILE_HEADER + fileNumber + FileUtils.FILE_EXTENSION);
-        Path indexPath = path.resolve(Paths.get(FileUtils.INDEX_FOLDER,
-                FileUtils.INDEX_FILE_HEADER + fileNumber + FileUtils.FILE_EXTENSION));
+        Path dataPath = path.resolve(DATA_FILE_HEADER + fileNumber + FILE_EXTENSION);
+        Path indexPath = path.resolve(Paths.get(INDEX_FOLDER,
+                INDEX_FILE_HEADER + fileNumber + FILE_EXTENSION));
         try (FileChannel dataOut = FileChannel.open(dataPath,
                 StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
              FileChannel indexOut = FileChannel.open(indexPath,
                      StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
             for (BaseEntry<ByteBuffer> entry : collection.values()) {
                 size = sizeOfEntry(entry);
-                if (buffer.capacity() < size) {
+                if (buffer.remaining() < size) {
                     buffer = ByteBuffer.allocate(size);
                 } else {
                     buffer.clear();
                 }
-
+                indexBuffer.clear();
                 indexBuffer.putLong(dataOut.position());
-                dataOut.write(FileUtils.writeEntryToBuffer(buffer, entry));
+                indexBuffer.flip();
+                indexOut.write(indexBuffer);
+                dataOut.write(writeEntryToBuffer(buffer, entry));
             }
-            indexBuffer.flip();
-            indexOut.write(indexBuffer);
         }
     }
 

@@ -33,10 +33,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (!iter.hasNext()) {
             return Collections.emptyIterator();
         }
-        return new SimpleDaoIterator(new PeekIterator<>(iter, Integer.MAX_VALUE));
+        return new InMemoryDaoIterator(new PeekIterator<>(iter, Integer.MAX_VALUE));
     }
 
-    protected Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(ByteBuffer from, ByteBuffer to) {
+    private Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(ByteBuffer from, ByteBuffer to) {
         if (collection.isEmpty()) {
             return Collections.emptyIterator();
         }
@@ -71,7 +71,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return;
         }
         Path indexesDir = path.resolve(Paths.get(FileUtils.INDEX_FOLDER));
-        if (Files.exists(path) && Files.notExists(indexesDir)) {
+        if (Files.notExists(indexesDir)) {
             Files.createDirectory(indexesDir);
         }
         FileUtils.writeOnDisk(collection, path);

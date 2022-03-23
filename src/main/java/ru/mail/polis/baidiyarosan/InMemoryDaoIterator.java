@@ -5,17 +5,29 @@ import ru.mail.polis.BaseEntry;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 
-public class SimpleDaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
+public class InMemoryDaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
     private final PeekIterator<BaseEntry<ByteBuffer>> iter;
 
     private BaseEntry<ByteBuffer> value;
 
-    public SimpleDaoIterator(PeekIterator<BaseEntry<ByteBuffer>> iter) {
+    public InMemoryDaoIterator(PeekIterator<BaseEntry<ByteBuffer>> iter) {
         this.iter = iter;
     }
 
-    public BaseEntry<ByteBuffer> peek() {
+    @Override
+    public boolean hasNext() {
+        return value != null || (iter.hasNext() && peek() != null);
+    }
+
+    @Override
+    public BaseEntry<ByteBuffer> next() {
+        BaseEntry<ByteBuffer> peek = peek();
+        value = null;
+        return peek;
+    }
+
+    private BaseEntry<ByteBuffer> peek() {
         if (value == null) {
             BaseEntry<ByteBuffer> entry = iter.next();
 
@@ -29,18 +41,6 @@ public class SimpleDaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
             }
         }
         return value;
-    }
-
-    @Override
-    public boolean hasNext() {
-        return value != null || (iter.hasNext() && peek() != null);
-    }
-
-    @Override
-    public BaseEntry<ByteBuffer> next() {
-        BaseEntry<ByteBuffer> peek = peek();
-        value = null;
-        return peek;
     }
 
 }

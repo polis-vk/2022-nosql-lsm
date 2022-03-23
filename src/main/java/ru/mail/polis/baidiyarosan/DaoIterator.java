@@ -16,7 +16,19 @@ public class DaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
         this.heap = heap;
     }
 
-    public BaseEntry<ByteBuffer> peek() {
+    @Override
+    public boolean hasNext() {
+        return value != null || peek() != null;
+    }
+
+    @Override
+    public BaseEntry<ByteBuffer> next() {
+        BaseEntry<ByteBuffer> peek = peek();
+        value = null;
+        return peek;
+    }
+
+    private BaseEntry<ByteBuffer> peek() {
         if (value == null) {
             PeekIterator<BaseEntry<ByteBuffer>> iter = heap.poll();
             if (iter == null) {
@@ -27,7 +39,7 @@ public class DaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
                 heap.add(iter);
             }
             if (heap.peek() != null) {
-                entry = skipSame(entry, iter.getOrder());
+                entry = findActual(entry, iter.getOrder());
             }
 
             if (entry.value() != null) {
@@ -42,19 +54,7 @@ public class DaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
         return value;
     }
 
-    @Override
-    public boolean hasNext() {
-        return value != null || peek() != null;
-    }
-
-    @Override
-    public BaseEntry<ByteBuffer> next() {
-        BaseEntry<ByteBuffer> peek = peek();
-        value = null;
-        return peek;
-    }
-
-    private BaseEntry<ByteBuffer> skipSame(BaseEntry<ByteBuffer> check, int max) {
+    private BaseEntry<ByteBuffer> findActual(BaseEntry<ByteBuffer> check, int max) {
         PeekIterator<BaseEntry<ByteBuffer>> nextIter;
         BaseEntry<ByteBuffer> entry = check;
         int maxOrder = max;
