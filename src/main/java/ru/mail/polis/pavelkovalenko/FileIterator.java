@@ -2,7 +2,6 @@ package ru.mail.polis.pavelkovalenko;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -26,7 +25,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
         this.from = from;
         this.to = to;
         toEntry = new BaseEntry<>(to, to);
-        lastEntry = setCeilFilePointer();
+        setCeilFilePointer();
     }
 
     @Override
@@ -75,8 +74,8 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
         return dataFileOffset;
     }
 
-    private Entry<ByteBuffer> setCeilFilePointer() throws IOException {
-        return binarySearchInFile();
+    private void setCeilFilePointer() throws IOException {
+        lastEntry = binarySearchInFile();
     }
 
     private boolean dataExists() throws IOException {
@@ -100,7 +99,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
     }
 
     private Entry<ByteBuffer> binarySearchInFile() throws IOException {
-        if (from == null || !hasNext()) {
+        if (isGettingAllHeadData() || !hasNext()) {
             return null;
         }
 
@@ -153,6 +152,10 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
         dataFile.getChannel().read(bb);
         bb.rewind();
         return bb;
+    }
+
+    private boolean isGettingAllHeadData() {
+        return this.from == null;
     }
 
     private byte readByte(RandomAccessFile dataFile) throws IOException {

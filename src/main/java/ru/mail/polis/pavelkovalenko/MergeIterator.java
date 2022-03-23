@@ -1,18 +1,19 @@
 package ru.mail.polis.pavelkovalenko;
 
 import ru.mail.polis.Entry;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
-
-import java.util.*;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
-    private final ByteBuffer from;
-    private final ByteBuffer to;
     private final Map<ByteBuffer, Entry<ByteBuffer>> mergedData = new TreeMap<>();
     private Iterator<Map.Entry<ByteBuffer, Entry<ByteBuffer>>> mergedDataIterator = mergedData.entrySet().iterator();
     private final List<PeekIterator> iterators = new ArrayList<>();
@@ -20,24 +21,20 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     public MergeIterator(ByteBuffer from, ByteBuffer to, ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data,
                 NavigableMap<Integer, Entry<Path>> pathsToPairedFiles) throws IOException {
+        ByteBuffer _from = from;
         if (from == null) {
-            from = Utils.EMPTY_BYTEBUFFER;
+            _from = Utils.EMPTY_BYTEBUFFER;
         }
 
-        this.from = from;
-        this.to = to;
-
         if (to == null) {
-            iterators.add(new PeekIterator(data.tailMap(from).values().iterator()));
+            iterators.add(new PeekIterator(data.tailMap(_from).values().iterator()));
         } else {
-            iterators.add(new PeekIterator(data.subMap(from, to).values().iterator()));
+            iterators.add(new PeekIterator(data.subMap(_from, to).values().iterator()));
         }
 
         for (Entry<Path> entry: pathsToPairedFiles.values()) {
-            iterators.add(new PeekIterator(new FileIterator(entry.key(), entry.value(), from, to)));
+            iterators.add(new PeekIterator(new FileIterator(entry.key(), entry.value(), _from, to)));
         }
-
-        merge();
     }
 
     @Override
@@ -82,10 +79,10 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private void putIfNotTombstone(Entry<ByteBuffer> entry) {
-        if (!Utils.isTombstone(entry)) {
-            mergedData.put(entry.key(), entry);
-        } else {
+        if (Utils.isTombstone(entry)) {
             fallEntry(entry);
+        } else {
+            mergedData.put(entry.key(), entry);
         }
     }
 

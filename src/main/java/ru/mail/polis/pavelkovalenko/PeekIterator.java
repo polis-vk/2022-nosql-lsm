@@ -1,14 +1,13 @@
 package ru.mail.polis.pavelkovalenko;
 
 import ru.mail.polis.Entry;
-
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 
 public class PeekIterator implements Iterator<Entry<ByteBuffer>> {
 
     private final Iterator<Entry<ByteBuffer>> delegate;
-    private Entry<ByteBuffer> current = null;
+    private Entry<ByteBuffer> current;
 
     public PeekIterator(Iterator<Entry<ByteBuffer>> delegate) {
         this.delegate = delegate;
