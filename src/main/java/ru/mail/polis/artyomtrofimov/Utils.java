@@ -8,7 +8,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Path;
 
-public class Utils {
+public final class Utils {
 
     private Utils() {
     }
