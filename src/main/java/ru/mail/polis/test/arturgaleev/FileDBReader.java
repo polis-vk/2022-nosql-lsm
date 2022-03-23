@@ -39,7 +39,7 @@ public class FileDBReader implements AutoCloseable {
         int valueLength = pageData.getInt(currentPos);
         currentPos += Integer.BYTES;
         return new BaseEntry<>(pageData.slice(currentPos, keyLength),
-                ((valueLength != -1) ? pageData.slice(currentPos + keyLength, valueLength) : null));
+                ((valueLength == -1) ? null : pageData.slice(currentPos + keyLength, valueLength)));
     }
 
     public BaseEntry<ByteBuffer> getEntryByPos(int pos) {
@@ -80,18 +80,18 @@ public class FileDBReader implements AutoCloseable {
     }
 
     public PeakingIterator getFromToIterator(ByteBuffer fromBuffer, ByteBuffer toBuffer) {
-        if (fromBuffer != null && toBuffer != null) {
-            return new PeakingIterator(getPosByKey(fromBuffer), getPosByKey(toBuffer));
-        } else if (fromBuffer != null) {
-            return new PeakingIterator(getPosByKey(fromBuffer), size);
-        } else if (toBuffer != null) {
-            return new PeakingIterator(0, getPosByKey(toBuffer));
-        } else {
+        if (fromBuffer == null && toBuffer == null) {
             return new PeakingIterator(0, size);
+        } else if (fromBuffer == null) {
+            return new PeakingIterator(0, getPosByKey(toBuffer));
+        } else if (toBuffer == null) {
+            return new PeakingIterator(getPosByKey(fromBuffer), size);
+        } else {
+            return new PeakingIterator(getPosByKey(fromBuffer), getPosByKey(toBuffer));
         }
     }
 
-    // protected is using for my local tests
+    // protected because Im using for my local tests
     protected PeakingIterator getIteratorByPos(int pos) {
         return new PeakingIterator(pos);
     }

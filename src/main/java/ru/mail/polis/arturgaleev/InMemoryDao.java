@@ -6,6 +6,7 @@ import ru.mail.polis.Dao;
 import ru.mail.polis.test.arturgaleev.DBReader;
 import ru.mail.polis.test.arturgaleev.FileDBWriter;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -17,13 +18,13 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> dataBase = new ConcurrentSkipListMap<>();
     private final Config config;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private static int newFileNumber = 1;
+    //private static final AtomicInteger newFileNumber = new AtomicInteger(1);
+    private int newFileNumber;
     private final DBReader reader;
 
     public InMemoryDao(Config config) throws IOException {
@@ -32,6 +33,12 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             Files.createDirectories(config.basePath());
         }
         reader = new DBReader(config.basePath());
+        String[] temp = new File(String.valueOf(config.basePath())).list();
+        if (temp != null) {
+            newFileNumber = temp.length;
+        } else {
+            newFileNumber = 0;
+        }
     }
 
     @Override
@@ -71,7 +78,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         try {
             BaseEntry<ByteBuffer> entry = dataBase.get(key);
             if (entry != null) {
-                return entry.value() != null ? entry : null;
+                return entry.value() == null ? null : entry;
             }
 
             return reader.get(key);
@@ -170,7 +177,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         public boolean hasNext() {
             if (current == null) {
                 try {
-                    current = next();
+                    current = peek();
                 } catch (IndexOutOfBoundsException e) {
                     return false;
                 }
@@ -181,7 +188,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         @Override
         public BaseEntry<ByteBuffer> next() {
             if (current != null) {
-                String str = toString(current.key()) + "" + toString(current.value());
                 BaseEntry<ByteBuffer> prev = current;
                 current = null;
                 return prev;
@@ -191,7 +197,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
 
             BaseEntry<ByteBuffer> entry = getNotRemovedDeletedElement();
-            //String str = toString(entry.key()) + "" + toString(entry.value());
 
             if (entry.value() == null) {
                 throw new IndexOutOfBoundsException();
@@ -217,10 +222,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             while (!iteratorsQueue.isEmpty() && entry.value() == null) {
                 iterator = iteratorsQueue.poll();
                 entry = iterator.next();
-                String s = toString(entry.key());
-                if (s.equals("k0000000060")) {
-                    int l = 0;
-                }
                 if (iterator.hasNext()) {
                     iteratorsQueue.put(iterator);
                 }
@@ -231,12 +232,9 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
         private void removeElementsWithKey(ByteBuffer lastKey) {
             while (!iteratorsQueue.isEmpty() && lastKey.equals(iteratorsQueue.peek().peek().key())) {
-                System.out.println("\nREMOVING: Entered key: " + toString(lastKey));
                 PriorityIterator<BaseEntry<ByteBuffer>> poll = iteratorsQueue.poll();
                 if (poll.hasNext()) {
-
                     BaseEntry<ByteBuffer> entry = poll.next();
-                    System.out.println("\telement " + toString(entry.key()) + " " + (entry.value() == null ? null : toString(entry.value())));
                     if (poll.hasNext()) {
                         iteratorsQueue.put(poll);
                     }

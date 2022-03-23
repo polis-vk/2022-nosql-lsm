@@ -17,20 +17,20 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.stream.Stream;
 
 public class DBReader implements AutoCloseable {
-    private final String DB_FILES_EXTENSION = ".txt";
+    private static final String DB_FILES_EXTENSION = ".txt";
     private final List<FileDBReader> fileReaders;
 
-    public DBReader(Path DBDirectoryPath) throws IOException {
-        if (!Files.isDirectory(DBDirectoryPath)) {
-            throw new NotDirectoryException(DBDirectoryPath + " is not a directory with DB files");
+    public DBReader(Path dbDirectoryPath) throws IOException {
+        if (!Files.isDirectory(dbDirectoryPath)) {
+            throw new NotDirectoryException(dbDirectoryPath + " is not a directory with DB files");
         }
-        fileReaders = getFileDBReaders(DBDirectoryPath);
+        fileReaders = getFileDBReaders(dbDirectoryPath);
     }
 
     private List<FileDBReader> getFileDBReaders(Path DBDirectoryPath) throws IOException {
-        final List<FileDBReader> fileReaders;
+        final List<FileDBReader> fileDBReaderList;
         try (Stream<Path> files = Files.list(DBDirectoryPath)) {
-            fileReaders = files
+            fileDBReaderList = files
                     .filter(path -> path.toString().endsWith(DB_FILES_EXTENSION))
                     .sorted(Comparator.comparing(p -> p.getFileName().toString()))
                     .map(path -> {
@@ -41,14 +41,12 @@ public class DBReader implements AutoCloseable {
                         }
                     }).toList();
             int i = 0;
-            for (FileDBReader reader : fileReaders) {
+            for (FileDBReader reader : fileDBReaderList) {
                 reader.setFileID(i++);
             }
         }
-        return fileReaders;
+        return fileDBReaderList;
     }
-
-//    public
 
     public PeakingIterator get(ByteBuffer from, ByteBuffer to) {
         List<FileDBReader.PeakingIterator> iterators = new ArrayList<>(fileReaders.size());
@@ -65,10 +63,10 @@ public class DBReader implements AutoCloseable {
         for (int i = fileReaders.size() - 1; i >= 0; i--) {
             BaseEntry<ByteBuffer> entryByKey = fileReaders.get(i).getEntryByKey(key);
             if (entryByKey != null) {
-                if (entryByKey.value() != null) {
-                    return entryByKey;
-                } else {
+                if (entryByKey.value() == null) {
                     return null;
+                } else {
+                    return entryByKey;
                 }
             }
         }
@@ -114,7 +112,6 @@ public class DBReader implements AutoCloseable {
         @Override
         public BaseEntry<ByteBuffer> next() {
             if (current != null) {
-                String str = toString(current.key()) + "" + toString(current.value());
                 BaseEntry<ByteBuffer> prev = current;
                 current = null;
                 return prev;
@@ -124,7 +121,6 @@ public class DBReader implements AutoCloseable {
             }
 
             BaseEntry<ByteBuffer> entry = getNotRemovedDeletedElement();
-            //String str = toString(entry.key()) + "" + toString(entry.value());
 
             if (entry.value() == null) {
                 throw new IndexOutOfBoundsException();
@@ -162,7 +158,7 @@ public class DBReader implements AutoCloseable {
             while (!iteratorsQueue.isEmpty() && lastKey.equals(iteratorsQueue.peek().peek().key())) {
                 FileDBReader.PeakingIterator poll = iteratorsQueue.poll();
                 if (poll.hasNext()) {
-                    BaseEntry<ByteBuffer> entry = poll.next();
+                    poll.next();
                     if (poll.hasNext()) {
                         iteratorsQueue.put(poll);
                     }
