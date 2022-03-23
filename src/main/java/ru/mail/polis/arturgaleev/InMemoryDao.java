@@ -23,7 +23,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> dataBase = new ConcurrentSkipListMap<>();
     private final Config config;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    //private static final AtomicInteger newFileNumber = new AtomicInteger(1);
     private int newFileNumber;
     private final DBReader reader;
 
@@ -34,10 +33,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
         reader = new DBReader(config.basePath());
         String[] temp = new File(String.valueOf(config.basePath())).list();
-        if (temp != null) {
-            newFileNumber = temp.length;
-        } else {
+        if (temp == null) {
             newFileNumber = 0;
+        } else {
+            newFileNumber = temp.length;
         }
     }
 
@@ -115,7 +114,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public class PriorityIterator<E> implements Iterator<E> {
         private final int priority;
         private final Iterator<E> delegate;
-        private E current = null;
+        private E current;
 
         private PriorityIterator(int priority, Iterator<E> delegate) {
             this.priority = priority;
@@ -148,7 +147,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private class PeakingIterator implements Iterator<BaseEntry<ByteBuffer>> {
         private final PriorityBlockingQueue<PriorityIterator<BaseEntry<ByteBuffer>>> iteratorsQueue;
-        private BaseEntry<ByteBuffer> current = null;
+        private BaseEntry<ByteBuffer> current;
 
         public PeakingIterator(PriorityIterator<BaseEntry<ByteBuffer>> inFilesIterator,
                                PriorityIterator<BaseEntry<ByteBuffer>> inMemoryIterator
@@ -234,7 +233,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             while (!iteratorsQueue.isEmpty() && lastKey.equals(iteratorsQueue.peek().peek().key())) {
                 PriorityIterator<BaseEntry<ByteBuffer>> poll = iteratorsQueue.poll();
                 if (poll.hasNext()) {
-                    BaseEntry<ByteBuffer> entry = poll.next();
+                    poll.next();
                     if (poll.hasNext()) {
                         iteratorsQueue.put(poll);
                     }

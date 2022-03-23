@@ -27,9 +27,9 @@ public class DBReader implements AutoCloseable {
         fileReaders = getFileDBReaders(dbDirectoryPath);
     }
 
-    private List<FileDBReader> getFileDBReaders(Path DBDirectoryPath) throws IOException {
+    private List<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
         final List<FileDBReader> fileDBReaderList;
-        try (Stream<Path> files = Files.list(DBDirectoryPath)) {
+        try (Stream<Path> files = Files.list(dbDirectoryPath)) {
             fileDBReaderList = files
                     .filter(path -> path.toString().endsWith(DB_FILES_EXTENSION))
                     .sorted(Comparator.comparing(p -> p.getFileName().toString()))
@@ -82,7 +82,7 @@ public class DBReader implements AutoCloseable {
 
     public class PeakingIterator implements Iterator<BaseEntry<ByteBuffer>> {
         private final PriorityBlockingQueue<FileDBReader.PeakingIterator> iteratorsQueue;
-        private BaseEntry<ByteBuffer> current = null;
+        private BaseEntry<ByteBuffer> current;
 
         public PeakingIterator(List<FileDBReader.PeakingIterator> iterators) {
             if (iterators.isEmpty()) {

@@ -123,7 +123,7 @@ public class FileDBReader implements AutoCloseable {
     public class PeakingIterator implements java.util.Iterator<BaseEntry<ByteBuffer>> {
         private int lastPos = size;
         private int currentPos = -1;
-        private BaseEntry<ByteBuffer> current = null;
+        private BaseEntry<ByteBuffer> current;
 
         private PeakingIterator() {
         }
