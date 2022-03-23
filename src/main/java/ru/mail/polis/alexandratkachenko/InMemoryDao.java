@@ -7,7 +7,6 @@ import ru.mail.polis.Dao;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Collections;
@@ -23,36 +22,34 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final ConcurrentSkipListMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
 
     public InMemoryDao(Config config) {
-        Objects.requireNonNull(config, "Invalid argument in constructor.\n");
+        Objects.requireNonNull(config, "Invalid argument in constructor.");
         dataPath = config.basePath().resolve(DATA_FILENAME);
     }
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        Objects.requireNonNull(key, "Invalid argument in get().\n");
+        Objects.requireNonNull(key, "Invalid argument in get().");
         BaseEntry<ByteBuffer> value = map.get(key);
         return (value == null) ? search(key) : value;
     }
 
     private BaseEntry<ByteBuffer> search(ByteBuffer keySearch) throws IOException {
-        if (Files.exists(dataPath)) {
-            try (FileChannel channel = FileChannel.open(dataPath)) {
-                while (true) {
-                    ByteBuffer key = readComponent(channel);
-                    if (key == null) {
-                        return null;
-                    }
-                    ByteBuffer value = readComponent(channel);
-                    if (value == null) {
-                        return null;
-                    }
-                    if (keySearch.equals(key)) {
-                        return new BaseEntry<>(keySearch, value);
-                    }
+        try (FileChannel channel = FileChannel.open(dataPath, StandardOpenOption.READ,
+                StandardOpenOption.CREATE_NEW)) {
+            while (true) {
+                ByteBuffer key = readComponent(channel);
+                if (key == null) {
+                    return null;
+                }
+                ByteBuffer value = readComponent(channel);
+                if (value == null) {
+                    return null;
+                }
+                if (keySearch.equals(key)) {
+                    return new BaseEntry<>(keySearch, value);
                 }
             }
         }
-        return null;
     }
 
     @Override
@@ -112,7 +109,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
-        Objects.requireNonNull(entry, "Invalid argument in upsert().\n");
+        Objects.requireNonNull(entry, "Invalid argument in upsert().");
         map.put(entry.key(), entry);
     }
 }
