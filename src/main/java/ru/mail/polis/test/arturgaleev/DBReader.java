@@ -101,7 +101,7 @@ public class DBReader implements AutoCloseable {
         public boolean hasNext() {
             if (current == null) {
                 try {
-                    current = next();
+                    current = peek();
                 } catch (IndexOutOfBoundsException e) {
                     return false;
                 }
@@ -167,9 +167,6 @@ public class DBReader implements AutoCloseable {
         }
 
         public BaseEntry<ByteBuffer> peek() {
-            if (!hasNext()) {
-                throw new IndexOutOfBoundsException();
-            }
             if (current == null) {
                 current = next();
             }

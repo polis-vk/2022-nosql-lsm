@@ -11,7 +11,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public class FileDBWriter implements AutoCloseable {
-    private MappedByteBuffer page = null;
+    private MappedByteBuffer page;
     private final FileChannel dataChannel;
 
     public FileDBWriter(Path path) throws IOException {
@@ -23,7 +23,7 @@ public class FileDBWriter implements AutoCloseable {
     static int getMapByteSize(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map) {
         final int[] sz = {Integer.BYTES + map.size() * Integer.BYTES};
         map.forEach((key, val) ->
-                sz[0] += key.limit()
+                sz[0] = sz[0] + key.limit()
                         + ((val.value() == null) ? 0 : val.value().limit()) + 2 * Integer.BYTES
         );
         return sz[0];
