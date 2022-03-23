@@ -58,7 +58,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             }
         }
     }
-    
+
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
         lock.readLock().lock();
@@ -70,6 +70,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             if (to == null) {
                 return new BorderedIterator(fromValue, null, data.tailMap(fromValue).values().iterator(), logs);
             }
+            
             return new BorderedIterator(fromValue, to, data.subMap(fromValue, to).values().iterator(), logs);
         } finally {
             lock.readLock().unlock();
