@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.EnumSet;
+import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 
@@ -143,6 +144,31 @@ public class StoragePart implements AutoCloseable {
             invokeCleaner.invoke(unsafe, buffer);
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private class StorageIterator implements Iterator<BaseEntry<ByteBuffer>> {
+        private int current;
+
+        public StorageIterator(ByteBuffer from, ByteBuffer to) {
+            current = binarySearch(entrysC - 1, from);
+            BaseEntry<ByteBuffer> entry;
+
+            // Граничные случаи
+            if (current + 1 < entrysC && from != null
+                    && readEntry(current).key().compareTo(from) < 0) {
+                current++;
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return false;
+        }
+
+        @Override
+        public BaseEntry<ByteBuffer> next() {
+            return null;
         }
     }
 }
