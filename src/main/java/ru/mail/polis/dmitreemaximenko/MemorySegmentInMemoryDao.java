@@ -29,6 +29,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             new ConcurrentSkipListMap<>(comparator);
     private static final String LOG_NAME = "log";
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
+    private static final long NULL_VALUE_SIZE = -1;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Config config;
     private final List<MemorySegment> readPages;
@@ -104,11 +105,14 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
     }
 
     @Override
-    public Entry<MemorySegment> get(MemorySegment key) {
+    public Entry<MemorySegment> get(MemorySegment key) throws IOException {
         lock.readLock().lock();
         try {
             Entry<MemorySegment> entry = data.get(key);
             if (entry != null) {
+                if (entry.value() == null) {
+                    return null;
+                }
                 return entry;
             }
 
@@ -123,13 +127,20 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                     offset += Long.BYTES;
 
                     if (keySize != key.byteSize()) {
+                        if (valueSize == NULL_VALUE_SIZE) {
+                            valueSize = 0;
+                        }
                         offset += keySize + valueSize;
                         continue;
                     }
 
                     MemorySegment currentKey = readPage.asSlice(offset, keySize);
                     if (key.mismatch(currentKey) == -1) {
-                        return new BaseEntry<>(key, readPage.asSlice(offset + keySize, valueSize));
+                        if (valueSize != NULL_VALUE_SIZE) {
+                            return new BaseEntry<>(key, readPage.asSlice(offset + keySize, valueSize));
+                        } else {
+                            return null;
+                        }
                     }
                     offset += keySize + valueSize;
                 }
@@ -177,7 +188,11 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
         try (ResourceScope writeScope = ResourceScope.newConfinedScope()) {
             long size = 0;
             for (Entry<MemorySegment> value : data.values()) {
-                size += value.value().byteSize() + value.key().byteSize();
+                if (value.value() == null) {
+                    size += value.key().byteSize();
+                } else {
+                    size += value.value().byteSize() + value.key().byteSize();
+                }
             }
             size += 2L * data.size() * Long.BYTES;
 
@@ -195,14 +210,20 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             for (Entry<MemorySegment> value : data.values()) {
                 MemoryAccess.setLongAtOffset(page, offset, value.key().byteSize());
                 offset += Long.BYTES;
-                MemoryAccess.setLongAtOffset(page, offset, value.value().byteSize());
+                if (value.value() == null) {
+                    MemoryAccess.setLongAtOffset(page, offset, NULL_VALUE_SIZE);
+                } else {
+                    MemoryAccess.setLongAtOffset(page, offset, value.value().byteSize());
+                }
                 offset += Long.BYTES;
 
                 page.asSlice(offset).copyFrom(value.key());
                 offset += value.key().byteSize();
 
-                page.asSlice(offset).copyFrom(value.value());
-                offset += value.value().byteSize();
+                if (value.value() != null) {
+                    page.asSlice(offset).copyFrom(value.value());
+                    offset += value.value().byteSize();
+                }
             }
 
         } finally {
@@ -236,6 +257,8 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                     sources.add(new Source(fileIterator, fileIterator.next()));
                 }
             }
+
+            removeNextNullValues();
         }
 
         @Override
@@ -248,10 +271,23 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             Source source = peekIterator();
             Entry<MemorySegment> result = source.element;
             moveAllIteratorsWithSuchKey(result.key());
+            removeNextNullValues();
             return result;
         }
 
+        private void removeNextNullValues() {
+            Source source = peekIterator();
+            while (source != null && source.element.value() == null) {
+                moveAllIteratorsWithSuchKey(source.element.key());
+                source = peekIterator();
+            }
+        }
+
         private Source peekIterator() {
+            if (sources.isEmpty()) {
+                return null;
+            }
+
             MemorySegment minKey = sources.get(0).element.key();
             Source minSource = sources.get(0);
             for (Source source : sources) {
@@ -295,9 +331,19 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
 
                     MemorySegment currentKey = log.asSlice(offset, keySize);
                     if (comparator.compare(from, currentKey) > 0) {
+                        if (valueSize == NULL_VALUE_SIZE) {
+                            valueSize = 0;
+                        }
                         offset += keySize + valueSize;
                     } else {
-                        next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
+                        if (valueSize != NULL_VALUE_SIZE) {
+                            next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
+                        } else {
+                            next = new BaseEntry<>(currentKey, null);
+                        }
+                        if (valueSize == NULL_VALUE_SIZE) {
+                            valueSize = 0;
+                        }
                         offset += keySize + valueSize;
                         break;
                     }
@@ -324,7 +370,14 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                     offset += Long.BYTES;
 
                     MemorySegment currentKey = log.asSlice(offset, keySize);
-                    next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
+                    if (valueSize != NULL_VALUE_SIZE) {
+                        next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
+                    } else {
+                        next = new BaseEntry<>(currentKey, null);
+                    }
+                    if (valueSize == NULL_VALUE_SIZE) {
+                        valueSize = 0;
+                    }
                     offset += keySize + valueSize;
                 }
                 return result;
