@@ -33,7 +33,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (storageSystem != null && ans == null) {
             ans = storageSystem.findEntry(key);
         }
-        if(ans == null || ans.value() == null) {
+        if (ans == null || ans.value() == null) {
             return null;
         }
 

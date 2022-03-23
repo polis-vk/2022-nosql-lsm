@@ -11,11 +11,14 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.*;
+import java.util.EnumSet;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 public class StoragePart implements AutoCloseable {
     private static final int BYTES_IN_INT = 4;
     private static final int BYTES_IN_LONG = 8;
+    public static final int LEN_FOR_NULL = -1;
 
     private int storagePartN;
     private MappedByteBuffer memoryBB;
@@ -75,7 +78,9 @@ public class StoragePart implements AutoCloseable {
         // TODO: Переделать запись на инты
         int ind = (int) indexBB.getLong(entryN * BYTES_IN_LONG);
         byte[] key = readBytes(ind);
+        assert key != null;
         ind += BYTES_IN_INT + key.length;
+
         byte[] value = readBytes(ind);
         return new BaseEntry<>(ByteBuffer.wrap(key), value == null ? null : ByteBuffer.wrap(value));
     }
@@ -83,19 +88,17 @@ public class StoragePart implements AutoCloseable {
     /**
      * Read integer and bytes, how many was in this integer, from memoryBB.
      * Reading begins from ind.
-     *
-     * @param ind
-     * @return
      */
     private byte[] readBytes(int ind) {
-        int len = memoryBB.getInt(ind);
-        if (len == -1) {
+        int currInd = ind;
+        int len = memoryBB.getInt(currInd);
+        if (len == LEN_FOR_NULL) {
             return null;
         }
 
-        ind += BYTES_IN_INT;
+        currInd += BYTES_IN_INT;
         byte[] bytes = new byte[len];
-        memoryBB.get(ind, bytes);
+        memoryBB.get(currInd, bytes);
         return bytes;
     }
 
@@ -103,7 +106,8 @@ public class StoragePart implements AutoCloseable {
 
         MappedByteBuffer mappedFile;
         try (
-                FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath, EnumSet.of(StandardOpenOption.READ))
+                FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath,
+                        EnumSet.of(StandardOpenOption.READ))
         ) {
             mappedFile = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
         }

@@ -8,7 +8,7 @@ import java.util.Iterator;
 public class PeekIterator implements Iterator<BaseEntry<ByteBuffer>> {
     private final int storagePartN;
     private final Iterator<BaseEntry<ByteBuffer>> delegate;
-    private BaseEntry<ByteBuffer> current = null;
+    private BaseEntry<ByteBuffer> current;
 
     public PeekIterator(Iterator<BaseEntry<ByteBuffer>> delegate, int storagePartN) {
         this.storagePartN = storagePartN;

@@ -9,20 +9,20 @@ public class BinaryHeap {
 
     public void add(PeekIterator iterator) {
         list.add(iterator);
-        int i = getSize() - 1;
-        int parent = (i - 1) / 2;
+        int currInd = getSize() - 1;
+        int parent = (currInd - 1) / 2;
 
-        while (i > 0 && compare(parent, i) > 0) {
-            Collections.swap(list, i, parent);
-            i = parent;
-            parent = (i - 1) / 2;
+        while (currInd > 0 && compare(parent, currInd) > 0) {
+            Collections.swap(list, currInd, parent);
+            currInd = parent;
+            parent = (currInd - 1) / 2;
         }
     }
 
     public void buildHeap(List<PeekIterator> sourceList) {
         list = sourceList;
-        for (int i = getSize() / 2; i >= 0; i--) {
-            heapify(i);
+        for (int currInd = getSize() / 2; currInd >= 0; currInd--) {
+            heapify(currInd);
         }
     }
 
@@ -37,15 +37,16 @@ public class BinaryHeap {
         return list.get(0);
     }
 
-    public void heapify(int i) {
+    public void heapify(int ind) {
+        int currInd = ind;
         int leftChild;
         int rightChild;
         int minChild;
 
         for (; ; ) {
-            leftChild = 2 * i + 1;
-            rightChild = 2 * i + 2;
-            minChild = i;
+            leftChild = 2 * currInd + 1;
+            rightChild = 2 * currInd + 2;
+            minChild = currInd;
 
             if (leftChild < getSize() && compare(leftChild, minChild) < 0) {
                 minChild = leftChild;
@@ -55,12 +56,12 @@ public class BinaryHeap {
                 minChild = rightChild;
             }
 
-            if (minChild == i) {
+            if (minChild == currInd) {
                 break;
             }
 
-            Collections.swap(list, i, minChild);
-            i = minChild;
+            Collections.swap(list, currInd, minChild);
+            currInd = minChild;
         }
     }
 
