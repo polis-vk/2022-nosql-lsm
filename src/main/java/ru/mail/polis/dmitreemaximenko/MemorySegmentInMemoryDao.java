@@ -197,6 +197,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                 } else {
                     MemoryAccess.setLongAtOffset(log, offset, value.value().byteSize());
                 }
+                
                 offset += Long.BYTES;
 
                 log.asSlice(offset).copyFrom(value.key());
