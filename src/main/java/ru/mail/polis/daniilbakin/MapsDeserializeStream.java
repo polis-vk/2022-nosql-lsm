@@ -110,12 +110,13 @@ public class MapsDeserializeStream {
         }
 
         return new PeekIterator<>(new Iterator<>() {
-            int next = startIndex;
-            final long last = endIndex;
+
+            private final int size = endIndex;
+            private int next = startIndex;
 
             @Override
             public boolean hasNext() {
-                return next < last;
+                return next < size;
             }
 
             @Override
@@ -147,8 +148,7 @@ public class MapsDeserializeStream {
         int last = size;
         int position = (first + last) / 2;
 
-        ByteBuffer currKey = readByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
-        assert currKey != null;
+        ByteBuffer currKey = readNotNullByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
 
         int compare = currKey.compareTo(key);
         while ((compare != 0) && (first <= last)) {
@@ -162,8 +162,7 @@ public class MapsDeserializeStream {
             if (position == size) {
                 break;
             }
-            currKey = readByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
-            assert currKey != null;
+            currKey = readNotNullByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
             compare = currKey.compareTo(key);
         }
         if (first <= last && position != size) {
@@ -183,10 +182,15 @@ public class MapsDeserializeStream {
      * Position in bytes.
      */
     private BaseEntry<ByteBuffer> readEntry(int position, MappedByteBuffer mapBuffer) {
-        ByteBuffer key = readByteBuffer(position, mapBuffer);
-        assert key != null;
+        ByteBuffer key = readNotNullByteBuffer(position, mapBuffer);
         ByteBuffer value = readByteBuffer(position + key.capacity() + Integer.BYTES, mapBuffer);
         return new BaseEntry<>(key.duplicate(), value);
+    }
+
+    private ByteBuffer readNotNullByteBuffer(int position, MappedByteBuffer mapBuffer) {
+        ByteBuffer notNull = readByteBuffer(position, mapBuffer);
+        assert notNull != null;
+        return notNull;
     }
 
     /**
