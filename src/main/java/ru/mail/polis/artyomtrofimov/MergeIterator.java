@@ -28,23 +28,20 @@ public class MergeIterator implements Iterator<Entry<String>> {
         queue.removeIf(item -> !item.hasNext());
 
         // skip deleted entries
-        if (queue.size() == 1) { // for optimization
-            PeekingIterator iter = queue.peek();
-            while (iter.hasNext() && iter.peek().value() == null) {
-                iter.next();
-            }
-            if (!iter.hasNext()) {
-                queue.clear();
-            }
-        } else {
-            while (!queue.isEmpty() && queue.peek().peek().value() == null) {
-                updateIterators();
-            }
+        while (!queue.isEmpty() && queue.peek().peek().value() == null) {
+            updateIterators();
         }
         return !queue.isEmpty();
     }
 
     private Entry<String> updateIterators() {
+        if (queue.size() == 1 && queue.peek().hasNext()) {
+            Entry<String> entry = queue.peek().next();
+            if (!queue.peek().hasNext()) {
+                queue.clear();
+            }
+            return entry;
+        }
         PeekingIterator nextIter = queue.poll();
         Entry<String> nextEntry = nextIter.next();
         if (nextIter.hasNext()) {

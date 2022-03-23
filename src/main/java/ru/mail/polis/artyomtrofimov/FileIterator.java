@@ -25,41 +25,9 @@ public class FileIterator implements Iterator<Entry<String>> {
         this.basePath = basePath;
         try {
             raf = new RandomAccessFile(basePath.resolve(name + InMemoryDao.DATA_EXT).toString(), "r");
-            findFloorEntry(name);
+            nextEntry = Utils.findCeilEntry(raf, from, basePath.resolve(name + InMemoryDao.INDEX_EXT));
         } catch (FileNotFoundException | EOFException e) {
             nextEntry = null;
-        }
-    }
-
-    private void findFloorEntry(String name) throws IOException {
-        String filename = name + InMemoryDao.INDEX_EXT;
-        try (RandomAccessFile index = new RandomAccessFile(basePath.resolve(filename).toString(), "r")) {
-            raf.seek(0);
-            int size = raf.readInt();
-            long left = -1;
-            long right = size;
-            long mid;
-            while (left < right - 1) {
-                mid = left + (right - left) / 2;
-                index.seek(mid * Long.BYTES);
-                raf.seek(index.readLong());
-                byte tombstone = raf.readByte();
-                String currentKey = raf.readUTF();
-                String currentValue = tombstone < 0 ? null : raf.readUTF();
-                int keyComparing = currentKey.compareTo(from);
-                if (keyComparing == 0) {
-                    lastPos = raf.getFilePointer();
-                    this.nextEntry = new BaseEntry<>(currentKey, currentValue);
-                    break;
-                } else if (keyComparing > 0) {
-                    lastPos = raf.getFilePointer();
-                    this.nextEntry = new BaseEntry<>(currentKey, currentValue);
-                    right = mid;
-                } else {
-                    left = mid;
-                }
-            }
-            raf.seek(lastPos);
         }
     }
 

@@ -1,14 +1,11 @@
 package ru.mail.polis.artyomtrofimov;
 
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -45,40 +42,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         return new String(chars);
     }
 
-    private static Entry<String> findInFileByKey(String key, Path basePath, String name) throws IOException {
-        if (name == null) {
-            return null;
-        }
-        Path dataPath = basePath.resolve(name + DATA_EXT);
-        Path indexPath = basePath.resolve(name + INDEX_EXT);
-        try (RandomAccessFile input = new RandomAccessFile(dataPath.toString(), "r");
-             RandomAccessFile indexInput = new RandomAccessFile(indexPath.toString(), "r")) {
-            input.seek(0);
-            int size = input.readInt();
-            long left = -1;
-            long right = size;
-            long mid;
-            while (left < right - 1) {
-                mid = left + (right - left) / 2;
-                indexInput.seek(mid * Long.BYTES);
-                input.seek(indexInput.readLong());
-                byte tombstone = input.readByte();
-                String currentKey = input.readUTF();
-                int keyComparing = key.compareTo(currentKey);
-                if (keyComparing == 0) {
-                    return new BaseEntry<>(currentKey, tombstone < 0 ? null : input.readUTF());
-                } else if (keyComparing < 0) {
-                    right = mid;
-                } else {
-                    left = mid;
-                }
-            }
-            return null;
-        } catch (FileNotFoundException | EOFException e) {
-            return null;
-        }
-    }
-
     @Override
     public Iterator<Entry<String>> get(String from, String to) throws IOException {
         String start = from;
@@ -103,14 +66,23 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     @Override
     public Entry<String> get(String key) throws IOException {
         Entry<String> entry = data.get(key);
-        if (entry == null) {
-            for (String file : filesList) {
-                entry = findInFileByKey(key, basePath, file);
-                if (entry != null) {
-                    break;
-                }
+        if (entry != null) {
+            return getRealEntry(entry);
+        }
+        for (String file : filesList) {
+            try (RandomAccessFile raf = new RandomAccessFile(basePath.resolve(file + DATA_EXT).toString(), "r")) {
+                entry = Utils.findCeilEntry(raf, key, basePath.resolve(file + INDEX_EXT));
+            }
+            if (entry != null && entry.key().equals(key)) {
+                break;
+            } else {
+                entry = null;
             }
         }
+        return getRealEntry(entry);
+    }
+
+    private Entry<String> getRealEntry(Entry<String> entry) {
         if (entry != null && entry.value() == null) {
             return null;
         }
@@ -129,8 +101,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 String file = reader.readUTF();
                 filesList.addFirst(file);
             }
-        } catch (NoSuchFileException | EOFException | FileNotFoundException ignored) {
-            //it is ok
+        } catch (FileNotFoundException ignored) {
+            //it is ok because there can be no files
         }
     }
 
