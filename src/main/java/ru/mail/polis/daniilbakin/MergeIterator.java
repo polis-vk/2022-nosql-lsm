@@ -13,7 +13,11 @@ public class MergeIterator<E extends Comparable<E>> implements Iterator<BaseEntr
     private final PriorityQueue<PeekIterator<BaseEntry<E>>> minHeap = new PriorityQueue<>(this::compareIterators);
 
     public MergeIterator(List<PeekIterator<BaseEntry<E>>> iterators) {
-        addIteratorsToHeap(iterators);
+        for (PeekIterator<BaseEntry<E>> iterator : iterators) {
+            if (iterator.hasNext()) {
+                minHeap.add(iterator);
+            }
+        }
         next = getNext();
     }
 
@@ -27,14 +31,6 @@ public class MergeIterator<E extends Comparable<E>> implements Iterator<BaseEntr
         BaseEntry<E> res = next;
         next = getNext();
         return res;
-    }
-
-    private void addIteratorsToHeap(List<PeekIterator<BaseEntry<E>>> iterators) {
-        for (PeekIterator<BaseEntry<E>> iterator : iterators) {
-            if (iterator.hasNext()) {
-                minHeap.add(iterator);
-            }
-        }
     }
 
     private BaseEntry<E> getNext() {
