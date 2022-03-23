@@ -57,10 +57,6 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
 
     @Override
     public Iterator<MemorySegmentEntry> get(MemorySegment from, MemorySegment to) throws IOException {
-        if (sortedStringTables.isEmpty()) {
-            // behaves like InMemoryDao if no files
-            return inMemoryGet(from, to);
-        }
         List<Iterator<MemorySegmentEntry>> iterators = new ArrayList<>(1 + sortedStringTables.size());
         iterators.add(inMemoryGet(from, to));
         for (SortedStringTable table : sortedStringTables) {
@@ -118,6 +114,9 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     public MemorySegmentEntry get(MemorySegment key) throws IOException {
         MemorySegmentEntry result = map.get(key);
         if (result != null) {
+            if (result.value() == null) {
+                return null;
+            }
             return result;
         }
         for (SortedStringTable table : sortedStringTables) {

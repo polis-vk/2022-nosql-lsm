@@ -65,20 +65,25 @@ final class SortedStringTable implements Closeable {
 
     /**
      * left binary search
+     *
      * @param first inclusive
-     * @param last exclusive
-     * @return first index such that key of entry with that index is greater or equal to key
+     * @param last  exclusive
+     * @return first index such that key of entry with that index is equal to key,
+     * if no such index exists, result < 0
      */
     private int binarySearch(int first, int last, MemorySegment key) {
         while (first < last) {
             int mid = first + (last - first) / 2;
-            if (LEXICOGRAPHICALLY.compare(mappedEntry(mid).key(), key) < 0) {
+            int compare = LEXICOGRAPHICALLY.compare(mappedEntry(mid).key(), key);
+            if (compare < 0) {
                 first = mid + 1;
-            } else {
+            } else if (compare > 0) {
                 last = mid;
+            } else {
+                return mid;
             }
         }
-        return first;
+        return -(first + 1);
     }
 
     /**
@@ -91,8 +96,7 @@ final class SortedStringTable implements Closeable {
             loadFromFiles(); // throws NoSuchFileException
         }
         int index = binarySearch(0, entriesMapped(), key);
-
-        return index == entriesMapped() ? null : mappedEntry(index);
+        return index < 0 ? null : mappedEntry(index);
     }
 
     public Iterator<MemorySegmentEntry> get(MemorySegment from, MemorySegment to) throws IOException {
@@ -216,12 +220,18 @@ final class SortedStringTable implements Closeable {
                 return first < last;
             }
             first = binarySearch(first, last, from);
+            if (first < 0) {
+                first = -(first + 1);
+            }
             if (first >= last) {
                 pivoted = true;
                 return false;
             }
             if (to != null) {
                 last = binarySearch(first, last, to);
+                if (last < 0) {
+                    last = -(last + 1);
+                }
             }
             pivoted = true;
             return first < last;
