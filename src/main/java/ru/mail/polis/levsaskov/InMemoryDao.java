@@ -19,7 +19,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         storageSystem = null;
     }
 
-    public InMemoryDao(Config config) {
+    public InMemoryDao(Config config) throws IOException {
         storageSystem = new StorageSystem();
 
         if (!storageSystem.init(config.basePath())) {

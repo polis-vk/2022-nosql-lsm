@@ -7,6 +7,7 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.levsaskov.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
@@ -19,7 +20,7 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
     }
 
     @Override
-    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) {
+    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
         return new InMemoryDao(config);
     }
 

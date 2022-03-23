@@ -7,8 +7,8 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
-import java.util.NavigableMap;
-import java.util.TreeMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -22,17 +22,24 @@ public class StorageSystem {
     private static final String INDEX_FILENAME = "daoIndex.bin";
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private int dataBasePartsC;
+    private int storagePartsC;
     private Path location;
+    private final List<StoragePart> storageParts = new ArrayList<>();
 
-    public boolean init(Path location) {
+    public boolean init(Path location) throws IOException {
         if (!location.toFile().exists()) {
             return false;
         }
 
         this.location = location;
-        //On every part we write memory file and index file, so devide on 2
-        dataBasePartsC = location.toFile().list().length / 2;
+
+        // On every part we write memory file and index file, so devide on 2
+        // TODO: walk through files
+        storagePartsC = location.toFile().list().length / 2;
+        for (int partN = 0; partN < storagePartsC; partN++) {
+            addStoragePart(partN);
+        }
+
         return true;
     }
 
@@ -46,9 +53,8 @@ public class StorageSystem {
         BaseEntry<ByteBuffer> res = null;
         lock.readLock().lock();
         try {
-            for (int partN = dataBasePartsC - 1; partN >= 0; partN--) {
-                ByteBuffer bufferForIndexes = readIndexFile(getIndexFilePath(partN));
-                res = searchInMemFile(key, bufferForIndexes, getMemFilePath(partN));
+            for (int partN = storagePartsC - 1; partN >= 0; partN--) {
+                res = storageParts.get(partN).get(key);
                 if (res != null) {
                     break;
                 }
@@ -66,9 +72,8 @@ public class StorageSystem {
         ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> res = new ConcurrentSkipListMap<>();
         lock.readLock().lock();
         try {
-            for (int partN = 0; partN < dataBasePartsC; partN++) {
-                ByteBuffer bufferForIndexes = readIndexFile(getIndexFilePath(partN));
-                res.putAll(getRangeInMemFile(from, to, bufferForIndexes, getMemFilePath(partN)));
+            for (int partN = 0; partN < storagePartsC; partN++) {
+                res.putAll(storageParts.get(partN).get(from, to));
             }
         } finally {
             lock.readLock().unlock();
@@ -86,13 +91,20 @@ public class StorageSystem {
         ByteBuffer bufferForIndexes = ByteBuffer.allocate(entrys.size() * BYTES_IN_LONG);
         lock.writeLock().lock();
         try {
-            writeMemFile(entrys, getMemFilePath(dataBasePartsC), bufferForIndexes);
-            writeIndexFile(bufferForIndexes, getIndexFilePath(dataBasePartsC));
+            writeMemFile(entrys, getMemFilePath(storagePartsC), bufferForIndexes);
+            writeIndexFile(bufferForIndexes, getIndexFilePath(storagePartsC));
         } finally {
             lock.writeLock().unlock();
         }
 
-        dataBasePartsC++;
+        addStoragePart(storagePartsC);
+        storagePartsC++;
+    }
+
+    private void addStoragePart(int partN) throws IOException {
+        StoragePart storagePart = new StoragePart();
+        storagePart.init(getMemFilePath(partN), getIndexFilePath(partN));
+        storageParts.add(storagePart);
     }
 
     private Path getMemFilePath(int num) {
@@ -152,87 +164,18 @@ public class StorageSystem {
     }
 
     /**
-     * Saves indexes in ByteBuffer.
+     * Saves entry to byteBuffer.
      *
-     * @param indexFileP path of index file
-     * @return ByteBuffer with indexes
+     * @param entry         that we want to save in bufferToWrite
+     * @param bufferToWrite buffer where we want to persist entry
      */
-    private static ByteBuffer readIndexFile(Path indexFileP) throws IOException {
-        ByteBuffer bufferForIndexes;
-        try (
-                RandomAccessFile indexFile = new RandomAccessFile(indexFileP.toFile(), "rw");
-                FileChannel indexChannel = indexFile.getChannel()
-        ) {
-            bufferForIndexes = ByteBuffer.allocate((int) indexChannel.size());
-            indexChannel.read(bufferForIndexes);
-        }
+    private static void persistEntry(BaseEntry<ByteBuffer> entry, ByteBuffer bufferToWrite) {
+        bufferToWrite.putInt(entry.key().array().length);
+        bufferToWrite.put(entry.key().array());
 
-        return bufferForIndexes;
-    }
-
-    /**
-     * Find range of base entrys in memFile of keys from "from" to "to".
-     *
-     * @param bufferForIndexes buffer with indexes of memFile
-     * @param memFileP         path of memFile
-     * @return map with range
-     */
-    private static NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> getRangeInMemFile(
-            ByteBuffer from, ByteBuffer to, ByteBuffer bufferForIndexes, Path memFileP) throws IOException {
-        NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> res = new TreeMap<>();
-        try (
-                RandomAccessFile daoMemfile = new RandomAccessFile(memFileP.toFile(), "rw");
-                FileChannel memChannel = daoMemfile.getChannel()
-
-        ) {
-            int entrysC = bufferForIndexes.capacity() / BYTES_IN_LONG;
-
-            int pos = binarySearch(bufferForIndexes, memChannel, entrysC - 1, from);
-            BaseEntry<ByteBuffer> entry;
-
-            // Граничные случаи
-            if (pos + 1 < entrysC && from != null
-                    && getEntry(bufferForIndexes, memChannel, pos).key().compareTo(from) < 0) {
-                pos++;
-            }
-
-            if (from == null || getEntry(bufferForIndexes, memChannel, pos).key().compareTo(from) >= 0) {
-                while (pos < entrysC) {
-                    entry = getEntry(bufferForIndexes, memChannel, pos);
-                    if (to != null && entry.key().compareTo(to) >= 0) {
-                        break;
-                    }
-
-                    res.put(entry.key(), entry);
-                    pos++;
-                }
-            }
-        }
-
-        return res;
-    }
-
-    /**
-     * Search base entry with given key in memory file.
-     *
-     * @param bufferForIndexes buffer with indexes of memFile
-     * @param memFileP         path of memFile
-     * @return base entry with given key or null if there is no such key in file
-     */
-    private static BaseEntry<ByteBuffer> searchInMemFile(
-            ByteBuffer key, ByteBuffer bufferForIndexes, Path memFileP) throws IOException {
-        BaseEntry<ByteBuffer> res;
-        try (
-                RandomAccessFile daoMemfile = new RandomAccessFile(memFileP.toFile(), "rw");
-                FileChannel memChannel = daoMemfile.getChannel()
-
-        ) {
-            int entrysC = bufferForIndexes.capacity() / BYTES_IN_LONG;
-            int position = binarySearch(bufferForIndexes, memChannel, entrysC, key);
-            res = getEntry(bufferForIndexes, memChannel, position);
-        }
-
-        return res.key().equals(key) ? res : null;
+        bufferToWrite.putInt(entry.value().array().length);
+        bufferToWrite.put(entry.value().array());
+        bufferToWrite.flip();
     }
 
     /**
@@ -248,71 +191,141 @@ public class StorageSystem {
         return 2 * BYTES_IN_INT + keyLength + valueLength;
     }
 
-    private static int binarySearch(ByteBuffer bufferForIndexes, FileChannel memChannel,
-                                    int inLast, ByteBuffer key) throws IOException {
-        if (key == null) {
-            return 0;
-        }
+//    /**
+//     * Saves indexes in ByteBuffer.
+//     *
+//     * @param indexFileP path of index file
+//     * @return ByteBuffer with indexes
+//     */
+//    private static ByteBuffer readIndexFile(Path indexFileP) throws IOException {
+//        ByteBuffer bufferForIndexes;
+//        try (
+//                RandomAccessFile indexFile = new RandomAccessFile(indexFileP.toFile(), "rw");
+//                FileChannel indexChannel = indexFile.getChannel()
+//        ) {
+//            bufferForIndexes = ByteBuffer.allocate((int) indexChannel.size());
+//            indexChannel.read(bufferForIndexes);
+//        }
+//
+//        return bufferForIndexes;
+//    }
 
-        int first = 0;
-        int last = inLast;
-        int position = (first + last) / 2;
-        BaseEntry<ByteBuffer> curEntry = getEntry(bufferForIndexes, memChannel, position);
+//    /**
+//     * Find range of base entrys in memFile of keys from "from" to "to".
+//     *
+//     * @param bufferForIndexes buffer with indexes of memFile
+//     * @param memFileP         path of memFile
+//     * @return map with range
+//     */
+//    private static NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> getRangeInMemFile(
+//            ByteBuffer from, ByteBuffer to, ByteBuffer bufferForIndexes, Path memFileP) throws IOException {
+//        NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> res = new TreeMap<>();
+//        try (
+//                RandomAccessFile daoMemfile = new RandomAccessFile(memFileP.toFile(), "rw");
+//                FileChannel memChannel = daoMemfile.getChannel()
+//
+//        ) {
+//            int entrysC = bufferForIndexes.capacity() / BYTES_IN_LONG;
+//
+//            int pos = binarySearch(bufferForIndexes, memChannel, entrysC - 1, from);
+//            BaseEntry<ByteBuffer> entry;
+//
+//            // Граничные случаи
+//            if (pos + 1 < entrysC && from != null
+//                    && getEntry(bufferForIndexes, memChannel, pos).key().compareTo(from) < 0) {
+//                pos++;
+//            }
+//
+//            if (from == null || getEntry(bufferForIndexes, memChannel, pos).key().compareTo(from) >= 0) {
+//                while (pos < entrysC) {
+//                    entry = getEntry(bufferForIndexes, memChannel, pos);
+//                    if (to != null && entry.key().compareTo(to) >= 0) {
+//                        break;
+//                    }
+//
+//                    res.put(entry.key(), entry);
+//                    pos++;
+//                }
+//            }
+//        }
+//
+//        return res;
+//    }
+//
+//    /**
+//     * Search base entry with given key in memory file.
+//     *
+//     * @param bufferForIndexes buffer with indexes of memFile
+//     * @param memFileP         path of memFile
+//     * @return base entry with given key or null if there is no such key in file
+//     */
+//    private static BaseEntry<ByteBuffer> searchInMemFile(
+//            ByteBuffer key, ByteBuffer bufferForIndexes, Path memFileP) throws IOException {
+//        BaseEntry<ByteBuffer> res;
+//        try (
+//                RandomAccessFile daoMemfile = new RandomAccessFile(memFileP.toFile(), "rw");
+//                FileChannel memChannel = daoMemfile.getChannel()
+//
+//        ) {
+//            int entrysC = bufferForIndexes.capacity() / BYTES_IN_LONG;
+//            int position = binarySearch(bufferForIndexes, memChannel, entrysC, key);
+//            res = getEntry(bufferForIndexes, memChannel, position);
+//        }
+//
+//        return res.key().equals(key) ? res : null;
+//    }
+//
+//
+//    private static int binarySearch(ByteBuffer bufferForIndexes, FileChannel memChannel,
+//                                    int inLast, ByteBuffer key) throws IOException {
+//        if (key == null) {
+//            return 0;
+//        }
+//
+//        int first = 0;
+//        int last = inLast;
+//        int position = (first + last) / 2;
+//        BaseEntry<ByteBuffer> curEntry = getEntry(bufferForIndexes, memChannel, position);
+//
+//        while (!curEntry.key().equals(key) && first <= last) {
+//            if (curEntry.key().compareTo(key) > 0) {
+//                last = position - 1;
+//            } else {
+//                first = position + 1;
+//            }
+//            position = (first + last) / 2;
+//            curEntry = getEntry(bufferForIndexes, memChannel, position);
+//        }
+//        return position;
+//    }
 
-        while (!curEntry.key().equals(key) && first <= last) {
-            if (curEntry.key().compareTo(key) > 0) {
-                last = position - 1;
-            } else {
-                first = position + 1;
-            }
-            position = (first + last) / 2;
-            curEntry = getEntry(bufferForIndexes, memChannel, position);
-        }
-        return position;
-    }
-
-    /**
-     * Saves entry to byteBuffer.
-     *
-     * @param entry         that we want to save in bufferToWrite
-     * @param bufferToWrite buffer where we want to persist entry
-     */
-    private static void persistEntry(BaseEntry<ByteBuffer> entry, ByteBuffer bufferToWrite) {
-        bufferToWrite.putInt(entry.key().array().length);
-        bufferToWrite.put(entry.key().array());
-
-        bufferToWrite.putInt(entry.value().array().length);
-        bufferToWrite.put(entry.value().array());
-        bufferToWrite.flip();
-    }
-
-    private static BaseEntry<ByteBuffer> convertToEntry(ByteBuffer byteBuffer) {
-        int keyLen = byteBuffer.getInt();
-        byte[] key = new byte[keyLen];
-        byteBuffer.get(key);
-
-        int valueLen = byteBuffer.getInt();
-        byte[] value = new byte[valueLen];
-        byteBuffer.get(value);
-
-        return new BaseEntry<>(ByteBuffer.wrap(key), ByteBuffer.wrap(value));
-    }
-
-    private static BaseEntry<ByteBuffer> getEntry(ByteBuffer bufferForIndexes, FileChannel memChannel,
-                                                  int entryNum) throws IOException {
-        long ind = bufferForIndexes.getLong(entryNum * BYTES_IN_LONG);
-
-        long bytesCount;
-        if (entryNum == bufferForIndexes.capacity() / BYTES_IN_LONG - 1) {
-            bytesCount = memChannel.size() - ind;
-        } else {
-            bytesCount = bufferForIndexes.getLong((entryNum + 1) * BYTES_IN_LONG) - ind;
-        }
-
-        ByteBuffer entryByteBuffer = ByteBuffer.allocate((int) bytesCount);
-        memChannel.read(entryByteBuffer, ind);
-        entryByteBuffer.flip();
-        return convertToEntry(entryByteBuffer);
-    }
+//    private static BaseEntry<ByteBuffer> convertToEntry(ByteBuffer byteBuffer) {
+//        int keyLen = byteBuffer.getInt();
+//        byte[] key = new byte[keyLen];
+//        byteBuffer.get(key);
+//
+//        int valueLen = byteBuffer.getInt();
+//        byte[] value = new byte[valueLen];
+//        byteBuffer.get(value);
+//
+//        return new BaseEntry<>(ByteBuffer.wrap(key), ByteBuffer.wrap(value));
+//    }
+//
+//    private static BaseEntry<ByteBuffer> getEntry(ByteBuffer bufferForIndexes, FileChannel memChannel,
+//                                                  int entryNum) throws IOException {
+//        long ind = bufferForIndexes.getLong(entryNum * BYTES_IN_LONG);
+//
+//        long bytesCount;
+//        if (entryNum == bufferForIndexes.capacity() / BYTES_IN_LONG - 1) {
+//            bytesCount = memChannel.size() - ind;
+//        } else {
+//            bytesCount = bufferForIndexes.getLong((entryNum + 1) * BYTES_IN_LONG) - ind;
+//        }
+//
+//        ByteBuffer entryByteBuffer = ByteBuffer.allocate((int) bytesCount);
+//        memChannel.read(entryByteBuffer, ind);
+//        entryByteBuffer.flip();
+//        return convertToEntry(entryByteBuffer);
+//    }
 
 }
