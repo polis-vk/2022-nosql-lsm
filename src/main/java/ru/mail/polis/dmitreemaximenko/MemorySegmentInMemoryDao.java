@@ -31,7 +31,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
     private static final long NULL_VALUE_SIZE = -1;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Config config;
-    private final List<MemorySegment> readPages;
+    private final List<MemorySegment> logs;
     private final ResourceScope scope = ResourceScope.newSharedScope();
 
     public MemorySegmentInMemoryDao() throws IOException {
@@ -47,9 +47,9 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                 fromValue = VERY_FIRST_KEY;
             }
             if (to == null) {
-                return new BorderedIterator(fromValue, null, data.tailMap(fromValue).values().iterator(), readPages);
+                return new BorderedIterator(fromValue, null, data.tailMap(fromValue).values().iterator(), logs);
             }
-            return new BorderedIterator(fromValue, to, data.subMap(fromValue, to).values().iterator(), readPages);
+            return new BorderedIterator(fromValue, to, data.subMap(fromValue, to).values().iterator(), logs);
         } finally {
             lock.readLock().unlock();
         }
@@ -58,17 +58,17 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
     public MemorySegmentInMemoryDao(Config config) throws IOException {
         this.config = config;
         List<Path> logPaths = getLogPaths();
-        readPages = new ArrayList<>(logPaths.size());
+        logs = new ArrayList<>(logPaths.size());
 
         for (Path logPath : logPaths) {
-            MemorySegment page;
+            MemorySegment log;
             try {
                 long size = Files.size(logPath);
-                page = MemorySegment.mapFile(logPath, 0, size, FileChannel.MapMode.READ_ONLY, scope);
+                log = MemorySegment.mapFile(logPath, 0, size, FileChannel.MapMode.READ_ONLY, scope);
             } catch (NoSuchFileException e) {
-                page = null;
+                log = null;
             }
-            readPages.add(page);
+            logs.add(log);
         }
     }
 
@@ -109,39 +109,33 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             if (entry != null) {
                 return entry.value() == null ? null : entry;
             }
-
-            return checkPagesForKey(key);
+            return checkLogsForKey(key);
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private Entry<MemorySegment> checkPagesForKey(MemorySegment key) {
-        for (int i = readPages.size() - 1; i >= 0; i--) {
-            MemorySegment readPage = readPages.get(i);
+    private Entry<MemorySegment> checkLogsForKey(MemorySegment key) {
+        for (int i = logs.size() - 1; i >= 0; i--) {
+            MemorySegment log = logs.get(i);
             long offset = 0;
 
-            while (offset < readPage.byteSize()) {
-                long keySize = MemoryAccess.getLongAtOffset(readPage, offset);
+            while (offset < log.byteSize()) {
+                long keySize = MemoryAccess.getLongAtOffset(log, offset);
                 offset += Long.BYTES;
-                long valueSize = MemoryAccess.getLongAtOffset(readPage, offset);
+                long valueSize = MemoryAccess.getLongAtOffset(log, offset);
                 offset += Long.BYTES;
 
                 if (keySize != key.byteSize()) {
-                    if (valueSize == NULL_VALUE_SIZE) {
-                        valueSize = 0;
-                    }
-                    offset += keySize + valueSize;
+                    offset += keySize;
+                    offset = valueSize == NULL_VALUE_SIZE ? offset : offset + valueSize;
                     continue;
                 }
 
-                MemorySegment currentKey = readPage.asSlice(offset, keySize);
+                MemorySegment currentKey = log.asSlice(offset, keySize);
                 if (key.mismatch(currentKey) == -1) {
-                    if (valueSize == NULL_VALUE_SIZE) {
-                        return null;
-                    } else {
-                        return new BaseEntry<>(key, readPage.asSlice(offset + keySize, valueSize));
-                    }
+                    return valueSize == NULL_VALUE_SIZE ? null :
+                            new BaseEntry<>(key, log.asSlice(offset + keySize, valueSize));
                 }
                 offset += keySize + valueSize;
             }
@@ -180,7 +174,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             size += 2L * data.size() * Long.BYTES;
             Path newLogFile = getLogName();
             Files.createFile(newLogFile);
-            MemorySegment page =
+            MemorySegment log =
                     MemorySegment.mapFile(
                             newLogFile,
                             0,
@@ -189,19 +183,19 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                             writeScope);
             long offset = 0;
             for (Entry<MemorySegment> value : data.values()) {
-                MemoryAccess.setLongAtOffset(page, offset, value.key().byteSize());
+                MemoryAccess.setLongAtOffset(log, offset, value.key().byteSize());
                 offset += Long.BYTES;
                 if (value.value() == null) {
-                    MemoryAccess.setLongAtOffset(page, offset, NULL_VALUE_SIZE);
+                    MemoryAccess.setLongAtOffset(log, offset, NULL_VALUE_SIZE);
                 } else {
-                    MemoryAccess.setLongAtOffset(page, offset, value.value().byteSize());
+                    MemoryAccess.setLongAtOffset(log, offset, value.value().byteSize());
                 }
                 offset += Long.BYTES;
 
-                page.asSlice(offset).copyFrom(value.key());
+                log.asSlice(offset).copyFrom(value.key());
                 offset += value.key().byteSize();
                 if (value.value() != null) {
-                    page.asSlice(offset).copyFrom(value.value());
+                    log.asSlice(offset).copyFrom(value.value());
                     offset += value.value().byteSize();
                 }
             }

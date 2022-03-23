@@ -14,7 +14,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     private static final long NULL_VALUE_SIZE = -1;
     private final List<Source> sources;
     private static final Comparator<MemorySegment> comparator = new NaturalOrderComparator();
-    
+
     static class Source {
         Iterator<Entry<MemorySegment>> iterator;
         Entry<MemorySegment> element;
@@ -26,14 +26,14 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     }
 
     public BorderedIterator(MemorySegment from, MemorySegment last, Iterator<Entry<MemorySegment>> iterator,
-                             List<MemorySegment> readPages) {
+                             List<MemorySegment> logs) {
         sources = new LinkedList<>();
         if (iterator.hasNext()) {
             sources.add(new Source(iterator, iterator.next()));
         }
 
-        for (int i = readPages.size() - 1; i >= 0; i--) {
-            Iterator<Entry<MemorySegment>> fileIterator = new FileEntryIterator(from, last, readPages.get(i));
+        for (int i = logs.size() - 1; i >= 0; i--) {
+            Iterator<Entry<MemorySegment>> fileIterator = new FileEntryIterator(from, last, logs.get(i));
             if (fileIterator.hasNext()) {
                 sources.add(new Source(fileIterator, fileIterator.next()));
             }
