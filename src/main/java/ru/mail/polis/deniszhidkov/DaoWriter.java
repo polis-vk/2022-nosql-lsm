@@ -12,24 +12,36 @@ import java.util.Map;
 
 public class DaoWriter {
 
-    private final Path pathToFile;
+    private final Path pathToDataFile;
+    private final Path pathToOffsetsFile;
 
-    public DaoWriter(Path pathToFile) {
-        this.pathToFile = pathToFile;
+    public DaoWriter(Path pathToDataFile, Path pathToOffsetsFile) {
+        this.pathToDataFile = pathToDataFile;
+        this.pathToOffsetsFile = pathToOffsetsFile;
     }
 
     public void writeDAO(Map<String, BaseEntry<String>> map) throws IOException {
-        try (DataOutputStream writer =
-                     new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(
-                             pathToFile,
-                             StandardOpenOption.CREATE,
-                             StandardOpenOption.TRUNCATE_EXISTING,
-                             StandardOpenOption.WRITE
-                     )))) {
-            writer.writeInt(map.size());
+        try (DataOutputStream dataWriter = new DataOutputStream(
+                new BufferedOutputStream(
+                        Files.newOutputStream(
+                                pathToDataFile,
+                                StandardOpenOption.CREATE,
+                                StandardOpenOption.WRITE
+                        )));
+             DataOutputStream offsetsWriter = new DataOutputStream(
+                     new BufferedOutputStream(
+                             Files.newOutputStream(
+                                     pathToOffsetsFile,
+                                     StandardOpenOption.CREATE,
+                                     StandardOpenOption.WRITE
+                             )))) {
+            dataWriter.writeInt(map.size());
+            offsetsWriter.writeInt(map.size());
+            offsetsWriter.writeLong(dataWriter.size());
             for (BaseEntry<String> entry : map.values()) {
-                writer.writeUTF(entry.key());
-                writer.writeUTF(entry.value());
+                dataWriter.writeUTF(entry.key());
+                dataWriter.writeUTF(entry.value());
+                offsetsWriter.writeLong(dataWriter.size());
             }
         }
     }
