@@ -3,12 +3,13 @@ package ru.mail.polis.deniszhidkov;
 import ru.mail.polis.BaseEntry;
 
 import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Iterator;
 import java.util.Queue;
 
 public class MergeIterator implements Iterator<BaseEntry<String>> {
 
-    private final Queue<PeekIterator> iteratorsQueue = new ArrayDeque<>();
+    private final Deque<PeekIterator> iteratorsQueue = new ArrayDeque<>();
     private BaseEntry<String> next;
 
     public MergeIterator(Queue<PeekIterator> iterators) {
@@ -25,6 +26,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
     public BaseEntry<String> next() {
         BaseEntry<String> result = next;
         if (!iteratorsQueue.isEmpty()) {
+            PeekIterator startIterator = iteratorsQueue.peek();
             PeekIterator currentIterator = iteratorsQueue.poll();
             next = currentIterator.peek();
             iteratorsQueue.add(currentIterator);
@@ -32,7 +34,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
             while (nextIterator != currentIterator) {
                 if (nextIterator != null && nextIterator.hasNext()) {
                     BaseEntry<String> newNext = nextIterator.peek();
-                    int keyComparison = next.key().compareTo(newNext.key());
+                    int keyComparison = next == null ? -1 : next.key().compareTo(newNext.key());
                     if (keyComparison > 0) {
                         next = newNext;
                         currentIterator = nextIterator;
@@ -45,14 +47,23 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
             }
             currentIterator.next();
             if (currentIterator.hasNext()) {
-                iteratorsQueue.add(currentIterator);
+                iteratorsQueue.addFirst(currentIterator);
+            }
+            for (int i = 0; i < iteratorsQueue.size(); i++) {
+                nextIterator = iteratorsQueue.peek();
+                if (nextIterator != startIterator) {
+                    iteratorsQueue.poll();
+                    iteratorsQueue.add(nextIterator);
+                } else {
+                    break;
+                }
             }
             if (next == null || next.value() == null) {
-                next = next();
+                next();
             }
         } else {
             next = null;
         }
-        return result;
+        return result == null || result.value() == null ? null : result;
     }
 }

@@ -10,6 +10,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.Iterator;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -38,7 +39,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
-        Queue<PeekIterator> queueOfIterators = new ArrayDeque<>();
+        Deque<PeekIterator> queueOfIterators = new ArrayDeque<>();
         PeekIterator storageIterator;
         if (from == null && to == null) {
             storageIterator = new PeekIterator(storage.values().iterator());
@@ -80,14 +81,15 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     DaoReader reader = new DaoReader(paths[0], paths[1]);
                     value = reader.findByKey(key);
                     if (value != null) {
-                        return value;
+                        return value.value() == null ? null : value;
                     }
                 }
+                value = new BaseEntry<>(null, null);
             } finally {
                 lock.readLock().unlock();
             }
         }
-        return value;
+        return value.value() == null ? null : value;
     }
 
     @Override

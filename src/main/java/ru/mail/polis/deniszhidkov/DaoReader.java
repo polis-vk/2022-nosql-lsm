@@ -45,13 +45,20 @@ public class DaoReader {
             BaseEntry<String> result = null;
             while (start <= finish) {
                 int middle = start + (finish - start) / 2;
+                if (middle >= offsets.length) {
+                    return null;
+                }
                 reader.seek(offsets[middle]);
-                BaseEntry<String> current = new BaseEntry<>(reader.readUTF(), reader.readUTF());
-                int comparison = current.key().compareTo(key);
+                boolean hasKey = reader.readBoolean();
+                String currentKey = reader.readUTF();
+                boolean hasValue = reader.readBoolean();
+                int comparison = currentKey.compareTo(key);
                 if (comparison < 0) {
                     start = middle + 1;
                 } else if (comparison == 0) {
-                    result = current;
+                    result = !hasValue
+                            ? new BaseEntry<>(currentKey, null)
+                            : new BaseEntry<>(currentKey, reader.readUTF());
                     break;
                 } else {
                     finish = middle - 1;
@@ -66,11 +73,15 @@ public class DaoReader {
             BaseEntry<String> result = nextEntry;
             if (startReadIndex < offsets.length && startReadIndex != -1) {
                 reader.seek(offsets[startReadIndex]);
+                boolean hasKey = reader.readBoolean();
                 String currentKey = reader.readUTF();
                 if (endReadFactor != null && currentKey.compareTo(endReadFactor) >= 0) {
                     nextEntry = null;
                 } else {
-                    nextEntry = new BaseEntry<>(currentKey, reader.readUTF());
+                    boolean hasValue = reader.readBoolean();
+                    nextEntry = !hasValue
+                            ? new BaseEntry<>(currentKey, null)
+                            : new BaseEntry<>(currentKey, reader.readUTF());
                 }
                 startReadIndex += 1;
             } else {
@@ -91,8 +102,10 @@ public class DaoReader {
                     return resultIndex;
                 }
                 reader.seek(offsets[middle]);
-                BaseEntry<String> current = new BaseEntry<>(reader.readUTF(), reader.readUTF());
-                int comparisonWithFrom = current.key().compareTo(from);
+                boolean hasKey = reader.readBoolean();
+                String currentKey = reader.readUTF();
+                boolean hasValue = reader.readBoolean();
+                int comparisonWithFrom = currentKey.compareTo(from);
                 if (comparisonWithFrom < 0) {
                     start = middle + 1;
                 } else if (comparisonWithFrom == 0) {
@@ -100,7 +113,7 @@ public class DaoReader {
                     break;
                 } else {
                     finish = middle - 1;
-                    if (to == null || current.key().compareTo(to) < 0) {
+                    if (to == null || currentKey.compareTo(to) < 0) {
                         resultIndex = middle;
                     }
                 }
