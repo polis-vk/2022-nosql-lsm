@@ -78,10 +78,15 @@ public class StoragePart implements AutoCloseable {
         // TODO: Переделать запись на инты
         int ind = (int) indexBB.getLong(entryN * BYTES_IN_LONG);
         byte[] key = readBytes(ind);
-        assert key != null;
         ind += BYTES_IN_INT + key.length;
 
-        byte[] value = readBytes(ind);
+        byte[] value;
+        try {
+            value = readBytes(ind);
+        } catch (NullPointerException e) {
+            value = null;
+        }
+
         return new BaseEntry<>(ByteBuffer.wrap(key), value == null ? null : ByteBuffer.wrap(value));
     }
 
@@ -93,7 +98,7 @@ public class StoragePart implements AutoCloseable {
         int currInd = ind;
         int len = memoryBB.getInt(currInd);
         if (len == LEN_FOR_NULL) {
-            return null;
+            throw new NullPointerException();
         }
 
         currInd += BYTES_IN_INT;
