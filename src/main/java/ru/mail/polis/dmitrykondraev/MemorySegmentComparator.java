@@ -11,6 +11,7 @@ import java.util.Comparator;
  * this string comparison likely won't work with collation different from ASCII
  */
 public class MemorySegmentComparator implements Comparator<MemorySegment> {
+    public static final MemorySegmentComparator LEXICOGRAPHICALLY = new MemorySegmentComparator();
     @Override
     public int compare(MemorySegment lhs, MemorySegment rhs) {
         long offset = lhs.mismatch(rhs);

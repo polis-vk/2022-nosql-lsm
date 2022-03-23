@@ -5,23 +5,26 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.dmitrykondraev.FilesBackedDao;
+import ru.mail.polis.dmitrykondraev.MemorySegmentEntry;
 import ru.mail.polis.test.DaoFactory;
+
+import java.io.IOException;
 
 /**
  * Author: Dmitry Kondraev.
  */
 
 @DaoFactory(stage = 3)
-public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, Entry<MemorySegment>> {
+public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, MemorySegmentEntry> {
 
     @Override
-    public Dao<MemorySegment, Entry<MemorySegment>> createDao(Config config) {
+    public Dao<MemorySegment, MemorySegmentEntry> createDao(Config config) throws IOException {
         return new FilesBackedDao(config);
     }
 
     @Override
-    public Dao<MemorySegment, Entry<MemorySegment>> createDao() {
-        return new FilesBackedDao();
+    public Dao<MemorySegment, MemorySegmentEntry> createDao() {
+        throw new UnsupportedOperationException("Can't create Dao without config");
     }
 
     @Override
@@ -36,7 +39,7 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
     }
 
     @Override
-    public Entry<MemorySegment> fromBaseEntry(Entry<MemorySegment> baseEntry) {
-        return baseEntry;
+    public MemorySegmentEntry fromBaseEntry(Entry<MemorySegment> baseEntry) {
+        return MemorySegmentEntry.of(baseEntry.key(), baseEntry.value());
     }
 }

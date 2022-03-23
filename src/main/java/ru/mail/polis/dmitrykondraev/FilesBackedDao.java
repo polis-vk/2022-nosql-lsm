@@ -3,54 +3,46 @@ package ru.mail.polis.dmitrykondraev;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
-import ru.mail.polis.Entry;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+
+import static ru.mail.polis.dmitrykondraev.MemorySegmentComparator.LEXICOGRAPHICALLY;
 
 /**
  * Author: Dmitry Kondraev.
  */
 
-public class FilesBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> {
-
-    private static final Comparator<MemorySegment> LEXICOGRAPHICALLY = new MemorySegmentComparator();
-
-    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map =
+public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
+    private final ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map =
             new ConcurrentSkipListMap<>(LEXICOGRAPHICALLY);
-
-    private SortedStringTable sortedStringTable;
+    private final Deque<SortedStringTable> sortedStringTables = new ConcurrentLinkedDeque<>();
     private final Path basePath;
 
-    public FilesBackedDao(Config config) {
-        basePath = config == null ? null : config.basePath();
-    }
-
-    /**
-     * Constructs FileBackedDao that behaves like in-memory DAO.
-     */
-    public FilesBackedDao() {
-        this(null);
+    public FilesBackedDao(Config config) throws IOException {
+        basePath = config.basePath();
+        Files
+                .list(basePath)
+                .filter(Files::isDirectory)
+                .sorted(Comparator.reverseOrder())
+                .forEachOrdered((Path subDirectory) -> {
+                    if (!Files.isDirectory(subDirectory)) {
+                        return;
+                    }
+                    sortedStringTables.add(SortedStringTable.of(subDirectory));
+                });
     }
 
     private static <K, V> Iterator<V> iterator(Map<K, V> map) {
         return map.values().iterator();
     }
 
-    private SortedStringTable sortedStringTable() {
-        if (sortedStringTable == null) {
-            sortedStringTable = SortedStringTable.of(basePath);
-        }
-        return sortedStringTable;
-    }
-
-    @Override
-    public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
+    private Iterator<MemorySegmentEntry> inMemoryGet(MemorySegment from, MemorySegment to) {
         if (from == null && to == null) {
             return iterator(map);
         }
@@ -64,34 +56,111 @@ public class FilesBackedDao implements Dao<MemorySegment, Entry<MemorySegment>> 
     }
 
     @Override
-    public void upsert(Entry<MemorySegment> entry) {
+    public Iterator<MemorySegmentEntry> get(MemorySegment from, MemorySegment to) throws IOException {
+        if (sortedStringTables.isEmpty()) {
+            // behaves like InMemoryDao if no files
+            return inMemoryGet(from, to);
+        }
+        List<Iterator<MemorySegmentEntry>> iterators = new ArrayList<>(1 + sortedStringTables.size());
+        iterators.add(inMemoryGet(from, to));
+        for (SortedStringTable table : sortedStringTables) {
+            iterators.add(table.get(from, to));
+        }
+        return new Iterator<>() {
+            private final Set<MemorySegment> keys = new TreeSet<>(LEXICOGRAPHICALLY);
+            private final PriorityQueue<IndexedEntry> entries = new PriorityQueue<>();
+
+            @Override
+            public boolean hasNext() {
+                if (!entries.isEmpty()) {
+                    return true;
+                }
+                if (iterators.isEmpty()) {
+                    return false;
+                }
+                ListIterator<Iterator<MemorySegmentEntry>> listIterator = iterators.listIterator();
+                while (listIterator.hasNext()) {
+                    int index = listIterator.nextIndex();
+                    Iterator<MemorySegmentEntry> iterator = listIterator.next();
+                    if (!iterator.hasNext()) {
+                        continue;
+                    }
+                    MemorySegmentEntry entry = iterator.next();
+                    if (keys.add(entry.key()) && entry.value() != null) {
+                        entries.offer(IndexedEntry.of(index, entry));
+                    }
+                }
+                return !entries.isEmpty();
+            }
+
+            @Override
+            public MemorySegmentEntry next() {
+                IndexedEntry indexedEntry = entries.poll();
+                Iterator<MemorySegmentEntry> iterator = iterators.get(indexedEntry.index);
+                if (iterator.hasNext()) {
+                    MemorySegmentEntry entry = iterator.next();
+                    if (keys.add(entry.key()) && entry.value() != null) {
+                        entries.offer(IndexedEntry.of(indexedEntry.index, entry));
+                    }
+                }
+                return indexedEntry.entry();
+            }
+        };
+    }
+
+    @Override
+    public void upsert(MemorySegmentEntry entry) {
         // implicit check for non-null entry and entry.key()
         map.put(entry.key(), entry);
     }
 
     @Override
-    public Entry<MemorySegment> get(MemorySegment key) throws IOException {
-        Entry<MemorySegment> result = map.get(key);
+    public MemorySegmentEntry get(MemorySegment key) throws IOException {
+        MemorySegmentEntry result = map.get(key);
         if (result != null) {
             return result;
         }
-        if (basePath == null) {
-            // behaves like InMemoryDao if used without config
-            return null;
+        for (SortedStringTable table : sortedStringTables) {
+            MemorySegmentEntry entry = table.get(key);
+            if (entry == null) {
+                continue;
+            }
+            if (entry.value() == null) {
+                return null;
+            }
+            return entry;
         }
-        return sortedStringTable().get(key);
+        return null;
     }
 
     @Override
-    public void flush() {
-        throw new UnsupportedOperationException();
+    public void flush() throws IOException {
+        // NOTE consider factor out format string parameter
+        String directoryName = String.format("%010d", sortedStringTables.size());
+        SortedStringTable.of(Files.createDirectory(basePath.resolve(directoryName)))
+                .write(map.values())
+                .close();
+        sortedStringTables.addFirst(SortedStringTable.of(basePath.resolve(directoryName)));
+        map.clear();
     }
 
     @Override
     public void close() throws IOException {
-        sortedStringTable()
-                .write(map.values())
-                .close();
-        map.clear();
+        flush();
+    }
+
+    private record IndexedEntry(int index, MemorySegmentEntry entry) implements Comparable<IndexedEntry> {
+        @Override
+        public int compareTo(IndexedEntry o) {
+            int compare = LEXICOGRAPHICALLY.compare(this.entry.key(), o.entry.key());
+            if (compare != 0) {
+                return compare;
+            }
+            return Integer.compare(index, o.index);
+        }
+
+        public static IndexedEntry of(int index, MemorySegmentEntry entry) {
+            return new IndexedEntry(index, entry);
+        }
     }
 }

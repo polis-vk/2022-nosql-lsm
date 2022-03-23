@@ -3,8 +3,6 @@ package ru.mail.polis.dmitrykondraev;
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Entry;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -14,12 +12,15 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Collection;
-import java.util.Comparator;
+import java.util.Collections;
+import java.util.Iterator;
+
+import static ru.mail.polis.dmitrykondraev.MemorySegmentComparator.LEXICOGRAPHICALLY;
 
 final class SortedStringTable implements Closeable {
     public static final String INDEX_FILENAME = "index";
     public static final String DATA_FILENAME = "data";
-    private static final Comparator<MemorySegment> LEXICOGRAPHICALLY = new MemorySegmentComparator();
+
 
     private final Path indexFile;
     private final Path dataFile;
@@ -45,13 +46,7 @@ final class SortedStringTable implements Closeable {
         );
     }
 
-    /**
-     * Write key-value pairs in format:
-     * ┌─────────────────────┬─────────────────────────┐
-     * │key: byte[keySize(i)]│value: byte[valueSize(i)]│ entriesMapped() times.
-     * └─────────────────────┴─────────────────────────┘
-     */
-    public SortedStringTable write(Collection<Entry<MemorySegment>> entries) throws IOException {
+    public SortedStringTable write(Collection<MemorySegmentEntry> entries) throws IOException {
         writeIndex(entries);
         dataSegment = MemorySegment.mapFile(
                 createFileIfNotExists(dataFile),
@@ -61,44 +56,59 @@ final class SortedStringTable implements Closeable {
                 scope
         );
         int i = 0;
-        for (Entry<MemorySegment> entry : entries) {
-            mappedKey(i).copyFrom(entry.key());
-            mappedValue(i).copyFrom(entry.value());
+        for (MemorySegmentEntry entry : entries) {
+            entry.copyTo(mappedEntrySegment(i));
             i++;
         }
         return this;
     }
 
     /**
-     * Performs binary search.
+     * left binary search
+     * @return first index such that key of entry with that index is greater or equal to key
+     */
+    private int binarySearch(int first, int last, MemorySegment key) {
+        int count = last - first;
+        while (count > 0) {
+            int step = count >>> 1;
+            int mid = first;
+            MemorySegment midVal = mappedEntry(mid).key();
+            if (LEXICOGRAPHICALLY.compare(midVal, key) < 0) {
+                first = mid + 1;
+                count -= step + 1;
+            } else {
+                count = step;
+            }
+        }
+        return first;
+    }
+
+    /**
      * @return null if either indexFile or dataFile does not exist,
-     *         null if key does not exist in table
+     * null if key does not exist in table
      * @throws IOException if other I/O error occurs
      */
-    public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
+    public MemorySegmentEntry get(MemorySegment key) throws IOException {
         if (indexSegment == null && dataSegment == null) {
-            try {
-                loadFromFiles();
-            } catch (NoSuchFileException ignored) {
-                return null;
-            }
+            loadFromFiles(); // throws NoSuchFileException
         }
-        int low = 0;
-        int high = entriesMapped() - 1;
+        int index = binarySearch(0, entriesMapped() - 1, key);
 
-        while (low <= high) {
-            int mid = (low + high) >>> 1;
-            MemorySegment midVal = mappedKey(mid);
-            int compare = LEXICOGRAPHICALLY.compare(midVal, key);
-            if (compare < 0) {
-                low = mid + 1;
-            } else if (compare > 0) {
-                high = mid - 1;
-            } else {
-                return new BaseEntry<>(midVal, mappedValue(mid)); // key found
-            }
+        return index == entriesMapped() ? null : mappedEntry(index);
+    }
+
+    public Iterator<MemorySegmentEntry> get(MemorySegment from, MemorySegment to) throws IOException {
+        if (indexSegment == null && dataSegment == null) {
+            loadFromFiles(); // throws NoSuchFileException
         }
-        return null; // key not found.
+        if (from == null) {
+            from = mappedEntry(0).key();
+        }
+        if (to != null && LEXICOGRAPHICALLY.compare(from, to) >= 0) {
+            return Collections.emptyIterator();
+        }
+        // TODO fix to
+        return new IteratorImpl(from, to);
     }
 
     @Override
@@ -128,20 +138,12 @@ final class SortedStringTable implements Closeable {
         );
     }
 
-    private long keyOffset(long i) {
-        return MemoryAccess.getLongAtOffset(indexSegment, Integer.BYTES + (i << 1) * Long.BYTES);
+    private long entryOffset(long i) {
+        return MemoryAccess.getLongAtOffset(indexSegment, Integer.BYTES + i * Long.BYTES);
     }
 
-    private long valueOffset(long i) {
-        return MemoryAccess.getLongAtOffset(indexSegment, Integer.BYTES + ((i << 1) | 1L) * Long.BYTES);
-    }
-
-    private long keySize(long i) {
-        return valueOffset(i) - keyOffset(i);
-    }
-
-    private long valueSize(long i) {
-        return keyOffset(i + 1) - valueOffset(i);
+    private long entrySize(long i) {
+        return entryOffset(i + 1) - entryOffset(i);
     }
 
     private int entriesMapped() {
@@ -149,31 +151,31 @@ final class SortedStringTable implements Closeable {
     }
 
     private long dataSize() {
-        return keyOffset(entriesMapped());
+        return entryOffset(entriesMapped());
     }
 
-    private MemorySegment mappedKey(long i) {
-        return dataSegment.asSlice(keyOffset(i), keySize(i));
+    private MemorySegment mappedEntrySegment(long i) {
+        return dataSegment.asSlice(entryOffset(i), entrySize(i));
     }
 
-    private MemorySegment mappedValue(long i) {
-        return dataSegment.asSlice(valueOffset(i), valueSize(i));
+    private MemorySegmentEntry mappedEntry(long i) {
+        return MemorySegmentEntry.of(mappedEntrySegment(i));
     }
 
     /**
      * write offsets in format:
-     * ┌─────────┬─────────────────────────┐
-     * │size: int│array: long[size * 2 + 1]│
-     * └─────────┴─────────────────────────┘
+     * ┌─────────┬─────────────────┐
+     * │size: int│array: long[size]│
+     * └─────────┴─────────────────┘
      * where size is number of entries and
-     * array represents offsets of keys and values in data file specified by methods
+     * array represents offsets of entries in data file specified by methods
      * keyOffset, valueOffset, keySize and valueSize.
      */
-    private void writeIndex(Collection<Entry<MemorySegment>> entries) throws IOException {
+    private void writeIndex(Collection<MemorySegmentEntry> entries) throws IOException {
         indexSegment = MemorySegment.mapFile(
                 createFileIfNotExists(indexFile),
                 0L,
-                Integer.BYTES + (entries.size() * 2L + 1) * Long.BYTES,
+                Integer.BYTES + (1L + entries.size()) * Long.BYTES,
                 FileChannel.MapMode.READ_WRITE,
                 scope
         );
@@ -182,10 +184,8 @@ final class SortedStringTable implements Closeable {
         long currentOffset = 0L;
         long index = 0L;
         MemoryAccess.setLongAtIndex(offsetsSegment, index++, currentOffset);
-        for (Entry<MemorySegment> entry : entries) {
-            currentOffset += entry.key().byteSize();
-            MemoryAccess.setLongAtIndex(offsetsSegment, index++, currentOffset);
-            currentOffset += entry.value().byteSize();
+        for (MemorySegmentEntry entry : entries) {
+            currentOffset += entry.bytesSize();
             MemoryAccess.setLongAtIndex(offsetsSegment, index++, currentOffset);
         }
         indexSegment = indexSegment.asReadOnly();
@@ -196,6 +196,53 @@ final class SortedStringTable implements Closeable {
             return Files.createFile(path);
         } catch (FileAlreadyExistsException ignored) {
             return path;
+        }
+    }
+
+    private final class IteratorImpl implements java.util.Iterator<MemorySegmentEntry> {
+        private final MemorySegment from;
+        private final MemorySegment to;
+
+        private int first = 0;
+        private int last = entriesMapped();
+        private boolean pivoted = false;
+
+        private IteratorImpl(MemorySegment from, MemorySegment to) {
+            this.from = from;
+            this.to = to;
+        }
+
+        @Override
+        public boolean hasNext() {
+            // TODO rewrite this!
+            if (pivoted) {
+                return first < last;
+            }
+            int count = last - first;
+            while (count > 0) {
+                int step = count >>> 1;
+                int mid = first;
+                MemorySegment midVal = mappedEntry(mid).key();
+                if (LEXICOGRAPHICALLY.compare(midVal, from) < 0) {
+                    first = mid + 1;
+                    count -= step + 1;
+                } else if (to != null && LEXICOGRAPHICALLY.compare(midVal, to) >= 0) {
+                    count -= step + 1;
+                } else {
+                    first = binarySearch(first, mid, from);
+                    if (to != null) {
+                        last = binarySearch(mid, first + count, to);
+                    }
+                    pivoted = true;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public MemorySegmentEntry next() {
+            return mappedEntry(first++);
         }
     }
 }
