@@ -117,30 +117,36 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
 
     private Entry<MemorySegment> checkLogsForKey(MemorySegment key) {
         for (int i = logs.size() - 1; i >= 0; i--) {
-            MemorySegment log = logs.get(i);
-            long offset = 0;
-
-            while (offset < log.byteSize()) {
-                long keySize = MemoryAccess.getLongAtOffset(log, offset);
-                offset += Long.BYTES;
-                long valueSize = MemoryAccess.getLongAtOffset(log, offset);
-                offset += Long.BYTES;
-
-                if (keySize != key.byteSize()) {
-                    offset += keySize;
-                    offset = valueSize == NULL_VALUE_SIZE ? offset : offset + valueSize;
-                    continue;
-                }
-
-                MemorySegment currentKey = log.asSlice(offset, keySize);
-                if (key.mismatch(currentKey) == -1) {
-                    return valueSize == NULL_VALUE_SIZE ? null :
-                            new BaseEntry<>(key, log.asSlice(offset + keySize, valueSize));
-                }
-                offset += keySize + valueSize;
+            Entry entry = checkLogForKey(logs.get(i), key);
+            if (entry != null) {
+                return entry.value() == null ? null : entry;
             }
         }
 
+        return null;
+    }
+
+    private Entry<MemorySegment> checkLogForKey(MemorySegment log, MemorySegment key) {
+        long offset = 0;
+        while (offset < log.byteSize()) {
+            long keySize = MemoryAccess.getLongAtOffset(log, offset);
+            offset += Long.BYTES;
+            long valueSize = MemoryAccess.getLongAtOffset(log, offset);
+            offset += Long.BYTES;
+
+            if (keySize != key.byteSize()) {
+                offset += keySize;
+                offset = valueSize == NULL_VALUE_SIZE ? offset : offset + valueSize;
+                continue;
+            }
+
+            MemorySegment currentKey = log.asSlice(offset, keySize);
+            if (key.mismatch(currentKey) == -1) {
+                return valueSize == NULL_VALUE_SIZE ? new BaseEntry<>(key, null)
+                        : new BaseEntry<>(key, log.asSlice(offset + keySize, valueSize));
+            }
+            offset += keySize + valueSize;
+        }
         return null;
     }
 
