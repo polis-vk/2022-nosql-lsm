@@ -18,7 +18,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable {
 
-    // Ключ - последний прочитанный элемент
     private final NavigableMap<String, BaseEntry<String>> tempData = new TreeMap<>();
     private final Map<String, Integer> tempDataPriorities = new HashMap<>();
     private final Map<String, List<FileInfo>> lastElementWithFilesMap = new HashMap<>();
