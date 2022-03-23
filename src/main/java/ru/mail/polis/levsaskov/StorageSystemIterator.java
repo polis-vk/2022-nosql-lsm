@@ -35,16 +35,16 @@ public class StorageSystemIterator implements Iterator<BaseEntry<ByteBuffer>> {
     }
 
     private BaseEntry<ByteBuffer> getNext() {
-        BaseEntry<ByteBuffer> next = null;
+        BaseEntry<ByteBuffer> potentialNext = null;
         while (binaryHeap.getSize() > 0) {
-            next = tryToGetNext();
+            potentialNext = tryToGetNext();
 
-            if (next != null) {
+            if (potentialNext != null) {
                 break;
             }
         }
 
-        return next;
+        return potentialNext;
     }
 
     private BaseEntry<ByteBuffer> tryToGetNext() {
