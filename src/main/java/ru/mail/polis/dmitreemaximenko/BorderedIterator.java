@@ -73,7 +73,8 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
 
         MemorySegment minKey = sources.get(0).element.key();
         Source minSource = sources.get(0);
-        for (Source source : sources) {
+        for (int i = 1; i < sources.size(); i++) {
+            Source source = sources.get(i);
             if (comparator.compare(source.element.key(), minKey) < 0) {
                 minKey = source.element.key();
                 minSource = source;
