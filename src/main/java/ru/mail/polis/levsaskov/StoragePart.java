@@ -4,10 +4,16 @@ import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.EnumSet;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 
@@ -26,7 +32,7 @@ public class StoragePart {
     }
 
     public BaseEntry<ByteBuffer> get(ByteBuffer key) {
-        //TODO: Исправить замечания, прилетевшие со stage 2
+        //TODO: Correction from stage 2
         int position = binarySearch(entrysC - 1, key);
         BaseEntry<ByteBuffer> res = readEntry(position);
         return res.key().equals(key) ? res : null;
@@ -34,7 +40,7 @@ public class StoragePart {
 
     //    public PeekIterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
     public NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        // TODO: Переделать, чтобы возвращал peekIterator
+        // TODO: return peekIterator
         NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> res = new TreeMap<>();
         int pos = binarySearch(entrysC - 1, from);
         BaseEntry<ByteBuffer> entry;
@@ -60,8 +66,15 @@ public class StoragePart {
         return res;
     }
 
+    public void close() {
+        unmap(indexBB);
+        indexBB = null;
+        unmap(memoryBB);
+        memoryBB = null;
+    }
+
     private int binarySearch(int inLast, ByteBuffer key) {
-        //TODO: Исправить замечания, прилетевшие со stage 2
+        //TODO: correction from stage 2
         if (key == null) {
             return 0;
         }
@@ -110,11 +123,23 @@ public class StoragePart {
     private static MappedByteBuffer mapFile(Path filePath) throws IOException {
         MappedByteBuffer mappedFile;
         try (
-                RandomAccessFile file = new RandomAccessFile(filePath.toFile(), "r");
-                FileChannel fileChannel = file.getChannel()
+                FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath, EnumSet.of(StandardOpenOption.READ))
         ) {
             mappedFile = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
         }
         return mappedFile;
+    }
+
+    private static void unmap(MappedByteBuffer buffer) {
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
+            unsafeField.setAccessible(true);
+            Object unsafe = unsafeField.get(null);
+            Method invokeCleaner = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
+            invokeCleaner.invoke(unsafe, buffer);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

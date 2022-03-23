@@ -67,8 +67,7 @@ public class StorageSystem {
     }
 
     public ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> getMergedEntrys(
-            ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> localEntrys, ByteBuffer from, ByteBuffer to)
-            throws IOException {
+            ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> localEntrys, ByteBuffer from, ByteBuffer to) {
         ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> res = new ConcurrentSkipListMap<>();
         lock.readLock().lock();
         try {
@@ -99,6 +98,12 @@ public class StorageSystem {
 
         addStoragePart(storagePartsC);
         storagePartsC++;
+    }
+
+    public void close() {
+        for (StoragePart storagePart : storageParts) {
+            storagePart.close();
+        }
     }
 
     private void addStoragePart(int partN) throws IOException {
@@ -142,7 +147,6 @@ public class StorageSystem {
                 persistEntry(entry, bufferToWrite);
                 memChannel.write(bufferToWrite);
                 bufferToWrite.clear();
-                // Возможно переполнение, нужно облагородить к следующему stage
                 entryStartPos += bytesC;
             }
         }

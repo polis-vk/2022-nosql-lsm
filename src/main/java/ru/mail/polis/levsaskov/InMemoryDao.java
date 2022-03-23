@@ -66,4 +66,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             storageSystem.save(entrys);
         }
     }
+
+    @Override
+    public void close() throws IOException {
+        flush();
+        storageSystem.close();
+    }
 }
