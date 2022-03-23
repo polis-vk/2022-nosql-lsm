@@ -58,8 +58,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             }
         }
     }
-
-
+    
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
         lock.readLock().lock();
