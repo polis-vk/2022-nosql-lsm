@@ -8,7 +8,9 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -67,24 +69,104 @@ public class StorageSystem implements AutoCloseable {
         return res;
     }
 
-    public ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> getMergedEntrys(
+    public Iterator<BaseEntry<ByteBuffer>> getMergedEntrys(
             ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> localEntrys, ByteBuffer from, ByteBuffer to) {
         ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> res = new ConcurrentSkipListMap<>();
-        lock.readLock().lock();
-        try {
-            for (int partN = 0; partN < storagePartsC; partN++) {
-                res.putAll(storageParts.get(partN).get(from, to));
+
+        List<PeekIterator> peekIterators = new ArrayList<>();
+        for (StoragePart storagePart : storageParts) {
+            peekIterators.add(storagePart.get(from, to));
+        }
+        peekIterators.add(new PeekIterator(localEntrys.values().iterator(), Integer.MAX_VALUE));
+
+        BinaryHeap binaryHeap = makeBinaryHeap(peekIterators);
+
+        return new StorageSystemIterator(binaryHeap);
+    }
+
+    private class StorageSystemIterator implements Iterator<BaseEntry<ByteBuffer>> {
+        private final BinaryHeap binaryHeap;
+        BaseEntry<ByteBuffer> next;
+
+        public StorageSystemIterator(BinaryHeap binaryHeap) {
+            this.binaryHeap = binaryHeap;
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (next == null) {
+                next = getNext();
             }
-        } finally {
-            lock.readLock().unlock();
+
+            return next != null;
         }
 
-        if (res.size() == 0) {
-            return localEntrys;
+        @Override
+        public BaseEntry<ByteBuffer> next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            BaseEntry<ByteBuffer> ans = next;
+            next = null;
+
+            return ans;
         }
 
-        res.putAll(localEntrys);
-        return res;
+        private BaseEntry<ByteBuffer> getNext() {
+            BaseEntry<ByteBuffer> next = null;
+            while (binaryHeap.getSize() > 0) {
+                next = tryToGetNext();
+
+                if (next != null) {
+                    break;
+                }
+            }
+
+            return next;
+        }
+
+        private BaseEntry<ByteBuffer> tryToGetNext() {
+            PeekIterator freshIterator = binaryHeap.popMin();
+            BaseEntry<ByteBuffer> freshNext = freshIterator.next();
+
+            while (binaryHeap.getSize() > 0 && freshNext.key().equals(binaryHeap.getMin().peek().key())) {
+                PeekIterator dublicateIt = binaryHeap.popMin();
+                BaseEntry<ByteBuffer> dublicateNext = dublicateIt.next();
+                if (dublicateIt.getStoragePartN() > freshIterator.getStoragePartN()) {
+                    PeekIterator temp = freshIterator;
+                    freshIterator = dublicateIt;
+                    dublicateIt = temp;
+
+                    freshNext = dublicateNext;
+                }
+
+                if (dublicateIt.peek() != null) {
+                    binaryHeap.add(dublicateIt);
+                }
+
+            }
+
+            if (freshIterator.peek() != null) {
+                binaryHeap.add(freshIterator);
+            }
+
+            if (freshNext.value() != null) {
+                return freshNext;
+            }
+
+            return null;
+        }
+    }
+
+    private static BinaryHeap makeBinaryHeap(List<PeekIterator> peekIterators) {
+        BinaryHeap binaryHeap = new BinaryHeap();
+        for (PeekIterator peekIterator : peekIterators) {
+            if (peekIterator.peek() != null) {
+                binaryHeap.add(peekIterator);
+            }
+        }
+
+        return binaryHeap;
     }
 
     public void save(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> entrys) throws IOException {
@@ -117,7 +199,7 @@ public class StorageSystem implements AutoCloseable {
 
     private void addStoragePart(int partN) throws IOException {
         StoragePart storagePart = new StoragePart();
-        storagePart.init(getMemFilePath(partN), getIndexFilePath(partN));
+        storagePart.init(getMemFilePath(partN), getIndexFilePath(partN), partN);
         storageParts.add(storagePart);
     }
 
@@ -186,8 +268,13 @@ public class StorageSystem implements AutoCloseable {
         bufferToWrite.putInt(entry.key().array().length);
         bufferToWrite.put(entry.key().array());
 
-        bufferToWrite.putInt(entry.value().array().length);
-        bufferToWrite.put(entry.value().array());
+        if (entry.value() != null) {
+            bufferToWrite.putInt(entry.value().array().length);
+            bufferToWrite.put(entry.value().array());
+        } else {
+            bufferToWrite.putInt(-1);
+        }
+
         bufferToWrite.flip();
     }
 
@@ -199,7 +286,7 @@ public class StorageSystem implements AutoCloseable {
      */
     private static int getPersEntryByteSize(BaseEntry<ByteBuffer> entry) {
         int keyLength = entry.key().array().length;
-        int valueLength = entry.value().array().length;
+        int valueLength = entry.value() == null ? 0 : entry.value().array().length;
 
         return 2 * BYTES_IN_INT + keyLength + valueLength;
     }

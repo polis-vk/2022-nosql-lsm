@@ -3,8 +3,6 @@ package ru.mail.polis.levsaskov;
 import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.io.UncheckedIOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -13,20 +11,19 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.EnumSet;
-import java.util.Iterator;
-import java.util.NavigableMap;
-import java.util.TreeMap;
+import java.util.*;
 
 public class StoragePart implements AutoCloseable {
     private static final int BYTES_IN_INT = 4;
     private static final int BYTES_IN_LONG = 8;
 
+    private int storagePartN;
     private MappedByteBuffer memoryBB;
     private MappedByteBuffer indexBB;
     private int entrysC;
 
-    public void init(Path memoryPath, Path indexPath) throws IOException {
+    public void init(Path memoryPath, Path indexPath, int storagePartN) throws IOException {
+        this.storagePartN = storagePartN;
         memoryBB = mapFile(memoryPath);
         indexBB = mapFile(indexPath);
         entrysC = indexBB.capacity() / BYTES_IN_LONG;
@@ -39,32 +36,8 @@ public class StoragePart implements AutoCloseable {
         return res.key().equals(key) ? res : null;
     }
 
-    //    public PeekIterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-    public NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        // TODO: return peekIterator
-        NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> res = new TreeMap<>();
-        int pos = binarySearch(entrysC - 1, from);
-        BaseEntry<ByteBuffer> entry;
-
-        // Граничные случаи
-        if (pos + 1 < entrysC && from != null
-                && readEntry(pos).key().compareTo(from) < 0) {
-            pos++;
-        }
-
-        if (from == null || readEntry(pos).key().compareTo(from) >= 0) {
-            while (pos < entrysC) {
-                entry = readEntry(pos);
-                if (to != null && entry.key().compareTo(to) >= 0) {
-                    break;
-                }
-
-                res.put(entry.key(), entry);
-                pos++;
-            }
-        }
-
-        return res;
+    public PeekIterator get(ByteBuffer from, ByteBuffer to) {
+        return new PeekIterator(new StoragePartIterator(from, to), storagePartN);
     }
 
     @Override
@@ -104,7 +77,7 @@ public class StoragePart implements AutoCloseable {
         byte[] key = readBytes(ind);
         ind += BYTES_IN_INT + key.length;
         byte[] value = readBytes(ind);
-        return new BaseEntry<>(ByteBuffer.wrap(key), ByteBuffer.wrap(value));
+        return new BaseEntry<>(ByteBuffer.wrap(key), value == null ? null : ByteBuffer.wrap(value));
     }
 
     /**
@@ -116,6 +89,10 @@ public class StoragePart implements AutoCloseable {
      */
     private byte[] readBytes(int ind) {
         int len = memoryBB.getInt(ind);
+        if (len == -1) {
+            return null;
+        }
+
         ind += BYTES_IN_INT;
         byte[] bytes = new byte[len];
         memoryBB.get(ind, bytes);
@@ -147,28 +124,45 @@ public class StoragePart implements AutoCloseable {
         }
     }
 
-    private class StorageIterator implements Iterator<BaseEntry<ByteBuffer>> {
-        private int current;
+    private class StoragePartIterator implements Iterator<BaseEntry<ByteBuffer>> {
+        private int nextPos;
+        private final ByteBuffer to;
+        private BaseEntry<ByteBuffer> next;
 
-        public StorageIterator(ByteBuffer from, ByteBuffer to) {
-            current = binarySearch(entrysC - 1, from);
-            BaseEntry<ByteBuffer> entry;
-
+        public StoragePartIterator(ByteBuffer from, ByteBuffer to) {
+            this.to = to;
+            nextPos = binarySearch(entrysC - 1, from);
             // Граничные случаи
-            if (current + 1 < entrysC && from != null
-                    && readEntry(current).key().compareTo(from) < 0) {
-                current++;
+            if (nextPos + 1 < entrysC && from != null
+                    && readEntry(nextPos).key().compareTo(from) < 0) {
+                nextPos++;
+            }
+
+            next = readEntry(nextPos);
+
+            if (from != null && next.key().compareTo(from) < 0) {
+                next = null;
             }
         }
 
         @Override
         public boolean hasNext() {
-            return false;
+            return next != null && nextPos < entrysC && (to == null || next.key().compareTo(to) < 0);
         }
 
         @Override
         public BaseEntry<ByteBuffer> next() {
-            return null;
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+
+            BaseEntry<ByteBuffer> current = next;
+            nextPos++;
+            if (nextPos < entrysC) {
+                next = readEntry(nextPos);
+            }
+            return current;
         }
     }
 }
+

@@ -29,12 +29,15 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> localEntry = entrys.get(key);
-        if (storageSystem != null && localEntry == null) {
-            return storageSystem.findEntry(key);
+        BaseEntry<ByteBuffer> ans = entrys.get(key);
+        if (storageSystem != null && ans == null) {
+            ans = storageSystem.findEntry(key);
+        }
+        if(ans == null || ans.value() == null) {
+            return null;
         }
 
-        return localEntry;
+        return ans;
     }
 
     @Override
@@ -52,7 +55,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
 
         return storageSystem == null ? local.values().iterator() :
-                storageSystem.getMergedEntrys(local, from, to).values().iterator();
+                storageSystem.getMergedEntrys(local, from, to);
     }
 
     @Override
