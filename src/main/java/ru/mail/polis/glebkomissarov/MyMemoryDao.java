@@ -50,8 +50,8 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         lock.readLock().lock();
         try {
             BaseEntry<MemorySegment> result = data.get(key);
-            FileWorker reader = new FileWorker();
             if (result == null) {
+                FileWorker reader = new FileWorker();
                 result = reader.findEntry(key, basePath);
             }
 
@@ -66,11 +66,11 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
-        lock.readLock().lock();
+        lock.writeLock().lock();
         try {
             data.put(entry.key(), entry);
         } finally {
-            lock.readLock().unlock();
+            lock.writeLock().unlock();
         }
     }
 
