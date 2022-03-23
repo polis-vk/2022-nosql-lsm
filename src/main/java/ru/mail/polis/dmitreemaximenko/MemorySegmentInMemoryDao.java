@@ -47,9 +47,9 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                 fromValue = VERY_FIRST_KEY;
             }
             if (to == null) {
-                return new BorderedIterator(fromValue, null, data.tailMap(from).values().iterator(), readPages);
+                return new BorderedIterator(fromValue, null, data.tailMap(fromValue).values().iterator(), readPages);
             }
-            return new BorderedIterator(fromValue, to, data.subMap(from, to).values().iterator(), readPages);
+            return new BorderedIterator(fromValue, to, data.subMap(fromValue, to).values().iterator(), readPages);
         } finally {
             lock.readLock().unlock();
         }
@@ -107,10 +107,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
         try {
             Entry<MemorySegment> entry = data.get(key);
             if (entry != null) {
-                if (entry.value() == null) {
-                    return null;
-                }
-                return entry;
+                return entry.value() == null ? null : entry;
             }
 
             for (int i = readPages.size() - 1; i >= 0; i--) {
