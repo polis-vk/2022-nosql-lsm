@@ -101,7 +101,7 @@ public class DBReader implements AutoCloseable {
         public boolean hasNext() {
             if (current == null) {
                 try {
-                    current = next();
+                    current = peek();
                 } catch (IndexOutOfBoundsException e) {
                     return false;
                 }
