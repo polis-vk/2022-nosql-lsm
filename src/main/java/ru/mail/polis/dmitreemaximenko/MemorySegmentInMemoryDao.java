@@ -154,7 +154,12 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
 
     @Override
     public void upsert(Entry<MemorySegment> entry) {
-        data.put(entry.key(), entry);
+        lock.readLock().lock();
+        try {
+            data.put(entry.key(), entry);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     static class NaturalOrderComparator implements Comparator<MemorySegment> {
