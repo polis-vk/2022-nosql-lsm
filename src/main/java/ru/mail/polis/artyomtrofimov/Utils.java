@@ -9,6 +9,10 @@ import java.io.RandomAccessFile;
 import java.nio.file.Path;
 
 public class Utils {
+
+    private Utils() {
+    }
+
     public static Entry<String> findCeilEntry(RandomAccessFile raf, String key, Path indexPath) throws IOException {
         Entry<String> nextEntry = null;
         try (RandomAccessFile index = new RandomAccessFile(indexPath.toString(), "r")) {

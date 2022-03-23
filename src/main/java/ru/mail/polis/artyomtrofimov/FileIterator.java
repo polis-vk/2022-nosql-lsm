@@ -12,17 +12,12 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 public class FileIterator implements Iterator<Entry<String>> {
-    private final Path basePath;
-    private final String from;
     private final String to;
     private RandomAccessFile raf;
-    private long lastPos;
     private Entry<String> nextEntry;
 
     public FileIterator(Path basePath, String name, String from, String to) throws IOException {
-        this.from = from;
         this.to = to;
-        this.basePath = basePath;
         try {
             raf = new RandomAccessFile(basePath.resolve(name + InMemoryDao.DATA_EXT).toString(), "r");
             nextEntry = Utils.findCeilEntry(raf, from, basePath.resolve(name + InMemoryDao.INDEX_EXT));
