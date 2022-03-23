@@ -32,10 +32,12 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             sources.add(new Source(iterator, iterator.next()));
         }
 
-        for (int i = logs.size() - 1; i >= 0; i--) {
-            Iterator<Entry<MemorySegment>> fileIterator = new FileEntryIterator(from, last, logs.get(i));
-            if (fileIterator.hasNext()) {
-                sources.add(new Source(fileIterator, fileIterator.next()));
+        if (logs != null) {
+            for (int i = logs.size() - 1; i >= 0; i--) {
+                Iterator<Entry<MemorySegment>> fileIterator = new FileEntryIterator(from, last, logs.get(i));
+                if (fileIterator.hasNext()) {
+                    sources.add(new Source(fileIterator, fileIterator.next()));
+                }
             }
         }
 

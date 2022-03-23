@@ -38,6 +38,28 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
         this(null);
     }
 
+    public MemorySegmentInMemoryDao(Config config) throws IOException {
+        this.config = config;
+        if (config == null) {
+            logs = null;
+        } else {
+            List<Path> logPaths = getLogPaths();
+            logs = new ArrayList<>(logPaths.size());
+
+            for (Path logPath : logPaths) {
+                MemorySegment log;
+                try {
+                    long size = Files.size(logPath);
+                    log = MemorySegment.mapFile(logPath, 0, size, FileChannel.MapMode.READ_ONLY, scope);
+                } catch (NoSuchFileException e) {
+                    log = null;
+                }
+                logs.add(log);
+            }
+        }
+    }
+
+
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
         lock.readLock().lock();
@@ -52,23 +74,6 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             return new BorderedIterator(fromValue, to, data.subMap(fromValue, to).values().iterator(), logs);
         } finally {
             lock.readLock().unlock();
-        }
-    }
-
-    public MemorySegmentInMemoryDao(Config config) throws IOException {
-        this.config = config;
-        List<Path> logPaths = getLogPaths();
-        logs = new ArrayList<>(logPaths.size());
-
-        for (Path logPath : logPaths) {
-            MemorySegment log;
-            try {
-                long size = Files.size(logPath);
-                log = MemorySegment.mapFile(logPath, 0, size, FileChannel.MapMode.READ_ONLY, scope);
-            } catch (NoSuchFileException e) {
-                log = null;
-            }
-            logs.add(log);
         }
     }
 
@@ -117,6 +122,9 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
     }
 
     private Entry<MemorySegment> checkLogsForKey(MemorySegment key) {
+        if (logs == null) {
+            return null;
+        }
         for (int i = logs.size() - 1; i >= 0; i--) {
             Entry entry = checkLogForKey(logs.get(i), key);
             if (entry != null) {
@@ -197,7 +205,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                 } else {
                     MemoryAccess.setLongAtOffset(log, offset, value.value().byteSize());
                 }
-                
+
                 offset += Long.BYTES;
 
                 log.asSlice(offset).copyFrom(value.key());
