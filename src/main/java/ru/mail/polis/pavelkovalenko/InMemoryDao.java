@@ -5,8 +5,11 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.DirectoryStream;
+import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -22,14 +25,21 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final ReadWriteLock rwlock = new ReentrantReadWriteLock();
-    private static final NavigableMap<Integer, Entry<Path>> pathsToPairedFiles = new TreeMap<>();
+    private final NavigableMap<Integer, Entry<Path>> pathsToPairedFiles = new TreeMap<>();
     private final Reader reader;
     private final Writer writer;
     private final Config config;
 
     public InMemoryDao(Config config) throws IOException {
         this.config = config;
-        addPairedFiles();
+        String[] files = new File(config.basePath().toString()).list();
+        if (files != null && files.length != 0) {
+            for (int i = 0; i < files.length / 2; ++i) {
+                addPairedFiles();
+            }
+        } else {
+            addPairedFiles();
+        }
 
         reader = new Reader(data, pathsToPairedFiles);
         writer = new Writer(data, pathsToPairedFiles);
@@ -80,19 +90,26 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         Path pathToDataFile = addDataFile();
         Path pathToIndexesFile = addIndexFile();
         BaseEntry<Path> pathToPairedFiles = new BaseEntry<>(pathToDataFile, pathToIndexesFile);
-        pathsToPairedFiles.put(pathsToPairedFiles.size(), pathToPairedFiles);
+        pathsToPairedFiles.put(pathsToPairedFiles.size() + 1, pathToPairedFiles);
     }
 
     private Path addDataFile() throws IOException {
-        Path newDataFile = config.basePath().resolve("data" + pathsToPairedFiles.size() + ".txt");
-        Files.createFile(newDataFile);
+        Path newDataFile = config.basePath().resolve(Utils.DATA_FILENAME + (pathsToPairedFiles.size() + 1) + Utils.FILE_EXTENSION);
+        createFile(newDataFile);
         return newDataFile;
     }
 
     private Path addIndexFile() throws IOException {
-        Path newIndexesFile = config.basePath().resolve("indexes" + pathsToPairedFiles.size() + ".txt");
-        Files.createFile(newIndexesFile);
+        Path newIndexesFile = config.basePath().resolve(Utils.INDEXES_FILENAME + (pathsToPairedFiles.size() + 1) + Utils.FILE_EXTENSION);
+        createFile(newIndexesFile);
         return newIndexesFile;
     }
+
+    private void createFile(Path filename) throws IOException {
+        if (!Files.exists(filename)) {
+            Files.createFile(filename);
+        }
+    }
+
 
 }

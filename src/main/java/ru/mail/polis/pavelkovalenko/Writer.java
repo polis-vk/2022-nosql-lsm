@@ -69,15 +69,20 @@ public class Writer {
      * └────────────────────────────────────┴─────────────────────────────────────────────┘
      */
     private int writePair(Entry<ByteBuffer> entry, RandomAccessFile dataFile) throws IOException {
-        int bbSize = Integer.BYTES + entry.key().remaining()
-                + Integer.BYTES + entry.value().remaining()
-                + Character.BYTES;
+        int bbSize = 1 + Integer.BYTES + entry.key().remaining();
+        if (!Utils.isTombstone(entry)) {
+            bbSize += Integer.BYTES + entry.value().remaining();
+        }
+        bbSize += Character.BYTES;
         ByteBuffer pair = ByteBuffer.allocate(bbSize);
 
+        pair.put(Utils.isTombstone(entry) ? Utils.TOMBSTONE_VALUE : Utils.NORMAL_VALUE);
         pair.putInt(entry.key().remaining());
         pair.put(entry.key());
-        pair.putInt(entry.value().remaining());
-        pair.put(entry.value());
+        if (!Utils.isTombstone(entry)) {
+            pair.putInt(entry.value().remaining());
+            pair.put(entry.value());
+        }
         pair.putChar(Utils.LINE_SEPARATOR);
         pair.rewind();
         dataFile.getChannel().write(pair);
