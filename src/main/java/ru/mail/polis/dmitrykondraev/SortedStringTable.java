@@ -65,19 +65,17 @@ final class SortedStringTable implements Closeable {
 
     /**
      * left binary search
+     * @param first inclusive
+     * @param last exclusive
      * @return first index such that key of entry with that index is greater or equal to key
      */
     private int binarySearch(int first, int last, MemorySegment key) {
-        int count = last - first;
-        while (count > 0) {
-            int step = count >>> 1;
-            int mid = first;
-            MemorySegment midVal = mappedEntry(mid).key();
-            if (LEXICOGRAPHICALLY.compare(midVal, key) < 0) {
+        while (first < last) {
+            int mid = first + (last - first) / 2;
+            if (LEXICOGRAPHICALLY.compare(mappedEntry(mid).key(), key) < 0) {
                 first = mid + 1;
-                count -= step + 1;
             } else {
-                count = step;
+                last = mid;
             }
         }
         return first;
@@ -92,7 +90,7 @@ final class SortedStringTable implements Closeable {
         if (indexSegment == null && dataSegment == null) {
             loadFromFiles(); // throws NoSuchFileException
         }
-        int index = binarySearch(0, entriesMapped() - 1, key);
+        int index = binarySearch(0, entriesMapped(), key);
 
         return index == entriesMapped() ? null : mappedEntry(index);
     }
@@ -214,30 +212,19 @@ final class SortedStringTable implements Closeable {
 
         @Override
         public boolean hasNext() {
-            // TODO rewrite this!
             if (pivoted) {
                 return first < last;
             }
-            int count = last - first;
-            while (count > 0) {
-                int step = count >>> 1;
-                int mid = first;
-                MemorySegment midVal = mappedEntry(mid).key();
-                if (LEXICOGRAPHICALLY.compare(midVal, from) < 0) {
-                    first = mid + 1;
-                    count -= step + 1;
-                } else if (to != null && LEXICOGRAPHICALLY.compare(midVal, to) >= 0) {
-                    count -= step + 1;
-                } else {
-                    first = binarySearch(first, mid, from);
-                    if (to != null) {
-                        last = binarySearch(mid, first + count, to);
-                    }
-                    pivoted = true;
-                    return true;
-                }
+            first = binarySearch(first, last, from);
+            if (first >= last) {
+                pivoted = true;
+                return false;
             }
-            return false;
+            if (to != null) {
+                last = binarySearch(first, last, to);
+            }
+            pivoted = true;
+            return first < last;
         }
 
         @Override

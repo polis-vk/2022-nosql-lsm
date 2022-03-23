@@ -82,12 +82,12 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
                 while (listIterator.hasNext()) {
                     int index = listIterator.nextIndex();
                     Iterator<MemorySegmentEntry> iterator = listIterator.next();
-                    if (!iterator.hasNext()) {
-                        continue;
-                    }
-                    MemorySegmentEntry entry = iterator.next();
-                    if (keys.add(entry.key()) && entry.value() != null) {
-                        entries.offer(IndexedEntry.of(index, entry));
+                    while (iterator.hasNext()) {
+                        MemorySegmentEntry entry = iterator.next();
+                        if (keys.add(entry.key()) && entry.value() != null) {
+                            entries.offer(new IndexedEntry(index, entry));
+                            break;
+                        }
                     }
                 }
                 return !entries.isEmpty();
@@ -100,7 +100,7 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
                 if (iterator.hasNext()) {
                     MemorySegmentEntry entry = iterator.next();
                     if (keys.add(entry.key()) && entry.value() != null) {
-                        entries.offer(IndexedEntry.of(indexedEntry.index, entry));
+                        entries.offer(new IndexedEntry(indexedEntry.index, entry));
                     }
                 }
                 return indexedEntry.entry();
@@ -157,10 +157,6 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
                 return compare;
             }
             return Integer.compare(index, o.index);
-        }
-
-        public static IndexedEntry of(int index, MemorySegmentEntry entry) {
-            return new IndexedEntry(index, entry);
         }
     }
 }
