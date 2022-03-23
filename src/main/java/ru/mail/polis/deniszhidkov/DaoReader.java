@@ -40,7 +40,6 @@ public class DaoReader {
         try (RandomAccessFile reader = new RandomAccessFile(pathToDataFile.toString(), "r")) {
             int start = 0;
             int finish = offsets.length;
-            BaseEntry<String> result = null;
             while (start <= finish) {
                 int middle = start + (finish - start) / 2;
                 if (middle >= offsets.length) {
@@ -53,37 +52,34 @@ public class DaoReader {
                     start = middle + 1;
                 } else if (comparison == 0) {
                     boolean hasValue = reader.readBoolean();
-                    result = !hasValue
+                    return !hasValue
                             ? new BaseEntry<>(currentKey, null)
                             : new BaseEntry<>(currentKey, reader.readUTF());
-                    break;
                 } else {
                     finish = middle - 1;
                 }
             }
-            return result;
+            return null;
         }
     }
 
     public BaseEntry<String> readNextEntry() throws IOException {
         try (RandomAccessFile reader = new RandomAccessFile(pathToDataFile.toString(), "r")) {
-            BaseEntry<String> result;
             if (startReadIndex < offsets.length && startReadIndex != -1) {
                 reader.seek(offsets[startReadIndex]);
+                startReadIndex += 1;
                 String currentKey = reader.readUTF();
                 if (endReadFactor != null && currentKey.compareTo(endReadFactor) >= 0) {
-                    result = null;
+                    return null;
                 } else {
                     boolean hasValue = reader.readBoolean();
-                    result = !hasValue
+                    return !hasValue
                             ? new BaseEntry<>(currentKey, null)
                             : new BaseEntry<>(currentKey, reader.readUTF());
                 }
-                startReadIndex += 1;
             } else {
-                result = null;
+                return null;
             }
-            return result;
         }
     }
 

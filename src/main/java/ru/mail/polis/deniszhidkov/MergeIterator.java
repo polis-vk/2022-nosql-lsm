@@ -56,18 +56,17 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
             }
             for (int i = 0; i < iteratorsQueue.size(); i++) {
                 nextIterator = iteratorsQueue.peek();
-                if (!nextIterator.equals(startIterator)) {
-                    iteratorsQueue.poll();
-                    iteratorsQueue.add(nextIterator);
-                } else {
+                if (nextIterator.equals(startIterator)) {
                     break;
                 }
+                iteratorsQueue.poll();
+                iteratorsQueue.add(nextIterator);
             }
             if (result == null || result.value() == null) {
                 result = getNextEntry();
             }
         } else {
-            result = null;
+            return null;
         }
         return result == null || result.value() == null ? null : result;
     }
