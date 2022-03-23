@@ -11,12 +11,13 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+
+import static java.nio.file.StandardOpenOption.READ;
 
 public class MapsDeserializeStream {
 
@@ -34,9 +35,8 @@ public class MapsDeserializeStream {
             Path mapPath = config.basePath().resolve("myLog" + (dataCount - i - 1));
             Path indexesPath = config.basePath().resolve("indexes" + (dataCount - i - 1));
 
-            FileChannel mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(StandardOpenOption.READ));
-            FileChannel indexesChannel = (FileChannel)
-                    Files.newByteChannel(indexesPath, Set.of(StandardOpenOption.READ));
+            FileChannel mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(READ));
+            FileChannel indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(READ));
 
             mapData[i] = mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size());
             indexesData[i] = indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size());
