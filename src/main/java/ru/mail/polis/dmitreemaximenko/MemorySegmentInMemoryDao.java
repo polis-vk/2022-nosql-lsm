@@ -67,10 +67,11 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             if (from == null) {
                 fromValue = VERY_FIRST_KEY;
             }
+            
             if (to == null) {
                 return new BorderedIterator(fromValue, null, data.tailMap(fromValue).values().iterator(), logs);
             }
-            
+
             return new BorderedIterator(fromValue, to, data.subMap(fromValue, to).values().iterator(), logs);
         } finally {
             lock.readLock().unlock();
