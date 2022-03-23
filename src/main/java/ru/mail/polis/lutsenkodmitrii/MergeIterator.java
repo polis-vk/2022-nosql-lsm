@@ -127,6 +127,13 @@ public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable
         }
     }
 
-    private record FileInfo(int fileNumber, BufferedReader bufferedReader) {
+    private static final class FileInfo {
+        private final int fileNumber;
+        private final BufferedReader bufferedReader;
+
+        private FileInfo(int fileNumber, BufferedReader bufferedReader) {
+            this.fileNumber = fileNumber;
+            this.bufferedReader = bufferedReader;
+        }
     }
 }
