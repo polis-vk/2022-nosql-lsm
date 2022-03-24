@@ -99,14 +99,14 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
                 if (entries.isEmpty() || iterators.isEmpty()) {
                     return false;
                 }
-                //IndexedEntry next = entries.peek();
-//                if (addFrom(next.index)) {
-//                    return true;
-//                }
+                IndexedEntry next = entries.peek();
+                if (addFrom(next.index)) {
+                    return true;
+                }
                 for (int i = 0; i < iterators.size(); i++) {
-//                    if (i == next.index) {
-//                        continue;
-//                    }
+                    if (i == next.index) {
+                        continue;
+                    }
                     if (addFrom(i)) {
                         break;
                     }
