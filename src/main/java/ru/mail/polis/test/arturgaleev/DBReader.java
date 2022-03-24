@@ -40,10 +40,6 @@ public class DBReader implements AutoCloseable {
                             throw new UncheckedIOException(e);
                         }
                     }).toList();
-            int i = 0;
-            for (FileDBReader reader : fileDBReaderList) {
-                reader.setFileID(i++);
-            }
         }
         return fileDBReaderList;
     }

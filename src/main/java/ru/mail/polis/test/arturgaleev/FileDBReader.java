@@ -22,6 +22,8 @@ public class FileDBReader implements AutoCloseable {
     private final MappedByteBuffer pageLinks;
 
     public FileDBReader(Path path) throws IOException {
+        String fileName = path.getFileName().toString();
+        fileID = Integer.parseInt(fileName.substring(0, fileName.length() - 4));
         reader = new RandomAccessFile(path.toFile(), "r");
         channel = reader.getChannel();
         page = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
