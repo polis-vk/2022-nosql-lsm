@@ -32,10 +32,8 @@ public class Writer {
             pathToIndexesFile = entry.value().toString();
         }
 
-        try (RandomAccessFile dataFile = new RandomAccessFile(pathToDataFile,
-                "rw");
-             RandomAccessFile indexesFile = new RandomAccessFile(pathToIndexesFile,
-                     "rw")) {
+        try (RandomAccessFile dataFile = new RandomAccessFile(pathToDataFile, "rw");
+             RandomAccessFile indexesFile = new RandomAccessFile(pathToIndexesFile, "rw")) {
             int curOffset = 0;
             int bbSize = 0;
             ByteBuffer offset = ByteBuffer.allocate(Utils.OFFSET_VALUES_DISTANCE);
@@ -63,9 +61,9 @@ public class Writer {
 
     /*
      * Write key-value pairs in format:
-     * ┌────────────────────────┬────────────────────────────────────┬────────────────────────────────────────┬────┐
-     * │ isTombstone: byte(1|0) │ key: byte[entry.key().remaining()] │ value: byte[entry.value().remaining()] │ \n │
-     * └────────────────────────┴────────────────────────────────────┴────────────────────────────────────────┴────┘
+     * ┌───────────────────┬────────────────────────────────────┬────────────────────────────────────────┬────┐
+     * │ isTombstone: byte │ key: byte[entry.key().remaining()] │ value: byte[entry.value().remaining()] │ \n │
+     * └───────────────────┴────────────────────────────────────┴────────────────────────────────────────┴────┘
      */
     private int writePair(Entry<ByteBuffer> entry, RandomAccessFile dataFile) throws IOException {
         int bbSize = 1 + Integer.BYTES + entry.key().remaining();
@@ -75,7 +73,7 @@ public class Writer {
         bbSize += Character.BYTES;
         ByteBuffer pair = ByteBuffer.allocate(bbSize);
 
-        pair.put(Utils.isTombstone(entry) ? Utils.TOMBSTONE_VALUE : Utils.NORMAL_VALUE);
+        pair.put(Utils.getTombstoneValue(entry));
         pair.putInt(entry.key().remaining());
         pair.put(entry.key());
         if (!Utils.isTombstone(entry)) {

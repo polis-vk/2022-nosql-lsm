@@ -90,9 +90,9 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
     private Entry<ByteBuffer> readEntry() throws IOException {
         int dataFileOffset = readDataFileOffset();
         dataFile.seek(dataFileOffset);
-        boolean isTombstone = (readByte(dataFile) == Utils.TOMBSTONE_VALUE);
+        byte tombstone = readByte(dataFile);
         ByteBuffer key = readByteBuffer(dataFile);
-        ByteBuffer value = isTombstone ? null : readByteBuffer(dataFile);
+        ByteBuffer value = Utils.isTombstone(tombstone) ? null : readByteBuffer(dataFile);
         Entry<ByteBuffer> entry = new BaseEntry<>(key, value);
         dataFile.readLine();
         return entry;

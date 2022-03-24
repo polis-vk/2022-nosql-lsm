@@ -17,8 +17,8 @@ public final class Utils {
     public static final String INDEXES_FILENAME = "indexes";
     public static final String FILE_EXTENSION = ".txt";
     public static final EntryComparator entryComparator = new EntryComparator();
-    public static final Byte NORMAL_VALUE = 0;
-    public static final Byte TOMBSTONE_VALUE = 1;
+    public static final Byte NORMAL_VALUE = 1;
+    public static final Byte TOMBSTONE_VALUE = -1;
     public static final Timer t = new Timer();
 
     private Utils() {
@@ -37,6 +37,14 @@ public final class Utils {
 
     public static boolean isTombstone(Entry<ByteBuffer> entry) {
         return entry != null && entry.value() == null;
+    }
+
+    public static boolean isTombstone(byte b) {
+        return b == TOMBSTONE_VALUE;
+    }
+
+    public static byte getTombstoneValue(Entry<ByteBuffer> entry) {
+        return isTombstone(entry) ? Utils.TOMBSTONE_VALUE : Utils.NORMAL_VALUE;
     }
 
     public static class Timer {

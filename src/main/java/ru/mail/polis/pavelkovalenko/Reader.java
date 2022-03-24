@@ -22,13 +22,16 @@ public class Reader {
         this.pathsToPairedFiles = pathsToPairedFiles.descendingMap();
     }
 
-    public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to, List<ByteBuffer> tombstones) throws IOException {
-        return new MergeIterator(from, to, data, pathsToPairedFiles, tombstones);
+    public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
+        return new MergeIterator(from, to, data, pathsToPairedFiles);
     }
 
     public Entry<ByteBuffer> get(ByteBuffer key) throws IOException {
         Entry<ByteBuffer> result = findKeyInStorage(key);
-        return result == null ? findKeyInFile(key) : result;
+        if (result == null) {
+            result = findKeyInFile(key);
+        }
+        return Utils.isTombstone(result) ? null : result;
     }
 
     private Entry<ByteBuffer> findKeyInStorage(ByteBuffer key) {
@@ -45,9 +48,9 @@ public class Reader {
                     continue;
                 }
                 result = fileIterator.next();
-                if (Utils.isTombstone(result)) {
+                /*if (Utils.isTombstone(result)) {
                     return null;
-                }
+                }*/
                 if (result != null && result.key().equals(key)) {
                     return result;
                 }
