@@ -19,7 +19,8 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
     private final Entry<ByteBuffer> toEntry;
     private Entry<ByteBuffer> lastEntry = Utils.EMPTY_ENTRY;
 
-    public FileIterator(Path pathToDataFile, Path pathToIndexesFile, ByteBuffer from, ByteBuffer to) throws IOException {
+    public FileIterator(Path pathToDataFile, Path pathToIndexesFile, ByteBuffer from, ByteBuffer to)
+            throws IOException {
         this.dataFile = new RandomAccessFile(pathToDataFile.toString(), "r");
         this.indexesFile = new RandomAccessFile(pathToIndexesFile.toString(), "r");
         this.from = from;
@@ -99,7 +100,10 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
     }
 
     private Entry<ByteBuffer> binarySearchInFile() throws IOException {
-        if (isGettingAllHeadData() || !hasNext()) {
+        if (isGettingAllHeadData()) {
+            return null;
+        }
+        if (!hasNext()) {
             return null;
         }
 

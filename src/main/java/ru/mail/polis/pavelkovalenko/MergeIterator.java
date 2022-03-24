@@ -4,9 +4,9 @@ import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 
@@ -17,19 +17,19 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     public MergeIterator(ByteBuffer from, ByteBuffer to, ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data,
                          NavigableMap<Integer, Entry<Path>> pathsToPairedFiles) throws IOException {
-        ByteBuffer _from = from;
+        ByteBuffer from1 = from;
         if (from == null) {
-            _from = Utils.EMPTY_BYTEBUFFER;
+            from1 = Utils.EMPTY_BYTEBUFFER;
         }
 
         if (to == null) {
-            iterators.add(new PeekIterator(data.tailMap(_from).values().iterator()));
+            iterators.add(new PeekIterator(data.tailMap(from1).values().iterator()));
         } else {
-            iterators.add(new PeekIterator(data.subMap(_from, to).values().iterator()));
+            iterators.add(new PeekIterator(data.subMap(from1, to).values().iterator()));
         }
 
         for (Entry<Path> entry: pathsToPairedFiles.values()) {
-            iterators.add(new PeekIterator(new FileIterator(entry.key(), entry.value(), _from, to)));
+            iterators.add(new PeekIterator(new FileIterator(entry.key(), entry.value(), from1, to)));
         }
     }
 
@@ -83,15 +83,6 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
                 lastEntries.add(curIterator.peek());
             }
         }
-        /*for (PeekIterator iterator: iterators) {
-            Entry<ByteBuffer> entry = iterator.peek();
-            while (iterator.hasNext() && Utils.isTombstone(entry)) {
-                fallEntry(entry);
-            }
-            if (iterator.hasNext()) {
-                lastEntries.add(iterator.peek());
-            }
-        }*/
     }
 
     private Entry<ByteBuffer> findMin() {
