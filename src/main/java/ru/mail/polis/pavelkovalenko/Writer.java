@@ -49,9 +49,9 @@ public class Writer {
 
     /*
      * Write offsets in format:
-     * ┌──────────────┐
+     * ┌─────────┬────┐
      * │ integer │ \n │
-     * └──────────────┘
+     * └─────────┴────┘
      */
     private void writeOffset(int offset, ByteBuffer bbOffset, RandomAccessFile indexesFile) throws IOException {
         bbOffset.putInt(offset);
@@ -63,9 +63,9 @@ public class Writer {
 
     /*
      * Write key-value pairs in format:
-     * ┌────────────────────────────────────┬─────────────────────────────────────────────┐
-     * │ key: byte[entry.key().remaining()] │ value: byte[entry.value().remaining()] │ \n │
-     * └────────────────────────────────────┴─────────────────────────────────────────────┘
+     * ┌────────────────────────┬────────────────────────────────────┬────────────────────────────────────────┬────┐
+     * │ isTombstone: byte(1|0) │ key: byte[entry.key().remaining()] │ value: byte[entry.value().remaining()] │ \n │
+     * └────────────────────────┴────────────────────────────────────┴────────────────────────────────────────┴────┘
      */
     private int writePair(Entry<ByteBuffer> entry, RandomAccessFile dataFile) throws IOException {
         int bbSize = 1 + Integer.BYTES + entry.key().remaining();

@@ -9,13 +9,13 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
@@ -24,9 +24,11 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     private final Reader reader;
     private final Writer writer;
     private final Config config;
+    private static final List<ByteBuffer> tombstones = new ArrayList<>();
 
     public InMemoryDao(Config config) throws IOException {
         this.config = config;
+
         String[] files = new File(config.basePath().toString()).list();
         if (files == null || files.length == 0) {
             addPairedFiles();
@@ -42,7 +44,7 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        return reader.get(from, to);
+        return reader.get(from, to, tombstones);
     }
 
     @Override
@@ -53,6 +55,11 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     @Override
     public void upsert(Entry<ByteBuffer> entry) {
         data.put(entry.key(), entry);
+        if (Utils.isTombstone(entry)) {
+            tombstones.add(entry.key());
+        } else {
+            tombstones.remove(entry.key());
+        }
     }
 
     @Override

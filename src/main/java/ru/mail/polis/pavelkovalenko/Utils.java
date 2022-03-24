@@ -4,6 +4,7 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 import java.nio.ByteBuffer;
 import java.util.Comparator;
+import java.time.Clock;
 
 public final class Utils {
 
@@ -18,6 +19,7 @@ public final class Utils {
     public static final EntryComparator entryComparator = new EntryComparator();
     public static final Byte NORMAL_VALUE = 0;
     public static final Byte TOMBSTONE_VALUE = 1;
+    public static final Timer t = new Timer();
 
     private Utils() {
     }
@@ -35,6 +37,25 @@ public final class Utils {
 
     public static boolean isTombstone(Entry<ByteBuffer> entry) {
         return entry != null && entry.value() == null;
+    }
+
+    public static class Timer {
+
+        private final Clock clock = Clock.systemDefaultZone();
+        private long startTime;
+
+        public Timer() {
+            this.startTime = clock.millis();
+        }
+
+        public double elapse() {
+            return (double)(clock.millis() - startTime) / 1000;
+        }
+
+        public void refresh() {
+            startTime = clock.millis();
+        }
+
     }
 
 }

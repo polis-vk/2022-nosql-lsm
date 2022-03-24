@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -21,8 +22,8 @@ public class Reader {
         this.pathsToPairedFiles = pathsToPairedFiles.descendingMap();
     }
 
-    public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        return new MergeIterator(from, to, data, pathsToPairedFiles);
+    public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to, List<ByteBuffer> tombstones) throws IOException {
+        return new MergeIterator(from, to, data, pathsToPairedFiles, tombstones);
     }
 
     public Entry<ByteBuffer> get(ByteBuffer key) throws IOException {
@@ -35,6 +36,7 @@ public class Reader {
     }
 
     private Entry<ByteBuffer> findKeyInFile(ByteBuffer key) throws IOException {
+        Entry<ByteBuffer> result = null;
         for (Map.Entry<Integer, Entry<Path>> pathToPairedFiles: pathsToPairedFiles.entrySet()) {
             Path pathToDataFile = pathToPairedFiles.getValue().key();
             Path pathToIndexesFile = pathToPairedFiles.getValue().value();
@@ -42,13 +44,16 @@ public class Reader {
                 if (!fileIterator.hasNext()) {
                     continue;
                 }
-                Entry<ByteBuffer> result = fileIterator.next();
+                result = fileIterator.next();
+                if (Utils.isTombstone(result)) {
+                    return null;
+                }
                 if (result != null && result.key().equals(key)) {
                     return result;
                 }
             }
         }
-        return null;
+        return result;
     }
 
 }

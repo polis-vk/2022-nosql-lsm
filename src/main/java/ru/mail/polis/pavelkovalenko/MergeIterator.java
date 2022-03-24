@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
@@ -18,9 +20,14 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     private Iterator<Map.Entry<ByteBuffer, Entry<ByteBuffer>>> mergedDataIterator = mergedData.entrySet().iterator();
     private final List<PeekIterator> iterators = new ArrayList<>();
     private final List<Entry<ByteBuffer>> lastEntries = new ArrayList<>();
+    private final Lock lock = new ReentrantLock();
+    private List<ByteBuffer> tombstones;
 
     public MergeIterator(ByteBuffer from, ByteBuffer to, ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data,
-                NavigableMap<Integer, Entry<Path>> pathsToPairedFiles) throws IOException {
+                NavigableMap<Integer, Entry<Path>> pathsToPairedFiles, List<ByteBuffer> tombstones)
+            throws IOException {
+        this.tombstones = tombstones;
+
         ByteBuffer _from = from;
         if (from == null) {
             _from = Utils.EMPTY_BYTEBUFFER;
@@ -35,12 +42,22 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         for (Entry<Path> entry: pathsToPairedFiles.values()) {
             iterators.add(new PeekIterator(new FileIterator(entry.key(), entry.value(), _from, to)));
         }
+
+        //merge();
     }
 
     @Override
     public boolean hasNext() {
-        iterators.removeIf(this::removeIteratorIf);
-        return mergedDataIterator.hasNext() || !iterators.isEmpty();
+        return mergedDataIterator.hasNext() || !iterators.isEmpty() && iteratorsHaveNext();
+    }
+
+    private boolean iteratorsHaveNext() {
+        boolean iteratorsHaveNext = false;
+        peekAll();
+        for (PeekIterator iterator: iterators) {
+            iteratorsHaveNext |= iterator.hasNext();
+        }
+        return iteratorsHaveNext;
     }
 
     @Override
@@ -55,27 +72,50 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private void merge() {
-        mergedData.clear();
-
-        Entry<ByteBuffer> curEntry = Utils.EMPTY_ENTRY;
-        while (!isThresholdReached() && hasNext()) {
-            peekAll();
-            Entry<ByteBuffer> firstMin = findFirstMin();
-            fallEntry(firstMin);
-            Entry<ByteBuffer> secondMin = findSecondMin(firstMin);
-            int minIndex = lastEntries.indexOf(firstMin);
-
-            putIfNotTombstone(firstMin);
-            while (Utils.entryComparator.compare(curEntry, secondMin) <= 0
-                        && !isThresholdReached()
-                        && iterators.get(minIndex).hasNext()) {
-                curEntry = iterators.get(minIndex).next();
-                putIfNotTombstone(curEntry);
+        try {
+            lock.lock();
+            if (mergedDataIterator.hasNext()) {
+                return;
             }
 
-        }
+            //Utils.t.refresh();
+            mergedData.clear();
 
-        mergedDataIterator = mergedData.entrySet().iterator();
+            Entry<ByteBuffer> curEntry = Utils.EMPTY_ENTRY;
+            while (!isThresholdReached() && hasNext()) {
+                iterators.removeIf(this::removeIteratorIf);
+
+                if (iterators.size() == 1) {
+                    while (hasNext() && !isThresholdReached()) {
+                        curEntry = iterators.get(0).next();
+                        putIfNotTombstone(curEntry);
+                    }
+                    mergedDataIterator = mergedData.entrySet().iterator();
+                    //System.out.println("ELAPSE FOR MERGE1: " + Utils.t.elapse() + "s");
+                    return;
+                }
+
+                peekAll();
+                Entry<ByteBuffer> firstMin = findFirstMin();
+                fallEntry(firstMin);
+                Entry<ByteBuffer> secondMin = findSecondMin(firstMin);
+                int minIndex = lastEntries.indexOf(firstMin);
+
+                putIfNotTombstone(firstMin);
+                while (Utils.entryComparator.compare(curEntry, secondMin) <= 0
+                        && !isThresholdReached()
+                        && iterators.get(minIndex).hasNext()) {
+                    curEntry = iterators.get(minIndex).next();
+                    putIfNotTombstone(curEntry);
+                }
+
+            }
+
+            mergedDataIterator = mergedData.entrySet().iterator();
+            //System.out.println("ELAPSE FOR MERGE2: " + Utils.t.elapse() + "s");
+        } finally {
+            lock.unlock();
+        }
     }
 
     private void putIfNotTombstone(Entry<ByteBuffer> entry) {
@@ -105,7 +145,13 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     private void peekAll() {
         lastEntries.clear();
         for (PeekIterator iterator: iterators) {
-            lastEntries.add(iterator.peek());
+            Entry<ByteBuffer> entry = iterator.peek();
+            while (iterator.hasNext() && Utils.isTombstone(entry) || entry != null && tombstones.contains(entry.key())) {
+                entry = iterator.next();
+            }
+            if (iterator.hasNext()) {
+                lastEntries.add(iterator.peek());
+            }
         }
     }
 
