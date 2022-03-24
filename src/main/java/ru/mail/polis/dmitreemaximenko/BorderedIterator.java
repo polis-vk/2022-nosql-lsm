@@ -88,17 +88,25 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     }
 
     private void moveAllIteratorsWithSuchKey(MemorySegment key) {
-        List<Source> toRemove = new LinkedList<>();
-        for (Source source : sources) {
-            if (comparator.compare(source.element.key(), key) == 0) {
-                if (source.iterator.hasNext()) {
-                    source.element = source.iterator.next();
-                } else {
-                    toRemove.add(source);
+        if (sources.size() == 1) {
+            if (sources.get(0).iterator.hasNext()) {
+                sources.get(0).element = sources.get(0).iterator.next();
+            } else {
+                sources.remove(0);
+            }
+        } else {
+            List<Source> toRemove = new LinkedList<>();
+            for (Source source : sources) {
+                if (comparator.compare(source.element.key(), key) == 0) {
+                    if (source.iterator.hasNext()) {
+                        source.element = source.iterator.next();
+                    } else {
+                        toRemove.add(source);
+                    }
                 }
             }
+            sources.removeAll(toRemove);
         }
-        sources.removeAll(toRemove);
     }
 
     static class FileEntryIterator implements Iterator<Entry<MemorySegment>> {
