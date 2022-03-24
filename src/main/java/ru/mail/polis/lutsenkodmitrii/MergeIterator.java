@@ -27,8 +27,8 @@ public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable
     private final boolean isToNull;
     private String inMemoryLastKey;
     private BaseEntry<String> polledEntry;
-    private boolean hasNextResult;
     private boolean hasNextCalled;
+    private boolean hasNextResult;
 
     public MergeIterator(PersistenceRangeDao dao, String from, String to) throws IOException {
         this.to = to;
