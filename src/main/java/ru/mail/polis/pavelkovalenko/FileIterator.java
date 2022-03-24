@@ -18,6 +18,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
     private final ByteBuffer to;
     private final Entry<ByteBuffer> toEntry;
     private Entry<ByteBuffer> lastEntry = Utils.EMPTY_ENTRY;
+    private boolean isSetCeilFilePointer = false;
 
     public FileIterator(Path pathToDataFile, Path pathToIndexesFile, ByteBuffer from, ByteBuffer to)
             throws IOException {
@@ -26,7 +27,6 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
         this.from = from;
         this.to = to;
         toEntry = new BaseEntry<>(to, to);
-        setCeilFilePointer();
     }
 
     @Override
@@ -44,13 +44,17 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
 
     @Override
     public Entry<ByteBuffer> next() {
-        if (lastEntry == null) {
-            throw new IndexOutOfBoundsException("Out-of-bound file iteration");
-        }
-
         Entry<ByteBuffer> res = lastEntry;
 
         try {
+            if (!isSetCeilFilePointer && !isGettingAllHeadData()) {
+                setCeilFilePointer();
+            }
+
+            if (lastEntry == null) {
+                throw new IndexOutOfBoundsException("Out-of-bound file iteration");
+            }
+
             if (!dataExists()) {
                 lastEntry = null;
                 return res;
@@ -100,9 +104,6 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
     }
 
     private Entry<ByteBuffer> binarySearchInFile() throws IOException {
-        if (isGettingAllHeadData()) {
-            return null;
-        }
         if (!hasNext()) {
             return null;
         }
