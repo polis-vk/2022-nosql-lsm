@@ -1,5 +1,6 @@
 package ru.mail.polis.levsaskov;
 
+import jdk.incubator.foreign.MemoryAccess;
 import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
@@ -68,13 +69,18 @@ public class StorageSystem implements AutoCloseable {
 
     public Iterator<BaseEntry<ByteBuffer>> getMergedEntrys(
             ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> localEntrys, ByteBuffer from, ByteBuffer to) {
-        List<PeekIterator> peekIterators = new ArrayList<>();
+        BinaryHeap binaryHeap = new BinaryHeap();
         for (StoragePart storagePart : storageParts) {
-            peekIterators.add(storagePart.get(from, to));
+            PeekIterator peekIterator = storagePart.get(from, to);
+            if (peekIterator.peek() != null) {
+                binaryHeap.add(peekIterator);
+            }
         }
-        peekIterators.add(new PeekIterator(localEntrys.values().iterator(), Integer.MAX_VALUE));
 
-        BinaryHeap binaryHeap = makeBinaryHeap(peekIterators);
+        PeekIterator localIter = new PeekIterator(localEntrys.values().iterator(), Integer.MAX_VALUE);
+        if (localIter.peek() != null) {
+            binaryHeap.add(localIter);
+        }
 
         return new StorageSystemIterator(binaryHeap);
     }
@@ -116,17 +122,6 @@ public class StorageSystem implements AutoCloseable {
 
     private Path getIndexFilePath(int num) {
         return location.resolve(num + INDEX_FILENAME);
-    }
-
-    private static BinaryHeap makeBinaryHeap(List<PeekIterator> peekIterators) {
-        BinaryHeap binaryHeap = new BinaryHeap();
-        for (PeekIterator peekIterator : peekIterators) {
-            if (peekIterator.peek() != null) {
-                binaryHeap.add(peekIterator);
-            }
-        }
-
-        return binaryHeap;
     }
 
     /**
