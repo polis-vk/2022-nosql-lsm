@@ -47,8 +47,8 @@ public class Reader {
                     continue;
                 }
                 result = fileIterator.next();
-                if (result != null && result.key().equals(key)) {
-                    return result;
+                if (result != null && !result.key().equals(key)) {
+                    return null;
                 }
             }
         }

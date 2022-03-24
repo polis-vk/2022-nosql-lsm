@@ -44,16 +44,18 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
 
     @Override
     public Entry<ByteBuffer> next() {
-        Entry<ByteBuffer> res = lastEntry;
+        if (lastEntry == null) {
+            throw new IndexOutOfBoundsException("Out-of-bound file iteration");
+        }
+
+        Entry<ByteBuffer> res;
 
         try {
             if (!isSetCeilFilePointer && !isGettingAllHeadData()) {
                 setCeilFilePointer();
+                isSetCeilFilePointer = true;
             }
-
-            if (lastEntry == null) {
-                throw new IndexOutOfBoundsException("Out-of-bound file iteration");
-            }
+            res = lastEntry;
 
             if (!dataExists()) {
                 lastEntry = null;

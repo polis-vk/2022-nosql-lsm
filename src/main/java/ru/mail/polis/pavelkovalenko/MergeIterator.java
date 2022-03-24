@@ -1,5 +1,6 @@
 package ru.mail.polis.pavelkovalenko;
 
+import java.util.stream.Stream;
 import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -45,15 +46,14 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         for (PeekIterator iterator: iterators) {
             iteratorsHaveNext |= iterator.hasNext();
         }
-        return iteratorsHaveNext;
+        return iteratorsHaveNext || !lastEntries.isEmpty();
     }
 
     @Override
     public Entry<ByteBuffer> next() {
-        if (!hasNext()) {
+        if (lastEntries.isEmpty()) {
             throw new IndexOutOfBoundsException("Out-of-bound merge iteration");
         }
-        peekAll();
         Entry<ByteBuffer> firstMin = findMin();
         fallEntry(firstMin);
         return firstMin;
@@ -65,7 +65,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     private void fallEntry(Entry<ByteBuffer> entry) {
         for (PeekIterator iterator: iterators) {
-            while (iterator.peek() != null && iterator.peek().key().equals(entry.key())) {
+            if (iterator.peek() != null && iterator.peek().key().equals(entry.key())) {
                 iterator.next();
             }
         }
@@ -73,14 +73,14 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     private void peekAll() {
         lastEntries.clear();
-        for (int i = 0; i < iterators.size(); ++i) {
-            PeekIterator curIterator = iterators.get(i);
-            Entry<ByteBuffer> entry = curIterator.peek();
-            while (curIterator.hasNext() && Utils.isTombstone(entry) && i == 0) {
+        for (PeekIterator iterator : iterators) {
+            Entry<ByteBuffer> entry = iterator.peek();
+            while (iterator.hasNext() && Utils.isTombstone(entry)) {
                 fallEntry(entry);
+                entry = iterator.peek();
             }
-            if (curIterator.hasNext()) {
-                lastEntries.add(curIterator.peek());
+            if (iterator.hasNext()) {
+                lastEntries.add(iterator.peek());
             }
         }
     }
@@ -88,7 +88,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     private Entry<ByteBuffer> findMin() {
         return lastEntries.stream()
                 .min(Utils.entryComparator)
-                .get();
+                .orElse(lastEntries.get(0));
     }
 
 }
