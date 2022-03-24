@@ -12,8 +12,8 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.TreeSet;
@@ -73,43 +73,54 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
         }
         return new Iterator<>() {
             private final Set<MemorySegment> keys = new TreeSet<>(LEXICOGRAPHICALLY);
-            private final PriorityQueue<IndexedEntry> entries = new PriorityQueue<>();
+            private final PriorityQueue<IndexedEntry> entries;
+
+            // IIB
+            {
+                entries = new PriorityQueue<>(iterators.size() + 1);
+                for (int i = 0; i < iterators.size(); i++) {
+                    addFrom(i);
+                }
+            }
+
+            private boolean addFrom(int tableIndex) {
+                Iterator<MemorySegmentEntry> iterator = iterators.get(tableIndex);
+                if (!iterator.hasNext()) {
+                    return false;
+                }
+                MemorySegmentEntry entry = iterator.next();
+                return keys.add(entry.key())
+                        && entry.value() != null
+                        && entries.offer(new IndexedEntry(tableIndex, entry));
+            }
 
             @Override
             public boolean hasNext() {
-                if (!entries.isEmpty()) {
-                    return true;
-                }
-                if (iterators.isEmpty()) {
+                if (entries.isEmpty() || iterators.isEmpty()) {
                     return false;
                 }
-                ListIterator<Iterator<MemorySegmentEntry>> listIterator = iterators.listIterator();
-                while (listIterator.hasNext()) {
-                    int index = listIterator.nextIndex();
-                    Iterator<MemorySegmentEntry> iterator = listIterator.next();
-                    while (iterator.hasNext()) {
-                        MemorySegmentEntry entry = iterator.next();
-                        if (keys.add(entry.key()) && entry.value() != null) {
-                            entries.offer(new IndexedEntry(index, entry));
-                            break;
-                        }
+                //IndexedEntry next = entries.peek();
+//                if (addFrom(next.index)) {
+//                    return true;
+//                }
+                for (int i = 0; i < iterators.size(); i++) {
+//                    if (i == next.index) {
+//                        continue;
+//                    }
+                    if (addFrom(i)) {
+                        break;
                     }
                 }
-                return !entries.isEmpty();
+                return true;
             }
 
             @Override
             public MemorySegmentEntry next() {
-                IndexedEntry indexedEntry = entries.poll();
-                Iterator<MemorySegmentEntry> iterator = iterators.get(indexedEntry.index);
-                while (iterator.hasNext()) {
-                    MemorySegmentEntry entry = iterator.next();
-                    if (keys.add(entry.key()) && entry.value() != null) {
-                        entries.offer(new IndexedEntry(indexedEntry.index, entry));
-                        break;
-                    }
+                IndexedEntry next = entries.poll();
+                if (next == null) {
+                    throw new NoSuchElementException();
                 }
-                return indexedEntry.entry();
+                return next.entry();
             }
         };
     }
