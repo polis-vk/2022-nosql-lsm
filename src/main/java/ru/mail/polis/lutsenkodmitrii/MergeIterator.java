@@ -83,7 +83,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable
         } catch (IOException e) {
             throw new RuntimeException("Fail to read new Entry after" + polledEntry, e);
         }
-        hasNextCalled= true;
+        hasNextCalled = true;
         hasNextResult = polledEntry.value() != null && (isToNull || polledEntry.key().compareTo(to) < 0);
         return hasNextResult;
     }
@@ -125,7 +125,6 @@ public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable
             return polledEntry;
         }
         if (!hasNextCalled && hasNext()) {
-            hasNextCalled = false;
             return polledEntry;
         }
         return null;
