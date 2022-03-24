@@ -16,8 +16,6 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 public class StoragePart implements AutoCloseable {
-    private static final int BYTES_IN_INT = 4;
-    private static final int BYTES_IN_LONG = 8;
     public static final int LEN_FOR_NULL = -1;
 
     private int storagePartN;
@@ -29,7 +27,7 @@ public class StoragePart implements AutoCloseable {
         this.storagePartN = storagePartN;
         memoryBB = mapFile(memoryPath);
         indexBB = mapFile(indexPath);
-        entrysC = indexBB.capacity() / BYTES_IN_LONG;
+        entrysC = indexBB.capacity() / Long.BYTES;
     }
 
     public BaseEntry<ByteBuffer> get(ByteBuffer key) {
@@ -73,9 +71,9 @@ public class StoragePart implements AutoCloseable {
     }
 
     private BaseEntry<ByteBuffer> readEntry(int entryN) {
-        int ind = (int) indexBB.getLong(entryN * BYTES_IN_LONG);
+        int ind = (int) indexBB.getLong(entryN * Long.BYTES);
         int len = memoryBB.getInt(ind);
-        ind += BYTES_IN_INT;
+        ind += Integer.BYTES;
         byte[] key = new byte[len];
         memoryBB.get(ind, key);
 
@@ -83,7 +81,7 @@ public class StoragePart implements AutoCloseable {
 
         byte[] value;
         len = memoryBB.getInt(ind);
-        ind += BYTES_IN_INT;
+        ind += Integer.BYTES;
         if (len == LEN_FOR_NULL) {
             value = null;
         } else {

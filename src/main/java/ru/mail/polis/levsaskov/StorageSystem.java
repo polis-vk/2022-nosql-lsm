@@ -16,8 +16,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class StorageSystem implements AutoCloseable {
     private static final int DEFAULT_ALLOC_SIZE = 2048;
-    private static final int BYTES_IN_INT = 4;
-    private static final int BYTES_IN_LONG = 8;
     private static final String MEM_FILENAME = "daoMem.bin";
     private static final String INDEX_FILENAME = "daoIndex.bin";
 
@@ -89,7 +87,7 @@ public class StorageSystem implements AutoCloseable {
             return;
         }
 
-        ByteBuffer bufferForIndexes = ByteBuffer.allocate(entrys.size() * BYTES_IN_LONG);
+        ByteBuffer bufferForIndexes = ByteBuffer.allocate(entrys.size() * Long.BYTES);
         lock.writeLock().lock();
         try {
             writeMemFile(entrys, getMemFilePath(storagePartsC), bufferForIndexes);
@@ -200,6 +198,6 @@ public class StorageSystem implements AutoCloseable {
         int keyLength = entry.key().array().length;
         int valueLength = entry.value() == null ? 0 : entry.value().array().length;
 
-        return 2 * BYTES_IN_INT + keyLength + valueLength;
+        return 2 * Integer.BYTES + keyLength + valueLength;
     }
 }

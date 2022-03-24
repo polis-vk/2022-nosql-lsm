@@ -8,7 +8,7 @@ import java.util.NoSuchElementException;
 
 public class StorageSystemIterator implements Iterator<BaseEntry<ByteBuffer>> {
     private final BinaryHeap binaryHeap;
-    BaseEntry<ByteBuffer> next;
+    private BaseEntry<ByteBuffer> next;
 
     public StorageSystemIterator(BinaryHeap binaryHeap) {
         this.binaryHeap = binaryHeap;
