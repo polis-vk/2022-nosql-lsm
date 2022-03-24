@@ -91,7 +91,7 @@ class MemorySegmentReader {
     }
 
     private long countMid(long low, long high) {
-        return low + ((high - low) / 2);
+        return (low + high) >>> 1;
     }
 
     private MemorySegment getMemorySegment(long entityIndex, boolean isValue) {

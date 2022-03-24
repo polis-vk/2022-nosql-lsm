@@ -3,9 +3,9 @@ package ru.mail.polis.nikitazadorotskas;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.PriorityQueue;
 
 public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
@@ -26,10 +26,17 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
 
     private void addIteratorsToHeap(List<PeekIterator> iterators) {
         for (PeekIterator iterator : iterators) {
-            if (iterator.hasNext()) {
-                iterator.next();
-                minHeap.add(iterator);
-            }
+            addIteratorToHeap(iterator);
+        }
+    }
+
+    private void addIteratorToHeap(PeekIterator iterator) {
+        if (iterator == null) {
+            return;
+        }
+        if (iterator.hasNext()) {
+            iterator.next();
+            minHeap.add(iterator);
         }
     }
 
@@ -40,11 +47,10 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
             PeekIterator iterator = minHeap.poll();
             result = iterator.current();
 
-            List<PeekIterator> iterators = getIteratorsWithSameKeys(result);
-            iterators.add(iterator);
+            addIteratorsWithSameKeyToHeap(result);
+            addIteratorToHeap(iterator);
 
             result = utils.checkIfWasDeleted(result);
-            addIteratorsToHeap(iterators);
         }
 
         next = result;
@@ -62,13 +68,9 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
         return result;
     }
 
-    private List<PeekIterator> getIteratorsWithSameKeys(BaseEntry<MemorySegment> current) {
-        List<PeekIterator> result = new ArrayList<>();
-
+    private void addIteratorsWithSameKeyToHeap(BaseEntry<MemorySegment> current) {
         while (minHeap.size() > 0 && utils.compareBaseEntries(minHeap.peek().current(), current) == 0) {
-            result.add(minHeap.poll());
+            addIteratorToHeap(minHeap.poll());
         }
-
-        return result;
     }
 }

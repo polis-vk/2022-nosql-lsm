@@ -14,8 +14,6 @@ import java.util.List;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory
@@ -24,7 +22,6 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     private final MemorySegmentReader[] readers;
     private final Utils utils;
     private final ResourceScope scope = ResourceScope.newSharedScope();
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final int numberOfFiles;
 
     public PersistentDao(Config config) throws IOException {
@@ -56,12 +53,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
 
     @Override
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
-        lock.readLock().lock();
-        try {
-            return new MergedIterator(getIterators(from, to), utils);
-        } finally {
-            lock.readLock().unlock();
-        }
+        return new MergedIterator(getIterators(from, to), utils);
     }
 
     private List<PeekIterator> getIterators(MemorySegment from, MemorySegment to) {
@@ -94,29 +86,24 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
 
     @Override
     public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
-        lock.readLock().lock();
-        try {
-            BaseEntry<MemorySegment> result = memory.get(key);
+        BaseEntry<MemorySegment> result = memory.get(key);
 
-            if (result != null) {
-                return utils.checkIfWasDeleted(result);
-            }
-
-            if (readers.length == 0) {
-                return null;
-            }
-
-            for (int i = readers.length - 1; i >= 0; i--) {
-                BaseEntry<MemorySegment> res = readers[i].getFromDisk(key);
-                if (res != null) {
-                    return utils.checkIfWasDeleted(res);
-                }
-            }
-
-            return null;
-        } finally {
-            lock.readLock().unlock();
+        if (result != null) {
+            return utils.checkIfWasDeleted(result);
         }
+
+        if (readers.length == 0) {
+            return null;
+        }
+
+        for (int i = readers.length - 1; i >= 0; i--) {
+            BaseEntry<MemorySegment> res = readers[i].getFromDisk(key);
+            if (res != null) {
+                return utils.checkIfWasDeleted(res);
+            }
+        }
+
+        return null;
     }
 
     @Override
@@ -126,14 +113,9 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
-        lock.readLock().lock();
-        try {
-            long valueSize = entry.value() == null ? 0L : entry.value().byteSize();
-            storageSizeInBytes.addAndGet(entry.key().byteSize() + valueSize);
-            memory.put(entry.key(), entry);
-        } finally {
-            lock.readLock().unlock();
-        }
+        long valueSize = entry.value() == null ? 0L : entry.value().byteSize();
+        storageSizeInBytes.addAndGet(entry.key().byteSize() + valueSize);
+        memory.put(entry.key(), entry);
     }
 
     @Override
@@ -143,7 +125,6 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
         }
         scope.close();
 
-        lock.writeLock().lock();
         try (ResourceScope confinedScope = ResourceScope.newConfinedScope()) {
             utils.createFiles(numberOfFiles);
             MemorySegmentWriter segmentWriter = new MemorySegmentWriter(
@@ -156,8 +137,6 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
             for (BaseEntry<MemorySegment> entry : memory.values()) {
                 segmentWriter.writeEntry(entry);
             }
-        } finally {
-            lock.writeLock().unlock();
         }
 
         memory.clear();
