@@ -109,7 +109,6 @@ final class SortedStringTable implements Closeable {
         if (to != null && LEXICOGRAPHICALLY.compare(start, to) >= 0) {
             return Collections.emptyIterator();
         }
-        // TODO fix to
         return new IteratorImpl(start, to);
     }
 
