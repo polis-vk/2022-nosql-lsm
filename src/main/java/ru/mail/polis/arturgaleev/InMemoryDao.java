@@ -20,9 +20,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> dataBase = new ConcurrentSkipListMap<>();
     private final Config config;
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private int newFileNumber;
     private final DBReader reader;
 
