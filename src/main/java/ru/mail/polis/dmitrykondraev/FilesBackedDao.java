@@ -103,14 +103,16 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
                 if (addFrom(next.index)) {
                     return true;
                 }
-                for (int i = 0; i < iterators.size(); i++) {
-                    if (i == next.index) {
-                        continue;
+                boolean anyHasNext;
+                do {
+                    anyHasNext = false;
+                    for (int i = 0; i < iterators.size(); i++) {
+                        anyHasNext |= iterators.get(i).hasNext();
+                        if (addFrom(i)) {
+                            return true;
+                        }
                     }
-                    if (addFrom(i)) {
-                        break;
-                    }
-                }
+                } while (anyHasNext);
                 return true;
             }
 

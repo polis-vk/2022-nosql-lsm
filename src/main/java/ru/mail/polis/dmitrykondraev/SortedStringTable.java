@@ -67,7 +67,7 @@ final class SortedStringTable implements Closeable {
      * @param first inclusive
      * @param last  exclusive
      * @return first index such that key of entry with that index is equal to key,
-     *         if no such index exists, result < 0
+     * if no such index exists, result < 0
      */
     private int binarySearch(int first, int last, MemorySegment key) {
         int low = first;
@@ -90,7 +90,7 @@ final class SortedStringTable implements Closeable {
      * Get one entry from file.
      *
      * @return null if either indexFile or dataFile does not exist,
-     *         null if key does not exist in table
+     * null if key does not exist in table
      * @throws IOException if other I/O error occurs
      */
     public MemorySegmentEntry get(MemorySegment key) throws IOException {
@@ -109,7 +109,39 @@ final class SortedStringTable implements Closeable {
         if (to != null && LEXICOGRAPHICALLY.compare(start, to) >= 0) {
             return Collections.emptyIterator();
         }
-        return new IteratorImpl(start, to);
+        return new Iterator<>() {
+            private int first;
+            private int last = entriesMapped();
+            private boolean pivoted;
+
+            @Override
+            public boolean hasNext() {
+                if (pivoted) {
+                    return first < last;
+                }
+                first = binarySearch(first, last, start);
+                if (first < 0) {
+                    first = -(first + 1);
+                }
+                if (first >= last) {
+                    pivoted = true;
+                    return false;
+                }
+                if (to != null) {
+                    last = binarySearch(first, last, to);
+                    if (last < 0) {
+                        last = -(last + 1);
+                    }
+                }
+                pivoted = true;
+                return first < last;
+            }
+
+            @Override
+            public MemorySegmentEntry next() {
+                return mappedEntry(first++);
+            }
+        };
     }
 
     @Override
@@ -197,48 +229,6 @@ final class SortedStringTable implements Closeable {
             return Files.createFile(path);
         } catch (FileAlreadyExistsException ignored) {
             return path;
-        }
-    }
-
-    private final class IteratorImpl implements Iterator<MemorySegmentEntry> {
-        private final MemorySegment from;
-        private final MemorySegment to;
-
-        private int first;
-        private int last = entriesMapped();
-        private boolean pivoted;
-
-        private IteratorImpl(MemorySegment from, MemorySegment to) {
-            this.from = from;
-            this.to = to;
-        }
-
-        @Override
-        public boolean hasNext() {
-            if (pivoted) {
-                return first < last;
-            }
-            first = binarySearch(first, last, from);
-            if (first < 0) {
-                first = -(first + 1);
-            }
-            if (first >= last) {
-                pivoted = true;
-                return false;
-            }
-            if (to != null) {
-                last = binarySearch(first, last, to);
-                if (last < 0) {
-                    last = -(last + 1);
-                }
-            }
-            pivoted = true;
-            return first < last;
-        }
-
-        @Override
-        public MemorySegmentEntry next() {
-            return mappedEntry(first++);
         }
     }
 }
