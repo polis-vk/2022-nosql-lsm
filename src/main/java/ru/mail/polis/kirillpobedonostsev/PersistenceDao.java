@@ -5,6 +5,7 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -29,34 +30,29 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final Path elementsPath;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map =
             new ConcurrentSkipListMap<>(ByteBuffer::compareTo);
-    private final List<BaseEntry<MappedByteBuffer>> filesList;
+    private final List<FilePair> filesList;
     private final Config config;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public PersistenceDao(Config config) throws IOException {
         this.config = config;
         this.elementsPath = config.basePath().resolve(ELEMENTS_FILENAME);
-        if (Files.notExists(config.basePath())) {
-            Files.createDirectories(config.basePath());
-        }
         int fileNumber;
         try (RandomAccessFile file = new RandomAccessFile(elementsPath.toFile(), "r")) {
             fileNumber = file.readInt();
-        } catch (IOException e) {
+        } catch (FileNotFoundException e) {
             fileNumber = 0;
         }
         filesList = new ArrayList<>(fileNumber);
-        MappedByteBuffer mappedDataFile;
-        MappedByteBuffer mappedIndexFile;
         for (int i = 0; i < fileNumber; i++) {
             try (FileChannel dataChannel = FileChannel.open(getFilePath(DATA_PREFIX, i));
                  FileChannel indexChannel = FileChannel.open(getFilePath(INDEX_PREFIX, i))) {
-                mappedDataFile =
+                MappedByteBuffer mappedDataFile =
                         dataChannel.map(FileChannel.MapMode.READ_ONLY, 0, dataChannel.size());
-                mappedIndexFile =
+                MappedByteBuffer mappedIndexFile =
                         indexChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexChannel.size());
+                filesList.add(new FilePair(mappedIndexFile, mappedDataFile));
             }
-            filesList.add(new BaseEntry<>(mappedIndexFile, mappedDataFile));
         }
     }
 
@@ -78,8 +74,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private FileIterator getFileIterator(ByteBuffer from, ByteBuffer to, int fileNumber) {
         ByteBuffer fileRange;
-        MappedByteBuffer mappedDataFile = filesList.get(fileNumber).value();
-        MappedByteBuffer mappedIndexFile = filesList.get(fileNumber).key();
+        MappedByteBuffer mappedDataFile = filesList.get(fileNumber).dataFile();
+        MappedByteBuffer mappedIndexFile = filesList.get(fileNumber).indexFile();
         int fromOffset = from == null ? 0 : getOffset(mappedDataFile, mappedIndexFile, from);
         int toOffset =
                 to == null ? mappedDataFile.capacity() : getOffset(mappedDataFile, mappedIndexFile, to);
@@ -147,7 +143,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             }
             dataPage.force();
             indexPage.force();
-            filesList.add(new BaseEntry<>(indexPage, dataPage));
+            filesList.add(new FilePair(indexPage, dataPage));
             try (RandomAccessFile file = new RandomAccessFile(elementsPath.toFile(), "rw")) {
                 file.writeInt(filesList.size());
             }
@@ -162,14 +158,15 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private static int getOffset(MappedByteBuffer readDataPage, MappedByteBuffer readIndexPage,
                                  ByteBuffer key) {
-        int indexOffset = binarySearch(readDataPage, readIndexPage, key);
-        if (indexOffset < 0) {
-            indexOffset = -indexOffset - 1;
+        int indexNumber = binarySearch(readDataPage, readIndexPage, key);
+        if (indexNumber < 0) {
+            indexNumber = -indexNumber - 1;
         }
-        if ((readIndexPage.capacity() >> 2) <= indexOffset) {
+        int indexOffset = indexNumber << 2;
+        if (readIndexPage.capacity() <= indexOffset) {
             return readDataPage.capacity();
         }
-        return readIndexPage.getInt(indexOffset << 2);
+        return readIndexPage.getInt(indexOffset);
     }
 
     private static int binarySearch(MappedByteBuffer readDataPage, MappedByteBuffer readIndexPage,
@@ -180,9 +177,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         while (low <= high) {
             int mid = (int) (((long) low + high) / 2);
             offset = readIndexPage.getInt(mid << 2);
-            readDataPage.position(offset);
-            int keySize = readDataPage.getInt();
-            ByteBuffer readKey = readDataPage.slice(readDataPage.position(), keySize);
+            int keySize = readDataPage.getInt(offset);
+            ByteBuffer readKey = readDataPage.slice(offset + Integer.BYTES, keySize);
             int compareResult = readKey.compareTo(key);
             if (compareResult > 0) {
                 high = mid - 1;

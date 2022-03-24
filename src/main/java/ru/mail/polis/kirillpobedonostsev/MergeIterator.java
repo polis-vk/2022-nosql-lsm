@@ -15,8 +15,6 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
     private static final Comparator<PeekingIterator<BaseEntry<ByteBuffer>>> comparator =
             Comparator.comparing((PeekingIterator<BaseEntry<ByteBuffer>> iter) -> iter.peek().key())
                     .thenComparing(PeekingIterator::getPriority, Comparator.reverseOrder());
-    private static final Comparator<BaseEntry<ByteBuffer>> entryComparator =
-            Comparator.comparing(BaseEntry::key);
 
     public MergeIterator(List<PeekingIterator<BaseEntry<ByteBuffer>>> iterators) {
         queue = new PriorityQueue<>(iterators.size(), comparator);
@@ -55,7 +53,7 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
             return;
         }
         PeekingIterator<BaseEntry<ByteBuffer>> iter = queue.remove();
-        boolean same = entryComparator.compare(iter.peek(), current) == 0;
+        boolean same = iter.peek().key().equals(current.key());
         while (same) {
             iter.next();
             if (iter.hasNext()) {
@@ -65,7 +63,7 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
                 break;
             }
             iter = queue.remove();
-            same = entryComparator.compare(iter.peek(), current) == 0;
+            same = iter.peek().key().equals(current.key());
         }
         if (!same) {
             queue.add(iter);
