@@ -125,11 +125,10 @@ class MemorySegmentReader {
 
         return new PeekIterator(number, new Iterator<>() {
             long next = start;
-            final long last = end;
 
             @Override
             public boolean hasNext() {
-                return next < last;
+                return next < end;
             }
 
             @Override
