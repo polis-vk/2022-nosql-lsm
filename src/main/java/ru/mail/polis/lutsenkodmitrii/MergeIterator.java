@@ -27,11 +27,13 @@ public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable
     private final boolean isToNull;
     private String inMemoryLastKey;
     private BaseEntry<String> polledEntry;
+    private boolean hasNextResult = false;
+    private boolean hasNextCalled = false;
 
     public MergeIterator(PersistenceRangeDao dao, String from, String to) throws IOException {
         this.to = to;
-        isFromNull = from == null;
-        isToNull = to == null;
+        this.isFromNull = from == null;
+        this.isToNull = to == null;
         for (int i = 0; i < dao.getCurrentFileNumber(); i++) {
             Path path = dao.getConfig().basePath().resolve(
                     PersistenceRangeDao.DATA_FILE_NAME + i + PersistenceRangeDao.DATA_FILE_EXTENSION
@@ -65,6 +67,9 @@ public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable
 
     @Override
     public boolean hasNext() {
+        if (hasNextCalled) {
+            return hasNextResult;
+        }
         if (tempData.isEmpty()) {
             return false;
         }
@@ -78,7 +83,9 @@ public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable
         } catch (IOException e) {
             throw new RuntimeException("Fail to read new Entry after" + polledEntry, e);
         }
-        return polledEntry.value() != null && (isToNull || polledEntry.key().compareTo(to) < 0);
+        hasNextCalled= true;
+        hasNextResult = polledEntry.value() != null && (isToNull || polledEntry.key().compareTo(to) < 0);
+        return hasNextResult;
     }
 
     private void readNextFromMemory() {
@@ -113,7 +120,15 @@ public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable
 
     @Override
     public BaseEntry<String> next() {
-        return polledEntry;
+        if (hasNextCalled && hasNextResult) {
+            hasNextCalled = false;
+            return polledEntry;
+        }
+        if (!hasNextCalled && hasNext()) {
+            hasNextCalled = false;
+            return polledEntry;
+        }
+        return null;
     }
 
     @Override
