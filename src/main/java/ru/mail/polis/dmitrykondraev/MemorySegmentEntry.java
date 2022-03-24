@@ -4,7 +4,7 @@ import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Entry;
 
-public class MemorySegmentEntry implements Entry<MemorySegment> {
+public final class MemorySegmentEntry implements Entry<MemorySegment> {
     private final MemorySegment key;
     private final MemorySegment value;
     private final long byteSize;
@@ -45,10 +45,18 @@ public class MemorySegmentEntry implements Entry<MemorySegment> {
     }
 
     public void copyTo(MemorySegment entrySegment) {
-        MemoryAccess.setLongAtOffset(entrySegment, 0L, value == null ? -1: value.byteSize());
+        MemoryAccess.setLongAtOffset(entrySegment, 0L, value == null ? -1 : value.byteSize());
         if (value != null) {
             entrySegment.asSlice(Long.BYTES, value.byteSize()).copyFrom(value);
         }
         entrySegment.asSlice(Long.BYTES + (value == null ? 0 : value().byteSize())).copyFrom(key);
+    }
+
+    @Override
+    public String toString() {
+        return "MemorySegmentEntry{'%s' -> %s}".formatted(
+                new String(key.toCharArray()),
+                value == null ? "null" : "'" + new String(value.toCharArray()) + "'"
+        );
     }
 }

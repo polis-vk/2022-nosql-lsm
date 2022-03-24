@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Collections;
@@ -20,7 +19,6 @@ import static ru.mail.polis.dmitrykondraev.MemorySegmentComparator.LEXICOGRAPHIC
 final class SortedStringTable implements Closeable {
     public static final String INDEX_FILENAME = "index";
     public static final String DATA_FILENAME = "data";
-
 
     private final Path indexFile;
     private final Path dataFile;
@@ -64,7 +62,7 @@ final class SortedStringTable implements Closeable {
     }
 
     /**
-     * left binary search
+     * left binary search.
      *
      * @param first inclusive
      * @param last  exclusive
@@ -72,23 +70,27 @@ final class SortedStringTable implements Closeable {
      * if no such index exists, result < 0
      */
     private int binarySearch(int first, int last, MemorySegment key) {
-        while (first < last) {
-            int mid = first + (last - first) / 2;
+        int low = first;
+        int high = last;
+        while (low < high) {
+            int mid = low + (high - low) / 2;
             int compare = LEXICOGRAPHICALLY.compare(mappedEntry(mid).key(), key);
             if (compare < 0) {
-                first = mid + 1;
+                low = mid + 1;
             } else if (compare > 0) {
-                last = mid;
+                high = mid;
             } else {
                 return mid;
             }
         }
-        return -(first + 1);
+        return -(low + 1);
     }
 
     /**
+     * Get one entry from file
+     *
      * @return null if either indexFile or dataFile does not exist,
-     * null if key does not exist in table
+     *     null if key does not exist in table
      * @throws IOException if other I/O error occurs
      */
     public MemorySegmentEntry get(MemorySegment key) throws IOException {
@@ -201,13 +203,13 @@ final class SortedStringTable implements Closeable {
         }
     }
 
-    private final class IteratorImpl implements java.util.Iterator<MemorySegmentEntry> {
+    private final class IteratorImpl implements Iterator<MemorySegmentEntry> {
         private final MemorySegment from;
         private final MemorySegment to;
 
-        private int first = 0;
+        private int first;
         private int last = entriesMapped();
-        private boolean pivoted = false;
+        private boolean pivoted;
 
         private IteratorImpl(MemorySegment from, MemorySegment to) {
             this.from = from;

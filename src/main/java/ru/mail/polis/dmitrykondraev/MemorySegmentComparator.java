@@ -12,6 +12,7 @@ import java.util.Comparator;
  */
 public class MemorySegmentComparator implements Comparator<MemorySegment> {
     public static final MemorySegmentComparator LEXICOGRAPHICALLY = new MemorySegmentComparator();
+
     @Override
     public int compare(MemorySegment lhs, MemorySegment rhs) {
         long offset = lhs.mismatch(rhs);
