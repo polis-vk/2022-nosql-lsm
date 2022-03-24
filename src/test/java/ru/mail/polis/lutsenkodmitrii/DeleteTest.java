@@ -138,7 +138,7 @@ public class DeleteTest extends BaseTest {
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
         sliceAndDice(dao);
-        /*dao.upsert(entry(keyAt(DATASET[1]), null));
+        dao.upsert(entry(keyAt(DATASET[1]), null));
         dao.upsert(entryAt(DATASET[1]));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
@@ -148,6 +148,6 @@ public class DeleteTest extends BaseTest {
         dao.upsert(entry(keyAt(DATASET[2]), null));
         dao.close();
         dao = DaoFactory.Factory.reopen(dao);
-        checkEmpty(dao);*/
+        checkEmpty(dao);
     }
 }
