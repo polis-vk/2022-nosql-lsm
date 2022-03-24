@@ -67,7 +67,7 @@ final class SortedStringTable implements Closeable {
      * @param first inclusive
      * @param last  exclusive
      * @return first index such that key of entry with that index is equal to key,
-     * if no such index exists, result < 0
+     *         if no such index exists, result < 0
      */
     private int binarySearch(int first, int last, MemorySegment key) {
         int low = first;
@@ -87,10 +87,10 @@ final class SortedStringTable implements Closeable {
     }
 
     /**
-     * Get one entry from file
+     * Get one entry from file.
      *
      * @return null if either indexFile or dataFile does not exist,
-     *     null if key does not exist in table
+     *         null if key does not exist in table
      * @throws IOException if other I/O error occurs
      */
     public MemorySegmentEntry get(MemorySegment key) throws IOException {
@@ -105,14 +105,12 @@ final class SortedStringTable implements Closeable {
         if (indexSegment == null && dataSegment == null) {
             loadFromFiles(); // throws NoSuchFileException
         }
-        if (from == null) {
-            from = mappedEntry(0).key();
-        }
-        if (to != null && LEXICOGRAPHICALLY.compare(from, to) >= 0) {
+        MemorySegment start = from == null ? mappedEntry(0).key() : from;
+        if (to != null && LEXICOGRAPHICALLY.compare(start, to) >= 0) {
             return Collections.emptyIterator();
         }
         // TODO fix to
-        return new IteratorImpl(from, to);
+        return new IteratorImpl(start, to);
     }
 
     @Override
