@@ -41,32 +41,27 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         }
         PeekingIterator<BaseEntry<ByteBuffer>> nextIter = queue.remove();
         BaseEntry<ByteBuffer> current = nextIter.next();
-        removeSame(current);
+        skipSame(current);
         if (nextIter.hasNext()) {
             queue.add(nextIter);
         }
         return current;
     }
 
-    private void removeSame(BaseEntry<ByteBuffer> current) {
+    private void skipSame(BaseEntry<ByteBuffer> current) {
         if (queue.isEmpty()) {
             return;
         }
-        PeekingIterator<BaseEntry<ByteBuffer>> iter = queue.remove();
-        boolean same = iter.peek().key().equals(current.key());
-        while (same) {
+        while (!queue.isEmpty()) {
+            PeekingIterator<BaseEntry<ByteBuffer>> iter = queue.peek();
+            if (!iter.peek().key().equals(current.key())) {
+                break;
+            }
+            iter = queue.remove();
             iter.next();
             if (iter.hasNext()) {
                 queue.add(iter);
             }
-            if (queue.isEmpty()) {
-                break;
-            }
-            iter = queue.remove();
-            same = iter.peek().key().equals(current.key());
-        }
-        if (!same) {
-            queue.add(iter);
         }
     }
 
@@ -75,7 +70,7 @@ class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         BaseEntry<ByteBuffer> current = nextIter.peek();
         while (current.value() == null) {
             nextIter.next();
-            removeSame(current);
+            skipSame(current);
             if (nextIter.hasNext()) {
                 queue.add(nextIter);
             }

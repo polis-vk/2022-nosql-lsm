@@ -158,9 +158,6 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static int getOffset(MappedByteBuffer readDataPage, MappedByteBuffer readIndexPage,
                                  ByteBuffer key) {
         int indexNumber = binarySearch(readDataPage, readIndexPage, key);
-        if (indexNumber < 0) {
-            indexNumber = -indexNumber - 1;
-        }
         int indexOffset = indexNumber << 2;
         if (readIndexPage.capacity() <= indexOffset) {
             return readDataPage.capacity();
@@ -187,6 +184,6 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 return mid;
             }
         }
-        return -(low + 1);
+        return low;
     }
 }
