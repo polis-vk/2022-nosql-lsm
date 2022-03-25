@@ -23,7 +23,10 @@ public class MergeIterator<E> implements Iterator<E> {
                 return Collections.emptyIterator();
             case 1:
                 return iterators.get(0);
+            default:
+                // Just go on
         }
+
         PriorityQueue<IndexedPeekIterator<E>> queue = new PriorityQueue<>(iterators.size(), (o1, o2) -> {
             int result = comparator.compare(o1.peek(), o2.peek());
             if (result != 0) {
@@ -40,7 +43,6 @@ public class MergeIterator<E> implements Iterator<E> {
 
         return new MergeIterator<>(queue, comparator);
     }
-
 
     @Override
     public boolean hasNext() {
