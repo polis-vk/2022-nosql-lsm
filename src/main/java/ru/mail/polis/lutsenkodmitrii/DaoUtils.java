@@ -8,9 +8,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static ru.mail.polis.lutsenkodmitrii.PersistenceRangeDao.NEXT_LINE_IN_STRING;
-import static ru.mail.polis.lutsenkodmitrii.PersistenceRangeDao.NEXT_LINE_REPLACEMENT;
-
 public final class DaoUtils {
 
     public static final int CHARS_IN_INT = Integer.SIZE / Character.SIZE;
@@ -148,10 +145,43 @@ public final class DaoUtils {
     }
 
     public static String preprocess(String str) {
-        return str.replace(NEXT_LINE_IN_STRING, NEXT_LINE_REPLACEMENT);
+        if (!str.contains("\n") && !str.contains("\\")) {
+            return str;
+        }
+        StringBuilder stringBuilder = new StringBuilder();
+        char[] charArray = str.toCharArray();
+        for (int i = 0; i < charArray.length; i++) {
+            if (charArray[i] == '\\') {
+                stringBuilder.append('\\');
+                stringBuilder.append('\\');
+            } else if (charArray[i] == '\n') {
+                stringBuilder.append('\\');
+                stringBuilder.append('n');
+            } else {
+                stringBuilder.append(charArray[i]);
+            }
+        }
+        return stringBuilder.toString();
     }
 
     public static String postprocess(String str) {
-        return str.replace(NEXT_LINE_REPLACEMENT, NEXT_LINE_IN_STRING);
+        if (!str.contains("\\")) {
+            return str;
+        }
+        StringBuilder stringBuilder = new StringBuilder();
+        int i = 0;
+        char[] charArray = str.toCharArray();
+        while (i < charArray.length) {
+            while (i < charArray.length && charArray[i] != '\\') {
+                stringBuilder.append(charArray[i]);
+                i++;
+            }
+            if (i < charArray.length - 1) {
+                // все слэши парные, так что после слэша гарантированно идет 'n' или еще один слэш
+                stringBuilder.append(charArray[i + 1] == 'n' ? '\n' : '\\');
+                i += 2;
+            }
+        }
+        return stringBuilder.toString();
     }
 }

@@ -47,11 +47,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     };
     public static final int DELETED_MARK = 0;
     public static final int EXISTING_MARK = 1;
-    public static final char NEXT_LINE = '\n';
-    public static final String NEXT_LINE_REPLACEMENT = "\\\\n";
-    public static final String NEXT_LINE_IN_STRING = String.valueOf(NEXT_LINE);
-    public static final int NEXT_LINE_REPLACEMENT_ADDITION =
-            NEXT_LINE_REPLACEMENT.length() - NEXT_LINE_IN_STRING.length();
+    public static final String NEXT_LINE = "\n";
     public static final String DATA_FILE_NAME = "daoData";
     public static final String DATA_FILE_EXTENSION = ".txt";
     private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
@@ -92,28 +88,22 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
             DaoUtils.writeUnsignedInt(fileMaxKey.length(), bufferedFileWriter);
             bufferedFileWriter.write(fileMaxKey);
             DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
-            int keyNextLines;
-            int valueNextLines;
+
             for (BaseEntry<String> baseEntry : data.values()) {
-                keyNextLines = (int) baseEntry.key().chars().parallel().filter(ch -> ch == NEXT_LINE).count();
-                DaoUtils.writeUnsignedInt(baseEntry.key().length() + keyNextLines * NEXT_LINE_REPLACEMENT_ADDITION,
-                        bufferedFileWriter);
-                bufferedFileWriter.write(keyNextLines == 0 ? baseEntry.key() : preprocess(baseEntry.key()));
+                String key = preprocess(baseEntry.key());
+                DaoUtils.writeUnsignedInt(key.length(), bufferedFileWriter);
+                bufferedFileWriter.write(key); // Длина value не пишется так как она не нужна
                 if (baseEntry.value() == null) {
-                    bufferedFileWriter.write(DELETED_MARK + NEXT_LINE);
+                    bufferedFileWriter.write(DELETED_MARK + '\n');
                     DaoUtils.writeUnsignedInt(DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT
-                            + baseEntry.key().length() + keyNextLines * NEXT_LINE_REPLACEMENT_ADDITION
-                            + NEXT_LINE_IN_STRING.length(), bufferedFileWriter);
+                            + key.length() + NEXT_LINE.length(), bufferedFileWriter);
                     continue;
                 }
+                String value = preprocess(baseEntry.value());
                 bufferedFileWriter.write(EXISTING_MARK);
-                valueNextLines = (int) baseEntry.value().chars().parallel().filter(ch -> ch == NEXT_LINE).count();
-                bufferedFileWriter.write((valueNextLines == 0 ? baseEntry.value() : preprocess(baseEntry.value()))
-                        + NEXT_LINE); // Длина value не пишется так как она не нужна
+                bufferedFileWriter.write(value + '\n'); // Длина value не пишется так как она не нужна
                 DaoUtils.writeUnsignedInt(DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT
-                        + baseEntry.key().length() + baseEntry.value().length()
-                        + (keyNextLines + valueNextLines) * NEXT_LINE_REPLACEMENT_ADDITION
-                        + NEXT_LINE_IN_STRING.length(), bufferedFileWriter);
+                        + key.length() + value.length() + NEXT_LINE.length(), bufferedFileWriter);
             }
             bufferedFileWriter.flush();
         }
