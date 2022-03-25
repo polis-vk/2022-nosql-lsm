@@ -48,7 +48,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     public static final int DELETED_MARK = 0;
     public static final int EXISTING_MARK = 1;
     public static final char NEXT_LINE = '\n';
-    public static final String NEXT_LINE_REPLACEMENT = "\\n";
+    public static final String NEXT_LINE_REPLACEMENT = "\\\\n";
     public static final String NEXT_LINE_IN_STRING = String.valueOf(NEXT_LINE);
     public static final int NEXT_LINE_REPLACEMENT_ADDITION =
             NEXT_LINE_REPLACEMENT.length() - NEXT_LINE_IN_STRING.length();
