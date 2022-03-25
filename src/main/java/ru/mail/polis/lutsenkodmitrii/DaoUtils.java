@@ -74,7 +74,7 @@ public final class DaoUtils {
      * Минусуем, чтобы гарантированно читать это число целиком.
      * position - середина по размеру между left и right, (left + right) / 2;
      * position после операции выше указывает на ту позицию относительно начала строки, на какую повезет,
-     * необязательно на начало
+     * необязательно на начало. При этом ситуации когда идет "многократное попадание в одну и ту же entry не существует"
      * Поэтому реализован гарантированный переход на начало следующей строки, для этого делается readline,
      * Каждое entry начинается с новой строки ('\n' в исходном ключе и значении экранируется)
      * Начало строки начинается всегда с размера прошлой строки, то есть прошлой entry
@@ -150,15 +150,13 @@ public final class DaoUtils {
         }
         StringBuilder stringBuilder = new StringBuilder();
         char[] charArray = str.toCharArray();
-        for (int i = 0; i < charArray.length; i++) {
-            if (charArray[i] == '\\') {
-                stringBuilder.append('\\');
-                stringBuilder.append('\\');
-            } else if (charArray[i] == '\n') {
-                stringBuilder.append('\\');
-                stringBuilder.append('n');
+        for (char c : charArray) {
+            if (c == '\\') {
+                stringBuilder.append('\\').append('\\');
+            } else if (c == '\n') {
+                stringBuilder.append('\\').append('n');
             } else {
-                stringBuilder.append(charArray[i]);
+                stringBuilder.append(c);
             }
         }
         return stringBuilder.toString();
