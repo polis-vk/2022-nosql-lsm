@@ -16,7 +16,8 @@ public class FileIterator implements Iterator<BaseEntry<String>> {
 
     public FileIterator(String from, String to, DaoFile daoFile) throws IOException {
         this.daoFile = daoFile;
-        this.reader = new RandomAccessFile(daoFile.getPathToFile().toFile(), "r");
+        //this.reader = new RandomAccessFile(daoFile.getPathToFile().toFile(), "r");
+        this.reader = null;//daoFile.getReader();
         this.to = to;
         BaseEntry<String> entry = from == null ? readEntry() : findValidClosest(from, to);
         if (entry == null) {

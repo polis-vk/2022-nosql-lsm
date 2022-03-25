@@ -9,7 +9,8 @@ import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
@@ -54,7 +55,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         iterators.add(new PeekIterator(getDataMapIterator(from, to), 0));
         for (int fileNumber = 0; fileNumber < daoFiles.size(); fileNumber++) {
             int sourceNumber = daoFiles.size() - fileNumber;
-            iterators.add(new PeekIterator(new FileIterator(from, to, daoFiles.get(fileNumber)), sourceNumber));
+            iterators.add(new PeekIterator(new NewFileIterator(from, to, daoFiles.get(fileNumber)), sourceNumber));
         }
         return new MergeIterator(iterators);
     }
@@ -83,11 +84,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     public void flush() throws IOException {
         savaData();
         dataMap.clear();
+        closeFiles();
     }
 
     @Override
     public void close() throws IOException {
-        savaData();
+        flush();
     }
 
     private Iterator<BaseEntry<String>> getDataMapIterator(String from, String to) {
@@ -104,31 +106,26 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return subMap.values().iterator();
     }
 
-    private BaseEntry<String> getFromFile(String key, int fileNumber) throws IOException {
+    private BaseEntry<String> getFromFile(String keyToFind, int fileNumber) throws IOException {
         DaoFile daoFile = daoFiles.get(fileNumber);
-        BaseEntry<String> res = null;
-        try (RandomAccessFile reader = new RandomAccessFile(pathToFile(fileNumber, DATA_FILE).toFile(), "r")) {
-            int left = 0;
-            int right = daoFile.getLastIndex();
-            while (left <= right) {
-                int middle = (right - left) / 2 + left;
-                long pos = daoFile.getOffset(middle);
-                reader.seek(pos);
-                String entryKey = reader.readUTF();
-                int comparison = key.compareTo(entryKey);
-                if (comparison == 0) {
-                    String entryValue = reader.getFilePointer() == daoFile.getOffset(middle + 1)
-                            ? null : reader.readUTF();
-                    res = new BaseEntry<>(entryKey, entryValue);
-                    break;
-                } else if (comparison > 0) {
-                    left = middle + 1;
-                } else {
-                    right = middle - 1;
-                }
+        ByteBuffer buffer = ByteBuffer.allocate(daoFile.maxEntrySize());
+        int left = 0;
+        int right = daoFile.getLastIndex();
+        while (left <= right) {
+            int middle = (right - left) / 2 + left;
+            daoFile.fillBufferWithEntry(buffer, middle);
+            String key = daoFile.readKeyFromBuffer(buffer);
+            int comparison = keyToFind.compareTo(key);
+            if (comparison < 0) {
+                right = middle - 1;
+            } else if (comparison > 0) {
+                left = middle + 1;
+            } else {
+                String value = daoFile.readValueFromBuffer(buffer, middle);
+                return new BaseEntry<>(key, value);
             }
         }
-        return res;
+        return null;
     }
 
     private void savaData() throws IOException {
@@ -142,9 +139,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                      Files.newOutputStream(pathToFile(daoFiles.size(), META_FILE), writeOptions)
              ))) {
             Entry<String> entry = dataIterator.next();
-            dataStream.writeUTF(entry.key());
+            dataStream.writeShort(entry.key().getBytes(StandardCharsets.UTF_8).length);
+            dataStream.writeBytes(entry.key());
             if (entry.value() != null) {
-                dataStream.writeUTF(entry.value());
+                dataStream.writeShort(entry.value().getBytes(StandardCharsets.UTF_8).length);
+                dataStream.writeBytes(entry.value());
             }
             metaStream.writeInt(dataMap.size());
             int currentBytes = dataStream.size();
@@ -152,9 +151,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             int bytesWrittenTotal = dataStream.size();
             while (dataIterator.hasNext()) {
                 entry = dataIterator.next();
-                dataStream.writeUTF(entry.key());
+                dataStream.writeShort(entry.key().getBytes(StandardCharsets.UTF_8).length);
+                dataStream.writeBytes(entry.key());
                 if (entry.value() != null) {
-                    dataStream.writeUTF(entry.value());
+                    dataStream.writeShort(entry.value().getBytes(StandardCharsets.UTF_8).length);
+                    dataStream.writeBytes(entry.value());
                 }
                 int bytesWritten = dataStream.size() - bytesWrittenTotal;
                 if (bytesWritten == currentBytes) {
@@ -181,4 +182,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             daoFiles.add(new DaoFile(pathToFile(i, DATA_FILE), pathToFile(i, META_FILE)));
         }
     }
+
+    private void closeFiles() throws IOException {
+        for (DaoFile daoFile : daoFiles) {
+            daoFile.close();
+        }
+    }
+
 }
