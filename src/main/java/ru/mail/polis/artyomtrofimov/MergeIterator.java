@@ -35,7 +35,7 @@ public class MergeIterator implements Iterator<Entry<String>> {
     }
 
     private Entry<String> updateIterators() {
-        if (queue.size() == 1 && queue.peek().hasNext()) {
+        if (queue.size() == 1) {
             Entry<String> entry = queue.peek().next();
             if (!queue.peek().hasNext()) {
                 queue.clear();
