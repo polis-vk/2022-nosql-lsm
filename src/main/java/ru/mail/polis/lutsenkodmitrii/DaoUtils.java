@@ -152,9 +152,9 @@ public final class DaoUtils {
         char[] charArray = str.toCharArray();
         for (char c : charArray) {
             if (c == '\\') {
-                stringBuilder.append('\\').append('\\');
+                stringBuilder.append("\\\\");
             } else if (c == '\n') {
-                stringBuilder.append('\\').append('n');
+                stringBuilder.append("\\n");
             } else {
                 stringBuilder.append(c);
             }
