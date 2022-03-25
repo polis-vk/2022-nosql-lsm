@@ -52,7 +52,10 @@ class Storage implements Closeable {
     }
 
     // it is supposed that entries can not be changed externally during this method call
-    static void save(Config config, Storage previousState, Collection<Entry<MemorySegment>> entries) throws IOException {
+    static void save(
+            Config config,
+            Storage previousState,
+            Collection<Entry<MemorySegment>> entries) throws IOException {
         if (previousState.scope.isAlive()) {
             throw new IllegalStateException("Previous storage is open for write");
         }
