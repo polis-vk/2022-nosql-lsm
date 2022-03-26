@@ -35,8 +35,8 @@ public class MapsDeserializeStream implements Closeable {
         mapData = new ArrayList<>();
         indexesData = new ArrayList<>();
 
-        int i = 0;
-        while (true) {
+        int i;
+        for (i = 0; ; i++) {
             Path mapPath = config.basePath().resolve(DATA_FILE_NAME + i);
             Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + i);
 
