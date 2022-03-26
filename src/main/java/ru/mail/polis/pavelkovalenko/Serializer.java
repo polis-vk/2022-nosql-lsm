@@ -1,14 +1,14 @@
 package ru.mail.polis.pavelkovalenko;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.concurrent.ConcurrentNavigableMap;
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Entry;
 
-public class Serializer {
+public final class Serializer {
 
     private Serializer() {
     }

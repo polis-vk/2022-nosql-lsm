@@ -1,5 +1,7 @@
 package ru.mail.polis.pavelkovalenko;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
@@ -10,8 +12,6 @@ import java.util.NavigableMap;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Entry;
 
 public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 

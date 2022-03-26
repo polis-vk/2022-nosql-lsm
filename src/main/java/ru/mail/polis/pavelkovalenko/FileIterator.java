@@ -87,16 +87,10 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
     }
 
     private Entry<ByteBuffer> binarySearchInFile() throws IOException {
-        if (!hasNext()) {
+        if (!hasNext() || isFromOutOfBound()) {
             return null;
         }
-
-        setIndexesFileOffset(getIndexesFileLength() - Utils.INDEX_OFFSET);
-        Entry<ByteBuffer> ceilEntry = Serializer.readEntry(dataFile, indexesFile);
-        if (from.compareTo(ceilEntry.key()) > 0) {
-            return null;
-        }
-        setIndexesFileOffset(0);
+        Entry<ByteBuffer> ceilEntry = getLast();
 
         long a = 0;
         long b = getIndexesFileLength() / Utils.INDEX_OFFSET;
@@ -134,6 +128,17 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
         setIndexesFileOffset(lastIndexesFileOffset);
         setDataFileOffset(lastDataFileOffset);
         return ceilEntry;
+    }
+
+    private Entry<ByteBuffer> getLast() throws IOException {
+        setIndexesFileOffset(getIndexesFileLength() - Utils.INDEX_OFFSET);
+        Entry<ByteBuffer> last = Serializer.readEntry(dataFile, indexesFile);
+        setIndexesFileOffset(0);
+        return last;
+    }
+
+    private boolean isFromOutOfBound() throws IOException {
+        return from.compareTo(getLast().key()) > 0;
     }
 
     private long getIndexesFileLength() throws IOException {
