@@ -36,6 +36,9 @@ public class PeekIterator implements Iterator<BaseEntry<ByteBuffer>>, Comparable
 
     @Override
     public int compareTo(PeekIterator e2) {
+        if (e2 == null) {
+            return 1;
+        }
         int keyComparison = this.peek().key().compareTo(e2.peek().key());
         if (keyComparison == 0) {
             return Integer.compare(e2.priority, this.priority);
