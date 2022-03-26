@@ -35,23 +35,20 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
 
     private BaseEntry<String> getNext() {
         BaseEntry<String> desiredNext = null;
-        while (!queue.isEmpty() && desiredNext == null) {
+        while (!queue.isEmpty()) {
             PeekIterator current = queue.poll();
             desiredNext = current.next();
-            if (desiredNext.value() == null || desiredNext.key().equals(keyToSkip)) {
-                if (desiredNext.value() == null) {
-                    keyToSkip = desiredNext.key();
-                }
-                if (current.hasNext()) {
-                    queue.add(current);
-                }
-                desiredNext = null;
-                continue;
-            }
-            keyToSkip = desiredNext.key();
             if (current.hasNext()) {
                 queue.add(current);
             }
+            if (desiredNext.value() != null && !desiredNext.key().equals(keyToSkip)) {
+                keyToSkip = desiredNext.key();
+                break;
+            }
+            if (desiredNext.value() == null) {
+                keyToSkip = desiredNext.key();
+            }
+            desiredNext = null;
         }
         return desiredNext;
     }

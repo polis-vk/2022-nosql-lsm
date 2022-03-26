@@ -39,6 +39,6 @@ public class PeekIterator implements Iterator<BaseEntry<String>>, Comparable<Pee
         if (keyCompare != 0) {
             return keyCompare;
         }
-        return this.sourceNumber - o.sourceNumber;
+        return Integer.compare(this.sourceNumber, o.sourceNumber);
     }
 }
