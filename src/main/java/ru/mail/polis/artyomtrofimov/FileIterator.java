@@ -11,7 +11,7 @@ import java.util.NoSuchElementException;
 
 public class FileIterator implements Iterator<Entry<String>> {
     private final String to;
-    private RandomAccessFile raf;
+    private final RandomAccessFile raf;
     private Entry<String> nextEntry;
     private final long fileLength;
 
