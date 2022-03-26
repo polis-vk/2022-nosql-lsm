@@ -160,66 +160,6 @@ public final class FileUtils {
         }
         return list;
     }
-    /**
-     * @deprecated use {@link #getIndex(MappedByteBuffer, MappedByteBuffer, ByteBuffer, int, int)} instead
-     */
-    @Deprecated
-    public static int getStartIndex(MappedByteBuffer file, MappedByteBuffer index, ByteBuffer key, int start, int end) {
-        int min = start;
-        int max = end;
-        int mid;
-        int comparison;
-        while (min <= max) {
-            if (key.compareTo(readMappedBuffer(file, intAt(index, min))) <= 0) {
-                return min;
-            }
-            comparison = key.compareTo(readMappedBuffer(file, intAt(index, max)));
-            if (comparison > 0) {
-                return -1;
-            }
-            if (comparison == 0) {
-                return max;
-            }
-            mid = min + (max - min) / 2;
-            comparison = key.compareTo(readMappedBuffer(file, intAt(index, mid)));
-            if (comparison == 0) {
-                return mid;
-            }
-            if (comparison > 0) {
-                min = mid + 1;
-            } else {
-                max = mid;
-            }
-        }
-        return max;
-    }
-
-    /**
-     * @deprecated use {@link #getIndex(MappedByteBuffer, MappedByteBuffer, ByteBuffer, int, int)} instead
-     */
-    @Deprecated
-    public static int getEndIndex(MappedByteBuffer file, MappedByteBuffer index, ByteBuffer key, int start, int end) {
-        int min = start;
-        int max = end;
-        int mid;
-        while (min <= max) {
-
-            if (key.compareTo(readMappedBuffer(file, intAt(index, min))) <= 0) {
-                return -1;
-            }
-            if (key.compareTo(readMappedBuffer(file, intAt(index, max))) > 0) {
-                return max;
-            }
-
-            mid = min + 1 + (max - min) / 2;
-            if (key.compareTo(readMappedBuffer(file, intAt(index, mid))) > 0) {
-                min = mid;
-            } else {
-                max = mid - 1;
-            }
-        }
-        return min;
-    }
 
     public static int getIndex(MappedByteBuffer file, MappedByteBuffer index, ByteBuffer key, int start, int end) {
         int min = start;
