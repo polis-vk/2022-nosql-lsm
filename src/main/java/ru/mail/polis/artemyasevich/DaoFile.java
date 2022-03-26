@@ -4,9 +4,7 @@ import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -77,39 +75,6 @@ public class DaoFile {
         }
         this.maxEntrySize = maxEntrySize;
         return fileOffsets;
-    }
-
-    void fillBufferWithEntry(ByteBuffer buffer, int index) throws IOException {
-        buffer.clear();
-        buffer.limit(entrySize(index));
-        getChannel().read(buffer, getOffset(index));
-        buffer.flip();
-    }
-
-    String readKeyFromBuffer(ByteBuffer buffer) {
-        short keySize = readLastBytesAsShort(buffer);
-        buffer.limit(keySize);
-        return StandardCharsets.UTF_8.decode(buffer).toString();
-    }
-
-    String readValueFromBuffer(ByteBuffer buffer, int index) {
-        int entrySize = entrySize(index);
-        buffer.limit(entrySize - Short.BYTES);
-        if (!buffer.hasRemaining()) {
-            return null;
-        }
-        short valueSize = readLastBytesAsShort(buffer);
-        if (valueSize == 0) {
-            return "";
-        }
-        buffer.limit(entrySize - Short.BYTES * 2);
-        return StandardCharsets.UTF_8.decode(buffer).toString();
-    }
-
-    private short readLastBytesAsShort(ByteBuffer buffer) {
-        byte high = buffer.get(buffer.limit() - Short.BYTES);
-        byte low = buffer.get(buffer.limit() - Short.BYTES + 1);
-        return (short) ((high << 8) + low);
     }
 
 }
