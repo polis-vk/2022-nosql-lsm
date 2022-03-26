@@ -29,29 +29,11 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (collection.isEmpty()) {
             return Collections.emptyIterator();
         }
-        Iterator<BaseEntry<ByteBuffer>> iter = getInMemoryIterator(from, to);
+        Iterator<BaseEntry<ByteBuffer>> iter = FileUtils.getInMemoryIterator(collection, from, to);
         if (!iter.hasNext()) {
             return Collections.emptyIterator();
         }
         return new InMemoryDaoIterator(new PeekIterator<>(iter, Integer.MAX_VALUE));
-    }
-
-    private Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(ByteBuffer from, ByteBuffer to) {
-        if (collection.isEmpty()) {
-            return Collections.emptyIterator();
-        }
-        if (from == null && to == null) {
-            return collection.values().iterator();
-        }
-
-        ByteBuffer start = (from == null ? collection.firstKey() : collection.ceilingKey(from));
-        ByteBuffer end = (to == null ? collection.lastKey() : collection.floorKey(to));
-
-        if (start == null || end == null || start.compareTo(end) > 0) {
-            return Collections.emptyIterator();
-        }
-        return collection.subMap(start, true, end, to == null || !to.equals(collection.floorKey(to)))
-                .values().iterator();
     }
 
     @Override

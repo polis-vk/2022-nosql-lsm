@@ -13,16 +13,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
-
-import static ru.mail.polis.baidiyarosan.FileUtils.readBuffer;
 
 public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
@@ -40,92 +36,37 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         if (Files.notExists(indexesDir)) {
             Files.createDirectory(indexesDir);
         }
-
     }
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
         PriorityQueue<PeekIterator<BaseEntry<ByteBuffer>>> heap =
                 new PriorityQueue<>(Comparator.comparing(o -> o.peek().key()));
-        Iterator<BaseEntry<ByteBuffer>> temp = getInMemoryIterator(from, to);
+        Iterator<BaseEntry<ByteBuffer>> temp = FileUtils.getInMemoryIterator(collection, from, to);
         if (temp.hasNext()) {
             heap.add(new PeekIterator<>(temp, Integer.MAX_VALUE));
         }
-        int number;
-        for (Path searchPath : FileUtils.getPaths(path)) {
-            number = FileUtils.getFileNumber(searchPath);
-            
-            Path indexPath = path.resolve(Paths.get(FileUtils.INDEX_FOLDER,
-                    FileUtils.INDEX_FILE_HEADER + number + FileUtils.FILE_EXTENSION));
+        for (int i = 0; i < FileUtils.getPaths(path).size(); ++i) {
 
-            temp = getInFileIterator(searchPath, indexPath, number, from, to);
+            // file naming starts from 1, collections ordering starts from 0;
+            Path filePath = FileUtils.getDataPath(path, i + 1);
+            Path indexPath = FileUtils.getIndexPath(path, i + 1);
+            if (files.size() <= i || files.get(i) == null) {
+                try (FileChannel in = FileChannel.open(filePath, StandardOpenOption.READ);
+                     FileChannel indexes = FileChannel.open(indexPath, StandardOpenOption.READ)
+                ) {
+                    files.add(i, in.map(FileChannel.MapMode.READ_ONLY, 0, in.size()));
+                    fileIndexes.add(i, indexes.map(FileChannel.MapMode.READ_ONLY, 0, indexes.size()));
+                }
+            }
+            // file indexes starts with 1, but collections starts with 0
+            temp = FileUtils.getInFileIterator(files.get(i), fileIndexes.get(i), from, to);
             if (temp.hasNext()) {
-                heap.add(new PeekIterator<>(temp, number));
+                heap.add(new PeekIterator<>(temp, i + 1));
             }
         }
 
-        return new DaoIterator(heap);
-    }
-
-    private Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(ByteBuffer from, ByteBuffer to) {
-        if (collection.isEmpty()) {
-            return Collections.emptyIterator();
-        }
-        if (from == null && to == null) {
-            return collection.values().iterator();
-        }
-
-        ByteBuffer start = (from == null ? collection.firstKey() : collection.ceilingKey(from));
-        ByteBuffer end = (to == null ? collection.lastKey() : collection.floorKey(to));
-
-        if (start == null || end == null || start.compareTo(end) > 0) {
-            return Collections.emptyIterator();
-        }
-        return collection.subMap(start, true, end, to == null || !to.equals(collection.floorKey(to)))
-                .values().iterator();
-    }
-
-    private Iterator<BaseEntry<ByteBuffer>> getInFileIterator(Path filePath, Path indexPath, int number, ByteBuffer from, ByteBuffer to)
-            throws IOException {
-        //if(files.get(number) == null) {
-            try (FileChannel in = FileChannel.open(filePath, StandardOpenOption.READ);
-                 FileChannel indexes = FileChannel.open(indexPath, StandardOpenOption.READ)
-            ) {
-                //files.add(number, in.map(FileChannel.MapMode.READ_ONLY, 0, in.size()));
-                //fileIndexes.add(number, indexes.map(FileChannel.MapMode.READ_ONLY, 0, indexes.size()));
-            //}
-        //}
-
-            long[] ar = getIndexArray(indexes.map(FileChannel.MapMode.READ_ONLY, 0, indexes.size()));
-            //long[] ar = getIndexArray(FileUtils.getFileNumber(filePath));
-            ByteBuffer itemp = ByteBuffer.allocate(Integer.BYTES);
-
-            int start = 0;
-            int end = (int) (indexes.size()/Long.BYTES - 1);
-            if (from != null) {
-                start = FileUtils.getStartIndex(in, ar, from, itemp, start, end);
-            }
-
-            if (start == -1) {
-                return Collections.emptyIterator();
-            }
-
-            if (to != null) {
-                end = FileUtils.getEndIndex(in, ar, to, itemp, start, end);
-            }
-            if (end == -1) {
-                return Collections.emptyIterator();
-            }
-
-
-
-            List<BaseEntry<ByteBuffer>> list = new LinkedList<>();
-            for (int i = start; i <= end; ++i) {
-                list.add(new BaseEntry<>(readBuffer(in, ar[i], itemp), readBuffer(in, itemp)));
-            }
-
-            return list.iterator();
-        }
+        return new MemoryAndDiskDaoIterator(heap);
     }
 
     @Override
@@ -135,70 +76,11 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     @Override
     public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> value = collection.get(key);
-        if (value == null) {
-            return getInFile(key);
-        }
-        return value.value() == null ? null : value;
-    }
-
-    private BaseEntry<ByteBuffer> getInFile(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> value = null;
-
-        int order = 0;
-        for (Path searchPath : FileUtils.getPaths(path)) {
-            if (order < FileUtils.getFileNumber(searchPath)) {
-                value = binarySearchFile(searchPath, key);
-                if (value != null) {
-                    order = FileUtils.getFileNumber(searchPath);
-                }
-            }
-        }
-
+        BaseEntry<ByteBuffer> value = Dao.super.get(key);
         if (value == null) {
             return null;
         }
         return value.value() == null ? null : value;
-    }
-
-    private BaseEntry<ByteBuffer> binarySearchFile(Path searchPath, ByteBuffer key)
-            throws IOException {
-        try (FileChannel in = FileChannel.open(searchPath, StandardOpenOption.READ)) {
-            int file = FileUtils.getFileNumber(searchPath);
-            long[] indexes = getIndexArray(file);
-            ByteBuffer temp = ByteBuffer.allocate(Integer.BYTES);
-            int min = 0;
-            int max = indexes.length - 1;
-            int mid;
-            int comparison;
-            while (min <= max) {
-                comparison = key.compareTo(readBuffer(in, indexes[min], temp));
-                if (comparison < 0) {
-                    return null;
-                }
-                if (comparison == 0) {
-                    return new BaseEntry<>(key, readBuffer(in, temp));
-                }
-                comparison = key.compareTo(readBuffer(in, indexes[max], temp));
-                if (comparison > 0) {
-                    return null;
-                }
-                if (comparison == 0) {
-                    return new BaseEntry<>(key, readBuffer(in, temp));
-                }
-                mid = min + (max - min) / 2;
-                comparison = key.compareTo(readBuffer(in, indexes[mid], temp));
-                if (comparison == 0) {
-                    return new BaseEntry<>(key, readBuffer(in, temp));
-                }
-                if (comparison > 0) {
-                    min = mid + 1;
-                } else {
-                    max = mid - 1;
-                }
-            }
-        }
-        return null;
     }
 
     @Override
@@ -208,36 +90,6 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         }
 
         FileUtils.writeOnDisk(collection, path);
-    }
-
-    @Deprecated
-    private long[] getIndexArray(MappedByteBuffer indexes) throws IOException {
-        long[] array;
-
-        int size = indexes.capacity() / Long.BYTES;
-        array = new long[size];
-        for (int i = 0; i < size; ++i) {
-            array[i] = indexes.getLong(i * Long.BYTES);
-        }
-
-        return array;
-    }
-
-    @Deprecated
-    private long[] getIndexArray(int fileNumber) throws IOException {
-        long[] array;
-        Path indexPath = path.resolve(Paths.get(FileUtils.INDEX_FOLDER,
-                FileUtils.INDEX_FILE_HEADER + fileNumber + FileUtils.FILE_EXTENSION));
-        try (FileChannel indexOut = FileChannel.open(indexPath, StandardOpenOption.READ)) {
-            int size = (int) (indexOut.size() / Long.BYTES);
-            array = new long[size];
-            ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-            for (int i = 0; i < size; ++i) {
-                array[i] = FileUtils.readLong(indexOut, buffer);
-            }
-        }
-
-        return array;
     }
 
 }

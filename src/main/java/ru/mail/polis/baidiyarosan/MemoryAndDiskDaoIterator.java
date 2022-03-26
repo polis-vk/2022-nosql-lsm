@@ -6,13 +6,13 @@ import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.PriorityQueue;
 
-public class DaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
+public class MemoryAndDiskDaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
     private final PriorityQueue<PeekIterator<BaseEntry<ByteBuffer>>> heap;
 
     private BaseEntry<ByteBuffer> value;
 
-    public DaoIterator(PriorityQueue<PeekIterator<BaseEntry<ByteBuffer>>> heap) {
+    public MemoryAndDiskDaoIterator(PriorityQueue<PeekIterator<BaseEntry<ByteBuffer>>> heap) {
         this.heap = heap;
     }
 

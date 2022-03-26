@@ -18,9 +18,12 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
 
     @Override
     public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
+        // speed up cases when no data is saved on disk
+        // TODO remove
         if (FileUtils.getPaths(config.basePath()).size() == 0) {
            return new InMemoryDao(config);
         }
+
         return new MemoryAndDiskDao(config);
     }
 
