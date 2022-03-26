@@ -13,7 +13,6 @@ public class Storage implements Closeable {
 
     public static final String DATA_FILE_NAME = "myData";
     public static final String INDEX_FILE_NAME = "indexes";
-    public static final String FILE_EXT = ".dat";
 
     private final int numOfFiles;
     private final MapsDeserializeStream deserialize;

@@ -15,7 +15,6 @@ import java.util.Set;
 import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.WRITE;
 import static ru.mail.polis.daniilbakin.Storage.DATA_FILE_NAME;
-import static ru.mail.polis.daniilbakin.Storage.FILE_EXT;
 import static ru.mail.polis.daniilbakin.Storage.INDEX_FILE_NAME;
 
 public class MapSerializeStream implements Closeable {
@@ -24,8 +23,8 @@ public class MapSerializeStream implements Closeable {
     private final FileChannel indexesChannel;
 
     public MapSerializeStream(Config config, int dataCount) throws IOException {
-        Path mapPath = config.basePath().resolve(DATA_FILE_NAME + dataCount + FILE_EXT);
-        Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + dataCount + FILE_EXT);
+        Path mapPath = config.basePath().resolve(DATA_FILE_NAME + dataCount);
+        Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + dataCount);
         mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE_NEW));
         indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE_NEW));
     }
