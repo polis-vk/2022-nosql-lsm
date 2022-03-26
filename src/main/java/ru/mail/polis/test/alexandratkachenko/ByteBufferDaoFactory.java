@@ -1,34 +1,27 @@
 package ru.mail.polis.test.alexandratkachenko;
 
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.alexandratkachenko.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory
+@DaoFactory(stage = 2, week = 2)
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
-    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao() {
-        return new InMemoryDao();
+    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
+        return new InMemoryDao(config);
     }
 
     @Override
     public String toString(ByteBuffer data) {
-        if (data == null) {
-            return null;
-        }
-        if (data.hasArray()) {
-            return new String(data.array(), data.position() + data.arrayOffset(), data.remaining(),
-                    StandardCharsets.UTF_8);
-        }
-        final byte[] bytes = new byte[data.remaining()];
-        data.duplicate().get(bytes);
-        return new String(bytes, StandardCharsets.UTF_8);
+        return data == null ? null : StandardCharsets.UTF_8.decode(data.asReadOnlyBuffer()).toString();
     }
 
     @Override
