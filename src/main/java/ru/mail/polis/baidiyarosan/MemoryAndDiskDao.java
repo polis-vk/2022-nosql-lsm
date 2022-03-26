@@ -6,11 +6,13 @@ import ru.mail.polis.Dao;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -24,9 +26,13 @@ import static ru.mail.polis.baidiyarosan.FileUtils.readBuffer;
 
 public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    protected final NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection = new ConcurrentSkipListMap<>();
+    private final NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection = new ConcurrentSkipListMap<>();
 
-    protected final Path path;
+    private final List<MappedByteBuffer> files = new ArrayList<>();
+
+    private final List<MappedByteBuffer> fileIndexes = new ArrayList<>();
+
+    private final Path path;
 
     public MemoryAndDiskDao(Config config) throws IOException {
         this.path = config.basePath();
@@ -45,11 +51,16 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         if (temp.hasNext()) {
             heap.add(new PeekIterator<>(temp, Integer.MAX_VALUE));
         }
-
+        int number;
         for (Path searchPath : FileUtils.getPaths(path)) {
-            temp = getInFileIterator(searchPath, from, to);
+            number = FileUtils.getFileNumber(searchPath);
+            
+            Path indexPath = path.resolve(Paths.get(FileUtils.INDEX_FOLDER,
+                    FileUtils.INDEX_FILE_HEADER + number + FileUtils.FILE_EXTENSION));
+
+            temp = getInFileIterator(searchPath, indexPath, number, from, to);
             if (temp.hasNext()) {
-                heap.add(new PeekIterator<>(temp, FileUtils.getFileNumber(searchPath)));
+                heap.add(new PeekIterator<>(temp, number));
             }
         }
 
@@ -74,28 +85,45 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                 .values().iterator();
     }
 
-    private Iterator<BaseEntry<ByteBuffer>> getInFileIterator(Path filePath, ByteBuffer from, ByteBuffer to)
+    private Iterator<BaseEntry<ByteBuffer>> getInFileIterator(Path filePath, Path indexPath, int number, ByteBuffer from, ByteBuffer to)
             throws IOException {
-        try (FileChannel in = FileChannel.open(filePath, StandardOpenOption.READ)) {
-            List<BaseEntry<ByteBuffer>> list = new LinkedList<>();
-            int file = FileUtils.getFileNumber(filePath);
-            long[] indexes = getIndexArray(file);
-            ByteBuffer temp = ByteBuffer.allocate(Integer.BYTES);
+        //if(files.get(number) == null) {
+            try (FileChannel in = FileChannel.open(filePath, StandardOpenOption.READ);
+                 FileChannel indexes = FileChannel.open(indexPath, StandardOpenOption.READ)
+            ) {
+                //files.add(number, in.map(FileChannel.MapMode.READ_ONLY, 0, in.size()));
+                //fileIndexes.add(number, indexes.map(FileChannel.MapMode.READ_ONLY, 0, indexes.size()));
+            //}
+        //}
+
+            long[] ar = getIndexArray(indexes.map(FileChannel.MapMode.READ_ONLY, 0, indexes.size()));
+            //long[] ar = getIndexArray(FileUtils.getFileNumber(filePath));
+            ByteBuffer itemp = ByteBuffer.allocate(Integer.BYTES);
+
             int start = 0;
-            int end = indexes.length - 1;
+            int end = (int) (indexes.size()/Long.BYTES - 1);
             if (from != null) {
-                start = FileUtils.getStartIndex(in, indexes, from, temp);
+                start = FileUtils.getStartIndex(in, ar, from, itemp, start, end);
             }
-            if (to != null) {
-                end = FileUtils.getEndIndex(in, indexes, to, temp);
-            }
-            if (start == -1 || end == -1) {
+
+            if (start == -1) {
                 return Collections.emptyIterator();
             }
 
-            for (int i = start; i <= end; ++i) {
-                list.add(new BaseEntry<>(readBuffer(in, indexes[i], temp), readBuffer(in, temp)));
+            if (to != null) {
+                end = FileUtils.getEndIndex(in, ar, to, itemp, start, end);
             }
+            if (end == -1) {
+                return Collections.emptyIterator();
+            }
+
+
+
+            List<BaseEntry<ByteBuffer>> list = new LinkedList<>();
+            for (int i = start; i <= end; ++i) {
+                list.add(new BaseEntry<>(readBuffer(in, ar[i], itemp), readBuffer(in, itemp)));
+            }
+
             return list.iterator();
         }
     }
@@ -178,9 +206,24 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         if (collection.isEmpty()) {
             return;
         }
+
         FileUtils.writeOnDisk(collection, path);
     }
 
+    @Deprecated
+    private long[] getIndexArray(MappedByteBuffer indexes) throws IOException {
+        long[] array;
+
+        int size = indexes.capacity() / Long.BYTES;
+        array = new long[size];
+        for (int i = 0; i < size; ++i) {
+            array[i] = indexes.getLong(i * Long.BYTES);
+        }
+
+        return array;
+    }
+
+    @Deprecated
     private long[] getIndexArray(int fileNumber) throws IOException {
         long[] array;
         Path indexPath = path.resolve(Paths.get(FileUtils.INDEX_FOLDER,

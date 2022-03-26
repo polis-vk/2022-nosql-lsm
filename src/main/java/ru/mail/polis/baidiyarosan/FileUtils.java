@@ -3,6 +3,7 @@ package ru.mail.polis.baidiyarosan;
 import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -115,10 +116,10 @@ public final class FileUtils {
         }
     }
 
-    public static int getStartIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp)
+    public static int getStartIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp, int start, int end)
             throws IOException {
-        int min = 0;
-        int max = indexes.length - 1;
+        int min = start;
+        int max = end;
         int mid;
         int comparison;
         while (min <= max) {
@@ -146,12 +147,13 @@ public final class FileUtils {
         return max;
     }
 
-    public static int getEndIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp)
+    public static int getEndIndex(FileChannel in, long[] indexes, ByteBuffer key, ByteBuffer temp, int start, int end)
             throws IOException {
-        int min = 0;
-        int max = indexes.length - 1;
+        int min = start;
+        int max = end;
         int mid;
         while (min <= max) {
+
             if (key.compareTo(readBuffer(in, indexes[min], temp)) <= 0) {
                 return -1;
             }
@@ -166,6 +168,11 @@ public final class FileUtils {
             }
         }
         return min;
+    }
+
+    public static long readLong(RandomAccessFile raf, int from) throws IOException {
+        raf.seek(from);
+        return raf.readLong();
     }
 
 }
