@@ -160,7 +160,9 @@ public final class FileUtils {
         }
         return list;
     }
-
+    /**
+     * @Deprecated use {@link #getIndex(MappedByteBuffer, MappedByteBuffer, ByteBuffer, int, int)} instead
+     */
     @Deprecated
     public static int getStartIndex(MappedByteBuffer file, MappedByteBuffer index, ByteBuffer key, int start, int end) {
         int min = start;
@@ -192,6 +194,9 @@ public final class FileUtils {
         return max;
     }
 
+    /**
+     * @Deprecated use {@link #getIndex(MappedByteBuffer, MappedByteBuffer, ByteBuffer, int, int)} instead
+     */
     @Deprecated
     public static int getEndIndex(MappedByteBuffer file, MappedByteBuffer index, ByteBuffer key, int start, int end) {
         int min = start;
