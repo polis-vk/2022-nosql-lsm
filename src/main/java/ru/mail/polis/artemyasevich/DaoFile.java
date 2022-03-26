@@ -15,9 +15,9 @@ public class DaoFile {
     private int maxEntrySize;
 
     public DaoFile(Path pathToFile, Path pathToMeta) throws IOException {
+        this.reader = new RandomAccessFile(pathToFile.toFile(), "r");
         this.pathToMeta = pathToMeta;
         this.offsets = readOffsets();
-        reader = new RandomAccessFile(pathToFile.toFile(), "r");
     }
 
     public FileChannel getChannel() {

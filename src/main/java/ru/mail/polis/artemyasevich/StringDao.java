@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class StringDao implements Dao<String, BaseEntry<String>> {
     private static final String DATA_FILE = "data";
-    static final String META_FILE = "meta";
+    private static final String META_FILE = "meta";
     private static final String FILE_EXTENSION = ".txt";
     private static final OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
 
@@ -53,11 +53,12 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         if (to != null && to.equals(from)) {
             return Collections.emptyIterator();
         }
-        List<PeekIterator> iterators = new ArrayList<>(daoFiles.size());
+        List<PeekIterator> iterators = new ArrayList<>(daoFiles.size() + 1);
         iterators.add(new PeekIterator(getDataMapIterator(from, to), 0));
         for (int fileNumber = 0; fileNumber < daoFiles.size(); fileNumber++) {
             int sourceNumber = daoFiles.size() - fileNumber;
-            iterators.add(new PeekIterator(new FileIterator(from, to, daoFiles.get(fileNumber), threadLocalBuffer.get()), sourceNumber));
+            DaoFile daoFile = daoFiles.get(fileNumber);
+            iterators.add(new PeekIterator(new FileIterator(from, to, daoFile, threadLocalBuffer.get()), sourceNumber));
         }
         return new MergeIterator(iterators);
     }
@@ -69,16 +70,18 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             return entry.value() == null ? null : entry;
         }
         for (int fileNumber = daoFiles.size() - 1; fileNumber >= 0; fileNumber--) {
-            int entryIndex = getEntryIndex(key, daoFiles.get(fileNumber), threadLocalBuffer.get());
-            if (entryIndex > daoFiles.get(fileNumber).getLastIndex()) {
+            DaoFile daoFile = daoFiles.get(fileNumber);
+            int entryIndex = getEntryIndex(key, daoFile, threadLocalBuffer.get());
+            if (entryIndex > daoFile.getLastIndex()) {
                 continue;
             }
             entry = readEntry(entryIndex, daoFiles.get(fileNumber), threadLocalBuffer.get());
             if (entry.key().equals(key)) {
                 break;
             }
+            entry = null;
         }
-        return entry == null || !entry.key().equals(key) || entry.value() == null ? null : entry;
+        return entry == null || entry.value() == null ? null : entry;
     }
 
     @Override
@@ -236,5 +239,4 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         }
         return maxSize;
     }
-
 }
