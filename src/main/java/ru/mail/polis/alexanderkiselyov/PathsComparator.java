@@ -17,7 +17,9 @@ public class PathsComparator implements Comparator<Path> {
     public int compare(Path o1, Path o2) {
         String str1 = String.valueOf(o1.getFileName());
         String str2 = String.valueOf(o2.getFileName());
-        return Integer.parseInt(str2.substring(str2.indexOf(fileName) + fileName.length(), str2.indexOf(fileExtension)))
-                - Integer.parseInt(str1.substring(str1.indexOf(fileName) + fileName.length(), str1.indexOf(fileExtension)));
+        return Integer.parseInt(str2.substring(str2.indexOf(fileName) + fileName.length(),
+                str2.indexOf(fileExtension)))
+                - Integer.parseInt(str1.substring(str1.indexOf(fileName) + fileName.length(),
+                str1.indexOf(fileExtension)));
     }
 }

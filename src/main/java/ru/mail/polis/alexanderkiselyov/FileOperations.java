@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class FileOperations {
@@ -41,13 +42,13 @@ public class FileOperations {
                 ssTables = pathStream.filter(f -> String.valueOf(f.getFileName())
                         .contains(FILE_NAME))
                         .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
-                        .toList();
+                        .collect(Collectors.toList());
             }
             try (Stream<Path> indexPathStream = Files.list(basePath)) {
                 ssIndexes = indexPathStream.filter(f -> String.valueOf(f.getFileName())
                         .contains(FILE_INDEX_NAME))
                         .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
-                        .toList();
+                        .collect(Collectors.toList());
             }
         } else {
             ssTables = new ArrayList<>();
@@ -86,8 +87,7 @@ public class FileOperations {
                 BaseEntry<byte[]> entry;
                 try {
                     entry = getCurrent(pos, ssTable, ssIndex);
-                } catch (IOException e) {
-                    e.printStackTrace();
+                } catch (Exception e) {
                     throw new NoSuchElementException("There is no next element!");
                 }
                 pos++;
