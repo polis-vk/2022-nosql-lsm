@@ -3,6 +3,7 @@ package ru.mail.polis.daniilbakin;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -10,6 +11,7 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,32 +20,46 @@ import java.util.List;
 import java.util.Set;
 
 import static java.nio.file.StandardOpenOption.READ;
+import static ru.mail.polis.daniilbakin.Storage.DATA_FILE_NAME;
+import static ru.mail.polis.daniilbakin.Storage.FILE_EXT;
+import static ru.mail.polis.daniilbakin.Storage.INDEX_FILE_NAME;
 
-public class MapsDeserializeStream {
+public class MapsDeserializeStream implements Closeable {
 
-    private final MappedByteBuffer[] mapData;
-    private final MappedByteBuffer[] indexesData;
-    private final int dataCount;
+    private final List<MappedByteBuffer> mapData;
+    private final List<MappedByteBuffer> indexesData;
+    private final int numOfFiles;
     private final Method unmap;
     private final Object fieldValue;
 
-    public MapsDeserializeStream(Config config, int dataCount) throws IOException {
-        this.dataCount = dataCount;
-        mapData = new MappedByteBuffer[dataCount];
-        indexesData = new MappedByteBuffer[dataCount];
-        for (int i = 0; i < dataCount; i++) {
-            Path mapPath = config.basePath().resolve("myLog" + (dataCount - i - 1));
-            Path indexesPath = config.basePath().resolve("indexes" + (dataCount - i - 1));
+    public MapsDeserializeStream(Config config) throws IOException {
+        mapData = new ArrayList<>();
+        indexesData = new ArrayList<>();
 
-            FileChannel mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(READ));
-            FileChannel indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(READ));
+        int i;
+        for (i = 0; ; i++) {
+            Path mapPath = config.basePath().resolve(DATA_FILE_NAME + i + FILE_EXT);
+            Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + i + FILE_EXT);
 
-            mapData[i] = mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size());
-            indexesData[i] = indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size());
+            FileChannel mapChannel;
+            FileChannel indexesChannel;
+            try {
+                mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(READ));
+                indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(READ));
 
-            mapChannel.close();
-            indexesChannel.close();
+                mapData.add(mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size()));
+                indexesData.add(indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size()));
+
+                mapChannel.close();
+                indexesChannel.close();
+            } catch (NoSuchFileException e) {
+                break;
+            }
         }
+
+        numOfFiles = i;
+        Collections.reverse(mapData);
+        Collections.reverse(indexesData);
 
         try {
             unmap = Class.forName("sun.misc.Unsafe").getMethod("invokeCleaner", ByteBuffer.class);
@@ -56,11 +72,16 @@ public class MapsDeserializeStream {
         }
     }
 
+    public int getNumberOfFiles() {
+        return numOfFiles;
+    }
+
+    @Override
     public void close() throws IOException {
         try {
-            for (int i = 0; i < dataCount; i++) {
-                unmap.invoke(fieldValue, mapData[i]);
-                unmap.invoke(fieldValue, indexesData[i]);
+            for (int i = 0; i < numOfFiles; i++) {
+                unmap.invoke(fieldValue, mapData.get(i));
+                unmap.invoke(fieldValue, indexesData.get(i));
             }
         } catch (ReflectiveOperationException e) {
             throw new IOException(e);
@@ -68,7 +89,7 @@ public class MapsDeserializeStream {
     }
 
     public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) {
-        for (int i = 0; i < dataCount; i++) {
+        for (int i = 0; i < numOfFiles; i++) {
             BaseEntry<ByteBuffer> entry = readByKey(key, i);
             if (entry != null) {
                 return entry;
@@ -82,15 +103,15 @@ public class MapsDeserializeStream {
     ) {
         List<PeekIterator<BaseEntry<ByteBuffer>>> iterators = new ArrayList<>();
         iterators.add(dataIterator);
-        for (int i = 0; i < dataCount; i++) {
+        for (int i = 0; i < numOfFiles; i++) {
             iterators.add(getIterator(from, to, i));
         }
         return new MergeIterator<>(iterators);
     }
 
     private PeekIterator<BaseEntry<ByteBuffer>> getIterator(ByteBuffer from, ByteBuffer to, int index) {
-        MappedByteBuffer indexesBuffer = indexesData[index];
-        MappedByteBuffer mapBuffer = mapData[index];
+        MappedByteBuffer indexesBuffer = indexesData.get(index);
+        MappedByteBuffer mapBuffer = mapData.get(index);
         if (indexesBuffer.capacity() < Integer.BYTES) {
             return new PeekIterator<>(Collections.emptyIterator(), index);
         }
@@ -115,12 +136,12 @@ public class MapsDeserializeStream {
     }
 
     private BaseEntry<ByteBuffer> readByKey(ByteBuffer key, int index) {
-        MappedByteBuffer indexesBuffer = indexesData[index];
+        MappedByteBuffer indexesBuffer = indexesData.get(index);
         if (indexesBuffer.capacity() < Integer.BYTES) {
             return null;
         }
 
-        MappedByteBuffer mapBuffer = mapData[index];
+        MappedByteBuffer mapBuffer = mapData.get(index);
         int keyIndex = binarySearchIndex(key, indexesBuffer, mapBuffer, false);
         if (keyIndex == -1) {
             return null;

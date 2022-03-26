@@ -17,19 +17,15 @@ import java.util.stream.Stream;
 public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    private final Config config;
-    private final int dataCounter;
-    private final MapsDeserializeStream deserialize;
+    private final Storage storage;
 
     public PersistentDao(Config config) throws IOException {
-        dataCounter = countDataFiles(config);
-        this.config = config;
-        deserialize = new MapsDeserializeStream(config, dataCounter);
+        storage = new Storage(config);
     }
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        return deserialize.getRange(from, to, new PeekIterator<>(getDataIterator(from, to), -1));
+        return storage.get(from, to, getInMemoryIterator(from,to));
     }
 
     @Override
@@ -38,14 +34,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (entry != null) {
             return entry.value() == null ? null : entry;
         }
-        if (dataCounter == 0) {
-            return null;
-        }
-        entry = deserialize.readByKey(key);
-        if (entry != null && entry.value() != null) {
-            return entry;
-        }
-        return null;
+        return storage.get(key);
     }
 
     @Override
@@ -55,18 +44,16 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void close() throws IOException {
-        deserialize.close();
+        storage.close();
         flush();
     }
 
     @Override
     public void flush() throws IOException {
-        MapSerializeStream writer = new MapSerializeStream(config, dataCounter);
-        writer.serializeMap(data);
-        writer.close();
+        storage.flush(data);
     }
 
-    private Iterator<BaseEntry<ByteBuffer>> getDataIterator(ByteBuffer from, ByteBuffer to) {
+    private Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(ByteBuffer from, ByteBuffer to) {
         if (from == null && to == null) {
             return data.values().iterator();
         }
@@ -77,13 +64,5 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return data.tailMap(from).values().iterator();
         }
         return data.subMap(from, to).values().iterator();
-    }
-
-    private int countDataFiles(Config config) throws IOException {
-        try (Stream<Path> files = Files.list(config.basePath())) {
-            return (int) files.count() / 2;
-        } catch (NoSuchFileException e) {
-            return 0;
-        }
     }
 }

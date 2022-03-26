@@ -3,6 +3,7 @@ package ru.mail.polis.daniilbakin;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -11,21 +12,25 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 
-import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.WRITE;
+import static ru.mail.polis.daniilbakin.Storage.DATA_FILE_NAME;
+import static ru.mail.polis.daniilbakin.Storage.FILE_EXT;
+import static ru.mail.polis.daniilbakin.Storage.INDEX_FILE_NAME;
 
-public class MapSerializeStream {
+public class MapSerializeStream implements Closeable {
 
     private final FileChannel mapChannel;
     private final FileChannel indexesChannel;
 
     public MapSerializeStream(Config config, int dataCount) throws IOException {
-        Path mapPath = config.basePath().resolve("myLog" + dataCount);
-        Path indexesPath = config.basePath().resolve("indexes" + dataCount);
-        mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE));
-        indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE));
+        Path mapPath = config.basePath().resolve(DATA_FILE_NAME + dataCount + FILE_EXT);
+        Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + dataCount + FILE_EXT);
+        mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE_NEW));
+        indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE_NEW));
     }
 
+    @Override
     public void close() throws IOException {
         mapChannel.close();
         indexesChannel.close();
