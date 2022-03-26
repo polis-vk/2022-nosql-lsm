@@ -20,9 +20,7 @@ import java.util.List;
 import java.util.Set;
 
 import static java.nio.file.StandardOpenOption.READ;
-import static ru.mail.polis.daniilbakin.Storage.DATA_FILE_NAME;
-import static ru.mail.polis.daniilbakin.Storage.FILE_EXT;
-import static ru.mail.polis.daniilbakin.Storage.INDEX_FILE_NAME;
+import static ru.mail.polis.daniilbakin.Storage.*;
 
 public class MapsDeserializeStream implements Closeable {
 

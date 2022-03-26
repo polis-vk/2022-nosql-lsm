@@ -6,13 +6,9 @@ import ru.mail.polis.Dao;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.stream.Stream;
 
 public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 

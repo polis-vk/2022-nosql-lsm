@@ -1,19 +1,19 @@
 package ru.mail.polis.daniilbakin;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.Map;
 
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
-
 public class Storage implements Closeable {
 
-    protected final static String DATA_FILE_NAME = "myData";
-    protected final static String INDEX_FILE_NAME = "indexes";
-    protected final static String FILE_EXT = ".dat";
+    public static final String DATA_FILE_NAME = "myData";
+    public static final String INDEX_FILE_NAME = "indexes";
+    public static final String FILE_EXT = ".dat";
 
     private final int numOfFiles;
     private final MapsDeserializeStream deserialize;
