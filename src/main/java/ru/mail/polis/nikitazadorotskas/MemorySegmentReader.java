@@ -59,7 +59,7 @@ class MemorySegmentReader {
         long low = 0;
         long high = lastIndex;
 
-        while (low < high) {
+        while (low <= high) {
             long mid = countMid(low, high);
 
             MemorySegment currentKey = getMemorySegment(mid, false);
@@ -76,17 +76,6 @@ class MemorySegmentReader {
         }
 
         lastIndexFoundInBinarySearch = low;
-        MemorySegment currentMemorySegment = getMemorySegment(low, false);
-
-        int compare = utils.compareMemorySegment(key, currentMemorySegment);
-        if (compare == 0) {
-            return new BaseEntry<>(currentMemorySegment, getMemorySegment(low, true));
-        }
-
-        if (compare > 0) {
-            lastIndexFoundInBinarySearch = low + 1;
-        }
-
         return null;
     }
 

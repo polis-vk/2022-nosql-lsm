@@ -5,7 +5,6 @@ import ru.mail.polis.BaseEntry;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 import java.util.PriorityQueue;
 
 public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
@@ -31,9 +30,6 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
     }
 
     private void addIteratorToHeap(PeekIterator iterator) {
-        if (iterator == null) {
-            return;
-        }
         if (iterator.hasNext()) {
             iterator.next();
             minHeap.add(iterator);
@@ -70,7 +66,7 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
 
     private void addIteratorsWithSameKeyToHeap(BaseEntry<MemorySegment> current) {
         while (minHeap.size() > 0 && utils.compareBaseEntries(minHeap.peek().current(), current) == 0) {
-            addIteratorToHeap(minHeap.poll());
+            addIteratorToHeap(minHeap.remove());
         }
     }
 }
