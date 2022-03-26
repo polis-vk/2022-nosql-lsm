@@ -1,6 +1,9 @@
 package ru.mail.polis.artemyasevich;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -10,11 +13,10 @@ import java.nio.file.Path;
 public class DaoFile {
     private final long[] offsets;
     private final Path pathToMeta;
-    private final Path pathToFile;
     private final RandomAccessFile reader;
+    private int maxEntrySize;
 
     public DaoFile(Path pathToFile, Path pathToMeta) throws IOException {
-        this.pathToFile = pathToFile;
         this.pathToMeta = pathToMeta;
         this.offsets = readOffsets();
         reader = new RandomAccessFile(pathToFile.toFile(), "r");
@@ -33,14 +35,7 @@ public class DaoFile {
     }
 
     public int maxEntrySize() {
-        long max = 0;
-        for (int i = 0; i < getLastIndex() + 1; i++) {
-            long size = offsets[i + 1] - offsets[i];
-            if (size > max) {
-                max = size;
-            }
-        }
-        return (int) max;
+        return maxEntrySize;
     }
 
     //Returns fileSize if index == offsets.length - 1
@@ -58,6 +53,7 @@ public class DaoFile {
 
     private long[] readOffsets() throws IOException {
         long[] fileOffsets;
+        int maxEntrySize = -1;
         try (DataInputStream metaStream = new DataInputStream(new BufferedInputStream(
                 Files.newInputStream(pathToMeta)))) {
             int dataSize = metaStream.readInt();
@@ -69,6 +65,9 @@ public class DaoFile {
             while (metaStream.available() > 0) {
                 int numberOfEntries = metaStream.readInt();
                 int entryBytesSize = metaStream.readInt();
+                if (entryBytesSize > maxEntrySize) {
+                    maxEntrySize = entryBytesSize;
+                }
                 for (int j = 0; j < numberOfEntries; j++) {
                     currentOffset += entryBytesSize;
                     fileOffsets[i] = currentOffset;
@@ -76,6 +75,7 @@ public class DaoFile {
                 }
             }
         }
+        this.maxEntrySize = maxEntrySize;
         return fileOffsets;
     }
 
@@ -87,21 +87,29 @@ public class DaoFile {
     }
 
     String readKeyFromBuffer(ByteBuffer buffer) {
-        short keySize = buffer.getShort();
-        buffer.limit(Short.BYTES + keySize);
+        short keySize = readLastBytesAsShort(buffer);
+        buffer.limit(keySize);
         return StandardCharsets.UTF_8.decode(buffer).toString();
     }
 
     String readValueFromBuffer(ByteBuffer buffer, int index) {
-        buffer.limit(entrySize(index));
+        int entrySize = entrySize(index);
+        buffer.limit(entrySize - Short.BYTES);
         if (!buffer.hasRemaining()) {
             return null;
         }
-        short valueSize = buffer.getShort();
+        short valueSize = readLastBytesAsShort(buffer);
         if (valueSize == 0) {
             return "";
         }
+        buffer.limit(entrySize - Short.BYTES * 2);
         return StandardCharsets.UTF_8.decode(buffer).toString();
+    }
+
+    private short readLastBytesAsShort(ByteBuffer buffer) {
+        byte high = buffer.get(buffer.limit() - Short.BYTES);
+        byte low = buffer.get(buffer.limit() - Short.BYTES + 1);
+        return (short) ((high << 8) + low);
     }
 
 }

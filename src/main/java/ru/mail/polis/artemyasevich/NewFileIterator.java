@@ -2,8 +2,10 @@ package ru.mail.polis.artemyasevich;
 
 import ru.mail.polis.BaseEntry;
 
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.util.Iterator;
 
@@ -12,12 +14,10 @@ public class NewFileIterator implements Iterator<BaseEntry<String>> {
     private final String to;
     private int entryToRead;
     private BaseEntry<String> next;
-    private final FileChannel channel;
     private final ByteBuffer buffer;
 
     public NewFileIterator(String from, String to, DaoFile daoFile) throws IOException {
         this.daoFile = daoFile;
-        this.channel = daoFile.getChannel();
         this.buffer = ByteBuffer.allocate(daoFile.maxEntrySize());
         this.to = to;
         next = from == null ? readEntry() : findValidClosest(from, to);
