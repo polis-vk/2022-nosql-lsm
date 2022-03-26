@@ -39,7 +39,7 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
     private void updateNext() {
         BaseEntry<MemorySegment> result = null;
 
-        while (result == null && minHeap.size() > 0) {
+        while (result == null && !minHeap.isEmpty()) {
             PeekIterator iterator = minHeap.poll();
             result = iterator.current();
 
@@ -65,7 +65,7 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
     }
 
     private void addIteratorsWithSameKeyToHeap(BaseEntry<MemorySegment> current) {
-        while (minHeap.size() > 0 && utils.compareBaseEntries(minHeap.peek().current(), current) == 0) {
+        while (!minHeap.isEmpty() && utils.compareBaseEntries(minHeap.peek().current(), current) == 0) {
             addIteratorToHeap(minHeap.remove());
         }
     }
