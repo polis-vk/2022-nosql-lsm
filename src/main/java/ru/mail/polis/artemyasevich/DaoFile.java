@@ -28,7 +28,7 @@ public class DaoFile {
         return (int) (offsets[index + 1] - offsets[index]);
     }
 
-    public long size() {
+    public long sizeOfFile() {
         return offsets[offsets.length - 1];
     }
 
@@ -76,5 +76,4 @@ public class DaoFile {
         this.maxEntrySize = maxEntrySize;
         return fileOffsets;
     }
-
 }

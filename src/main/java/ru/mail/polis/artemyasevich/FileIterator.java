@@ -17,7 +17,8 @@ public class FileIterator implements Iterator<BaseEntry<String>> {
         this.daoFile = daoFile;
         this.buffer = buffer;
         this.to = to;
-        this.next = from == null ? readEntry() : findValidClosest(from);
+        this.entryToRead = from == null ? 0 : StringDao.getEntryIndex(from, daoFile, buffer);
+        this.next = readEntry();
     }
 
     @Override
@@ -36,45 +37,15 @@ public class FileIterator implements Iterator<BaseEntry<String>> {
         return nextToGive;
     }
 
-    private BaseEntry<String> findValidClosest(String from) throws IOException {
-        int left = 0;
-        int right = daoFile.getLastIndex();
-        int validEntryIndex = -1;
-        while (left <= right) {
-            int middle = (right - left) / 2 + left;
-            InMemoryDao.fillBufferWithEntry(daoFile, buffer, middle);
-            String key = InMemoryDao.readKeyFromBuffer(buffer);
-
-            int comparison = from.compareTo(key);
-            if (comparison < 0) {
-                validEntryIndex = middle;
-                right = middle - 1;
-            } else if (comparison > 0) {
-                left = middle + 1;
-            } else {
-                String value = InMemoryDao.readValueFromBuffer(daoFile, buffer, middle);
-                entryToRead = middle + 1;
-                return new BaseEntry<>(key, value);
-            }
-        }
-        if (validEntryIndex == -1) {
-            return null;
-        }
-        entryToRead = validEntryIndex;
-        return readEntry();
-    }
-
     private BaseEntry<String> readEntry() throws IOException {
-        if (daoFile.getOffset(entryToRead) == daoFile.size()) {
+        if (daoFile.getOffset(entryToRead) == daoFile.sizeOfFile()) {
             return null;
         }
-        InMemoryDao.fillBufferWithEntry(daoFile, buffer, entryToRead);
-        String key = InMemoryDao.readKeyFromBuffer(buffer);
-        if (to != null && key.compareTo(to) >= 0) {
+        BaseEntry<String> entry = StringDao.readEntry(entryToRead, daoFile, buffer);
+        if (to != null && entry.key().compareTo(to) >= 0) {
             return null;
         }
-        String value = InMemoryDao.readValueFromBuffer(daoFile, buffer, entryToRead);
         entryToRead++;
-        return new BaseEntry<>(key, value);
+        return entry;
     }
 }

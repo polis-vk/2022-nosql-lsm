@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class InMemoryDao implements Dao<String, BaseEntry<String>> {
+public class StringDao implements Dao<String, BaseEntry<String>> {
     private static final String DATA_FILE = "data";
     static final String META_FILE = "meta";
     private static final String FILE_EXTENSION = ".txt";
@@ -33,7 +33,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final List<DaoFile> daoFiles;
     private final ThreadLocal<ByteBuffer> threadLocalBuffer;
 
-    public InMemoryDao(Config config) throws IOException {
+    public StringDao(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
         File[] files = pathToDirectory.toFile().listFiles();
         int numberOfFiles = files == null ? 0 : files.length / 2;
@@ -42,7 +42,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         this.threadLocalBuffer = ThreadLocal.withInitial(() -> ByteBuffer.allocate(maxEntrySize));
     }
 
-    public InMemoryDao() {
+    public StringDao() {
         pathToDirectory = null;
         daoFiles = null;
         threadLocalBuffer = null;
@@ -69,12 +69,16 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return entry.value() == null ? null : entry;
         }
         for (int fileNumber = daoFiles.size() - 1; fileNumber >= 0; fileNumber--) {
-            entry = getFromFile(key, fileNumber);
-            if (entry != null) {
-                return entry.value() == null ? null : entry;
+            int entryIndex = getEntryIndex(key, daoFiles.get(fileNumber), threadLocalBuffer.get());
+            if (entryIndex > daoFiles.get(fileNumber).getLastIndex()) {
+                continue;
+            }
+            entry = readEntry(entryIndex, daoFiles.get(fileNumber), threadLocalBuffer.get());
+            if (entry.key().equals(key)) {
+                break;
             }
         }
-        return null;
+        return entry == null || !entry.key().equals(key) || entry.value() == null ? null : entry;
     }
 
     @Override
@@ -110,25 +114,23 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return subMap.values().iterator();
     }
 
-    private BaseEntry<String> getFromFile(String keyToFind, int fileNumber) throws IOException {
-        DaoFile daoFile = daoFiles.get(fileNumber);
+    static int getEntryIndex(String keyToFind, DaoFile daoFile, ByteBuffer buffer) throws IOException {
         int left = 0;
         int right = daoFile.getLastIndex();
         while (left <= right) {
             int middle = (right - left) / 2 + left;
-            InMemoryDao.fillBufferWithEntry(daoFile, threadLocalBuffer.get(), middle);
-            String key = InMemoryDao.readKeyFromBuffer(threadLocalBuffer.get());
+            StringDao.fillBufferWithEntry(daoFile, buffer, middle);
+            String key = StringDao.readKeyFromBuffer(buffer);
             int comparison = keyToFind.compareTo(key);
             if (comparison < 0) {
                 right = middle - 1;
             } else if (comparison > 0) {
                 left = middle + 1;
             } else {
-                String value = InMemoryDao.readValueFromBuffer(daoFile, threadLocalBuffer.get(), middle);
-                return new BaseEntry<>(key, value);
+                return middle;
             }
         }
-        return null;
+        return left;
     }
 
     private void savaData() throws IOException {
@@ -140,7 +142,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
                      Files.newOutputStream(pathToFile(daoFiles.size(), META_FILE), writeOptions)
              ))) {
-
             metaStream.writeInt(dataMap.size());
             Iterator<BaseEntry<String>> dataIterator = dataMap.values().iterator();
             BaseEntry<String> entry = dataIterator.next();
@@ -180,20 +181,27 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return (int) (dataStream.size() - before);
     }
 
-    static void fillBufferWithEntry(DaoFile daoFile, ByteBuffer buffer, int index) throws IOException {
+    static BaseEntry<String> readEntry(int index, DaoFile daoFile, ByteBuffer buffer) throws IOException {
+        StringDao.fillBufferWithEntry(daoFile, buffer, index);
+        String key = StringDao.readKeyFromBuffer(buffer);
+        String value = StringDao.readValueFromBuffer(daoFile, buffer, index);
+        return new BaseEntry<>(key, value);
+    }
+
+    private static void fillBufferWithEntry(DaoFile daoFile, ByteBuffer buffer, int index) throws IOException {
         buffer.clear();
         buffer.limit(daoFile.entrySize(index));
         daoFile.getChannel().read(buffer, daoFile.getOffset(index));
         buffer.flip();
     }
 
-    static String readKeyFromBuffer(ByteBuffer buffer) {
+    private static String readKeyFromBuffer(ByteBuffer buffer) {
         short keySize = readLastBytesAsShort(buffer);
         buffer.limit(keySize);
         return StandardCharsets.UTF_8.decode(buffer).toString();
     }
 
-    static String readValueFromBuffer(DaoFile daoFile, ByteBuffer buffer, int index) {
+    private static String readValueFromBuffer(DaoFile daoFile, ByteBuffer buffer, int index) {
         int entrySize = daoFile.entrySize(index);
         buffer.limit(entrySize - Short.BYTES);
         if (!buffer.hasRemaining()) {
@@ -228,4 +236,5 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         return maxSize;
     }
+
 }
