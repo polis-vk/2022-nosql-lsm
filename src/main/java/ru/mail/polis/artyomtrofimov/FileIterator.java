@@ -2,8 +2,6 @@ package ru.mail.polis.artyomtrofimov;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
-import java.io.EOFException;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.io.UncheckedIOException;
@@ -15,28 +13,28 @@ public class FileIterator implements Iterator<Entry<String>> {
     private final String to;
     private RandomAccessFile raf;
     private Entry<String> nextEntry;
+    private final long fileLength;
 
     public FileIterator(Path basePath, String name, String from, String to) throws IOException {
         this.to = to;
-        try {
-            raf = new RandomAccessFile(basePath.resolve(name + InMemoryDao.DATA_EXT).toString(), "r");
-            nextEntry = Utils.findCeilEntry(raf, from, basePath.resolve(name + InMemoryDao.INDEX_EXT));
-        } catch (FileNotFoundException | EOFException e) {
-            nextEntry = null;
-        }
+        raf = new RandomAccessFile(basePath.resolve(name + InMemoryDao.DATA_EXT).toString(), "r");
+        fileLength = raf.length();
+        nextEntry = Utils.findCeilEntry(raf, from, basePath.resolve(name + InMemoryDao.INDEX_EXT));
     }
 
     @Override
     public boolean hasNext() {
-        boolean retval = (to == null && nextEntry != null) || (nextEntry != null && nextEntry.key().compareTo(to) < 0);
-        if (!retval) {
-            try {
+        boolean hasNext;
+        try {
+            hasNext = (to == null && nextEntry != null) || (nextEntry != null && nextEntry.key().compareTo(to) < 0);
+            if (!hasNext) {
                 raf.close();
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
             }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
-        return retval;
+
+        return hasNext;
     }
 
     @Override
@@ -46,12 +44,14 @@ public class FileIterator implements Iterator<Entry<String>> {
         }
         Entry<String> retval = nextEntry;
         try {
-            byte tombstone = raf.readByte();
-            String currentKey = raf.readUTF();
-            String currentValue = tombstone < 0 ? null : raf.readUTF();
-            nextEntry = new BaseEntry<>(currentKey, currentValue);
-        } catch (EOFException e) {
-            nextEntry = null;
+            if (raf.getFilePointer() < fileLength) {
+                byte tombstone = raf.readByte();
+                String currentKey = raf.readUTF();
+                String currentValue = tombstone < 0 ? null : raf.readUTF();
+                nextEntry = new BaseEntry<>(currentKey, currentValue);
+            } else {
+                nextEntry = null;
+            }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

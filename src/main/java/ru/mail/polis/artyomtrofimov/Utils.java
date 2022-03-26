@@ -2,8 +2,6 @@ package ru.mail.polis.artyomtrofimov;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
-import java.io.EOFException;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Path;
@@ -50,8 +48,6 @@ public final class Utils {
                 nextEntry = new BaseEntry<>(minKey, minValue);
             }
             raf.seek(lastPos);
-        } catch (FileNotFoundException | EOFException e) {
-            return null;
         }
         return nextEntry;
     }
