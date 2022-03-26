@@ -89,19 +89,25 @@ class MemorySegmentReader {
             segmentIndex++;
         }
 
-        long byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex);
         long nextOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex + 1);
-
         if (nextOffset == -1) {
             return null;
         }
+
+        long byteOffset = getByteOffset(segmentIndex);
+        long byteSize = nextOffset - byteOffset;
+
+        return mappedSegmentForData.asSlice(byteOffset, byteSize);
+    }
+
+    private long getByteOffset(long segmentIndex) {
+        long byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex);
+
         if (byteOffset == -1) {
             byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex - 1);
         }
 
-        long byteSize = nextOffset - byteOffset;
-
-        return mappedSegmentForData.asSlice(byteOffset, byteSize);
+        return byteOffset;
     }
 
     public PeekIterator getFromDisk(MemorySegment from, MemorySegment to) {
