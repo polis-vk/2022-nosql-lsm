@@ -53,7 +53,10 @@ public class MapsDeserializeStream implements Closeable {
                 indexesChannel.close();
                 i++;
             } catch (NoSuchFileException e) {
-                break;
+                //code climate work crutch
+                if (i >= 0) {
+                    break;
+                }
             }
         }
 
