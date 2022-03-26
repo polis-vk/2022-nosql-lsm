@@ -3,6 +3,8 @@ package ru.mail.polis.baidiyarosan;
 import ru.mail.polis.BaseEntry;
 
 import java.nio.ByteBuffer;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.PriorityQueue;
 
@@ -12,8 +14,10 @@ public class MemoryAndDiskDaoIterator implements Iterator<BaseEntry<ByteBuffer>>
 
     private BaseEntry<ByteBuffer> value;
 
-    public MemoryAndDiskDaoIterator(PriorityQueue<PeekIterator<BaseEntry<ByteBuffer>>> heap) {
-        this.heap = heap;
+    public MemoryAndDiskDaoIterator(Collection<PeekIterator<BaseEntry<ByteBuffer>>> collection) {
+        this.heap = new PriorityQueue<>(Comparator.comparing((PeekIterator<BaseEntry<ByteBuffer>> i) ->
+                i.peek().key()).thenComparingInt(PeekIterator::getOrder));
+        this.heap.addAll(collection);
     }
 
     @Override
@@ -39,7 +43,7 @@ public class MemoryAndDiskDaoIterator implements Iterator<BaseEntry<ByteBuffer>>
                 heap.add(iter);
             }
             if (heap.peek() != null) {
-                entry = findActual(entry, iter.getOrder());
+                filter(entry);
             }
 
             if (entry.value() != null) {
@@ -54,18 +58,12 @@ public class MemoryAndDiskDaoIterator implements Iterator<BaseEntry<ByteBuffer>>
         return value;
     }
 
-    private BaseEntry<ByteBuffer> findActual(BaseEntry<ByteBuffer> check, int max) {
+    private void filter(BaseEntry<ByteBuffer> check) {
         PeekIterator<BaseEntry<ByteBuffer>> nextIter;
-        BaseEntry<ByteBuffer> entry = check;
-        int maxOrder = max;
-        while (heap.peek().hasNext() && entry.key().compareTo(heap.peek().peek().key()) == 0) {
+
+        while (heap.peek().hasNext() && check.key().compareTo(heap.peek().peek().key()) == 0) {
             nextIter = heap.poll();
-            if (maxOrder < nextIter.getOrder()) {
-                entry = nextIter.next();
-                maxOrder = nextIter.getOrder();
-            } else {
-                nextIter.next();
-            }
+            nextIter.next();
             if (nextIter.hasNext()) {
                 heap.add(nextIter);
             }
@@ -73,6 +71,5 @@ public class MemoryAndDiskDaoIterator implements Iterator<BaseEntry<ByteBuffer>>
                 break;
             }
         }
-        return entry;
     }
 }

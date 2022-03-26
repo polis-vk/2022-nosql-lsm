@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.NavigableMap;
@@ -29,11 +30,11 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (collection.isEmpty()) {
             return Collections.emptyIterator();
         }
-        Iterator<BaseEntry<ByteBuffer>> iter = FileUtils.getInMemoryIterator(collection, from, to);
-        if (!iter.hasNext()) {
+        Collection<BaseEntry<ByteBuffer>> temp = FileUtils.getInMemoryCollection(collection, from, to);
+        if (temp.isEmpty()) {
             return Collections.emptyIterator();
         }
-        return new InMemoryDaoIterator(new PeekIterator<>(iter, Integer.MAX_VALUE));
+        return new InMemoryDaoIterator(new PeekIterator<>(temp.iterator(), Integer.MAX_VALUE));
     }
 
     @Override

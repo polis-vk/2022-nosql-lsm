@@ -13,11 +13,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Collection;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.NavigableMap;
-import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
@@ -40,15 +40,14 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        PriorityQueue<PeekIterator<BaseEntry<ByteBuffer>>> heap =
-                new PriorityQueue<>(Comparator.comparing(o -> o.peek().key()));
-        Iterator<BaseEntry<ByteBuffer>> temp = FileUtils.getInMemoryIterator(collection, from, to);
-        if (temp.hasNext()) {
-            heap.add(new PeekIterator<>(temp, Integer.MAX_VALUE));
+        List<PeekIterator<BaseEntry<ByteBuffer>>> list = new LinkedList<>();
+        Collection<BaseEntry<ByteBuffer>> temp = FileUtils.getInMemoryCollection(collection, from, to);
+        if (!temp.isEmpty()) {
+            list.add(new PeekIterator<>(temp.iterator(), 0));
         }
-        for (int i = 0; i < FileUtils.getPaths(path).size(); ++i) {
-
-            // file naming starts from 1, collections ordering starts from 0;
+        int filesCount = FileUtils.getPaths(path).size();
+        for (int i = 0; i < filesCount; ++i) {
+            // file naming starts from 1, collections ordering starts from 0
             Path filePath = FileUtils.getDataPath(path, i + 1);
             Path indexPath = FileUtils.getIndexPath(path, i + 1);
             if (files.size() <= i || files.get(i) == null) {
@@ -59,14 +58,14 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                     fileIndexes.add(i, indexes.map(FileChannel.MapMode.READ_ONLY, 0, indexes.size()));
                 }
             }
-            // file indexes starts with 1, but collections starts with 0
-            temp = FileUtils.getInFileIterator(files.get(i), fileIndexes.get(i), from, to);
-            if (temp.hasNext()) {
-                heap.add(new PeekIterator<>(temp, i + 1));
+
+            temp = FileUtils.getInFileCollection(files.get(i), fileIndexes.get(i), from, to);
+            if (!temp.isEmpty()) {
+                list.add(new PeekIterator<>(temp.iterator(), filesCount - i));
             }
         }
 
-        return new MemoryAndDiskDaoIterator(heap);
+        return new MemoryAndDiskDaoIterator(list);
     }
 
     @Override

@@ -10,8 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Collection;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.NavigableMap;
@@ -81,12 +81,16 @@ public final class FileUtils {
         return buffer.flip();
     }
 
-    public static void writeOnDisk(NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, Path path) throws IOException {
+    public static void writeOnDisk(
+            NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, Path path) throws IOException {
         int size;
         ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
         ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
         int fileNumber = getPaths(path).size() + 1;
-        try (FileChannel dataOut = FileChannel.open(getDataPath(path, fileNumber), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE); FileChannel indexOut = FileChannel.open(getIndexPath(path, fileNumber), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+        try (FileChannel dataOut = FileChannel.open(getDataPath(path, fileNumber),
+                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+             FileChannel indexOut = FileChannel.open(getIndexPath(path, fileNumber),
+                     StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
             for (BaseEntry<ByteBuffer> entry : collection.values()) {
                 size = sizeOfEntry(entry);
                 if (buffer.remaining() < size) {
@@ -103,47 +107,49 @@ public final class FileUtils {
         }
     }
 
-    public static Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, ByteBuffer from, ByteBuffer to) {
+    public static Collection<BaseEntry<ByteBuffer>> getInMemoryCollection(
+            NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, ByteBuffer from, ByteBuffer to) {
         if (collection.isEmpty()) {
-            return Collections.emptyIterator();
+            return Collections.emptyList();
         }
         if (from == null && to == null) {
-            return collection.values().iterator();
+            return collection.values();
         }
 
         ByteBuffer start = (from == null ? collection.firstKey() : collection.ceilingKey(from));
         ByteBuffer end = (to == null ? collection.lastKey() : collection.floorKey(to));
 
         if (start == null || end == null || start.compareTo(end) > 0) {
-            return Collections.emptyIterator();
+            return Collections.emptyList();
         }
-        return collection.subMap(start, true, end, to == null || !to.equals(collection.floorKey(to))).values().iterator();
+        return collection.subMap(start, true, end, to == null || !to.equals(collection.floorKey(to))).values();
     }
 
-    public static Iterator<BaseEntry<ByteBuffer>> getInFileIterator(MappedByteBuffer file, MappedByteBuffer index, ByteBuffer from, ByteBuffer to) {
+    public static Collection<BaseEntry<ByteBuffer>> getInFileCollection(
+            MappedByteBuffer file, MappedByteBuffer index, ByteBuffer from, ByteBuffer to) {
 
         int start = 0;
-        int end = index.capacity() / Integer.BYTES - 1;
+        int end = index.remaining() / Integer.BYTES - 1;
         if (from != null) {
             start = getStartIndex(file, index, from, start, end);
         }
 
         if (start == -1) {
-            return Collections.emptyIterator();
+            return Collections.emptyList();
         }
 
         if (to != null) {
             end = getEndIndex(file, index, to, start, end);
         }
         if (end == -1) {
-            return Collections.emptyIterator();
+            return Collections.emptyList();
         }
 
         List<BaseEntry<ByteBuffer>> list = new LinkedList<>();
         for (int i = start; i <= end; ++i) {
             list.add(readMappedEntry(file, intAt(index, i)));
         }
-        return list.iterator();
+        return list;
     }
 
     public static int getStartIndex(MappedByteBuffer in, MappedByteBuffer indexes, ByteBuffer key, int start, int end) {

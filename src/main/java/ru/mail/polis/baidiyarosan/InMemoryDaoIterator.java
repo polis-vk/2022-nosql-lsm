@@ -7,11 +7,11 @@ import java.util.Iterator;
 
 public class InMemoryDaoIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
-    private final PeekIterator<BaseEntry<ByteBuffer>> iter;
+    private final Iterator<BaseEntry<ByteBuffer>> iter;
 
     private BaseEntry<ByteBuffer> value;
 
-    public InMemoryDaoIterator(PeekIterator<BaseEntry<ByteBuffer>> iter) {
+    public InMemoryDaoIterator(Iterator<BaseEntry<ByteBuffer>> iter) {
         this.iter = iter;
     }
 
