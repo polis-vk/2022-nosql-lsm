@@ -13,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -39,10 +38,16 @@ public class FileOperations {
         tablesSizes = new ConcurrentHashMap<>();
         if (Files.exists(basePath)) {
             try (Stream<Path> pathStream = Files.list(basePath)) {
-                ssTables = pathStream.filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME)).sorted(Comparator.reverseOrder()).toList();
+                ssTables = pathStream.filter(f -> String.valueOf(f.getFileName())
+                        .contains(FILE_NAME))
+                        .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
+                        .toList();
             }
             try (Stream<Path> indexPathStream = Files.list(basePath)) {
-                ssIndexes = indexPathStream.filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME)).sorted(Comparator.reverseOrder()).toList();
+                ssIndexes = indexPathStream.filter(f -> String.valueOf(f.getFileName())
+                        .contains(FILE_INDEX_NAME))
+                        .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
+                        .toList();
             }
         } else {
             ssTables = new ArrayList<>();
@@ -63,7 +68,8 @@ public class FileOperations {
         return MergeIterator.of(peekIterators, EntryKeyComparator.INSTANCE);
     }
 
-    private Iterator<BaseEntry<byte[]>> diskIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to) throws IOException {
+    private Iterator<BaseEntry<byte[]>> diskIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to)
+            throws IOException {
         long indexSize = tablesSizes.get(ssIndex);
         long fromPos = from == null ? 0 : getEntryIndex(ssTable, ssIndex, from, indexSize);
         long toPos = to == null ? indexSize : getEntryIndex(ssTable, ssIndex, to, indexSize);
@@ -81,6 +87,7 @@ public class FileOperations {
                 try {
                     entry = getCurrent(pos, ssTable, ssIndex);
                 } catch (IOException e) {
+                    e.printStackTrace();
                     throw new NoSuchElementException("There is no next element!");
                 }
                 pos++;

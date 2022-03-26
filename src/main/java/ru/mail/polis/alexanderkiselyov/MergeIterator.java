@@ -8,7 +8,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.PriorityQueue;
 
-public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
+public final class MergeIterator implements Iterator<BaseEntry<byte[]>> {
 
     private final PriorityQueue<IndexedPeekIterator> iterators;
     private final Comparator<BaseEntry<byte[]>> comparator;
@@ -18,7 +18,8 @@ public class MergeIterator implements Iterator<BaseEntry<byte[]>> {
         this.comparator = comparator;
     }
 
-    public static Iterator<BaseEntry<byte[]>> of(List<IndexedPeekIterator> iterators, Comparator<BaseEntry<byte[]>> comparator) {
+    public static Iterator<BaseEntry<byte[]>> of(List<IndexedPeekIterator> iterators,
+                                                 Comparator<BaseEntry<byte[]>> comparator) {
         switch (iterators.size()) {
             case 0:
                 return Collections.emptyIterator();
