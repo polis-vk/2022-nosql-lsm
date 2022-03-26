@@ -51,7 +51,6 @@ public class DaoFile {
 
     private long[] readOffsets() throws IOException {
         long[] fileOffsets;
-        int maxEntrySize = -1;
         try (DataInputStream metaStream = new DataInputStream(new BufferedInputStream(
                 Files.newInputStream(pathToMeta)))) {
             int dataSize = metaStream.readInt();
@@ -73,7 +72,6 @@ public class DaoFile {
                 }
             }
         }
-        this.maxEntrySize = maxEntrySize;
         return fileOffsets;
     }
 }
