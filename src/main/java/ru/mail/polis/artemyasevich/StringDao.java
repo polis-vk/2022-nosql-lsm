@@ -221,7 +221,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     private static short readLastBytesAsShort(ByteBuffer buffer) {
         byte high = buffer.get(buffer.limit() - Short.BYTES);
         byte low = buffer.get(buffer.limit() - Short.BYTES + 1);
-        return (short) ((high & 0xff << 8) + low & 0xff);
+        return (short) (((high & 0xff) << 8) | (low & 0xff));
     }
 
     private Path pathToFile(int fileNumber, String fileName) {
