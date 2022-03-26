@@ -1,18 +1,17 @@
 package ru.mail.polis.pavelkovalenko;
 
-import java.util.Arrays;
-import java.util.PriorityQueue;
-import java.util.Queue;
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NavigableMap;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
-import ru.mail.polis.test.levsaskov.ByteBufferDaoFactory;
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Entry;
 
 public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
@@ -47,10 +46,6 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         PeekIterator first = its.key();
         PeekIterator second = its.value();
         Entry<ByteBuffer> result;
-
-        /*if (new ByteBufferDaoFactory().toString(first.peek().key()).equals("k0000000007")) {
-            System.out.println(7);
-        }*/
 
         int compare = second == null ? -1 : Utils.entryComparator.compare(first.peek(), second.peek());
         if (compare == 0) {

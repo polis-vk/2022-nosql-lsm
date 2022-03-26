@@ -38,16 +38,9 @@ public final class Utils {
     public static class EntryComparator implements Comparator<Entry<ByteBuffer>> {
         @Override
         public int compare(Entry<ByteBuffer> e1, Entry<ByteBuffer> e2) {
-            // e1 != null
-            /*if (e2 == null || e2.key() == null) {
-                return -1;
-            }*/
             int keyCompare = e1.key().compareTo(e2.key());
-            if (keyCompare == 0) {
-                if (Utils.isTombstone(e1) || Utils.isTombstone(e2)) {
-                    return 0;
-                }
-                //return e1.value().compareTo(e2.value());
+            if (keyCompare == 0 && (Utils.isTombstone(e1) || Utils.isTombstone(e2))) {
+                return 0;
             }
             return keyCompare;
         }

@@ -35,7 +35,7 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        return new MergeIterator(from ,to, data, pathsToPairedFiles);
+        return new MergeIterator(from, to, data, pathsToPairedFiles);
     }
 
     @Override

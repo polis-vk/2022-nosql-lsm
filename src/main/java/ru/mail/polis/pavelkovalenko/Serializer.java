@@ -10,7 +10,11 @@ import ru.mail.polis.Entry;
 
 public class Serializer {
 
-    public static Entry<ByteBuffer> readEntry(RandomAccessFile dataFile, RandomAccessFile indexesFile) throws IOException {
+    private Serializer() {
+    }
+
+    public static Entry<ByteBuffer> readEntry(RandomAccessFile dataFile, RandomAccessFile indexesFile)
+            throws IOException {
         int dataFileOffset = readDataFileOffset(indexesFile);
         dataFile.seek(dataFileOffset);
         byte tombstone = readByte(dataFile);
