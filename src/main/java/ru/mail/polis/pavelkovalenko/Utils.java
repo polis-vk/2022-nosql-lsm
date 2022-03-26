@@ -3,14 +3,12 @@ package ru.mail.polis.pavelkovalenko;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 import java.nio.ByteBuffer;
-import java.time.Clock;
 import java.util.Comparator;
 
 public final class Utils {
 
-    public static final int OFFSET_VALUES_DISTANCE = Integer.BYTES + Character.BYTES;
+    public static final int INDEX_OFFSET = Integer.BYTES + Character.BYTES;
     public static final char LINE_SEPARATOR = '\n';
-    public static final int DATA_PORTION = 100_000;
     public static final ByteBuffer EMPTY_BYTEBUFFER = ByteBuffer.allocate(0);
     public static final Entry<ByteBuffer> EMPTY_ENTRY = new BaseEntry<>(EMPTY_BYTEBUFFER, EMPTY_BYTEBUFFER);
     public static final String DATA_FILENAME = "data";
@@ -19,20 +17,10 @@ public final class Utils {
     public static final EntryComparator entryComparator = new EntryComparator();
     public static final Byte NORMAL_VALUE = 1;
     public static final Byte TOMBSTONE_VALUE = -1;
-    public static final Timer t = new Timer();
+    public static final Timer timer = new Timer();
+    public static final IteratorComparator iteratorComparator = new IteratorComparator();
 
     private Utils() {
-    }
-
-    public static final class EntryComparator implements Comparator<Entry<ByteBuffer>> {
-        @Override
-        public int compare(Entry<ByteBuffer> o1, Entry<ByteBuffer> o2) {
-            // o1 != null
-            if (o2 == null || o2.key() == null) {
-                return -1;
-            }
-            return o1.key().compareTo(o2.key());
-        }
     }
 
     public static boolean isTombstone(Entry<ByteBuffer> entry) {
@@ -47,23 +35,36 @@ public final class Utils {
         return isTombstone(entry) ? Utils.TOMBSTONE_VALUE : Utils.NORMAL_VALUE;
     }
 
-    public static class Timer {
-
-        private final Clock clock = Clock.systemDefaultZone();
-        private long startTime;
-
-        public Timer() {
-            this.startTime = clock.millis();
+    public static class EntryComparator implements Comparator<Entry<ByteBuffer>> {
+        @Override
+        public int compare(Entry<ByteBuffer> e1, Entry<ByteBuffer> e2) {
+            // e1 != null
+            /*if (e2 == null || e2.key() == null) {
+                return -1;
+            }*/
+            int keyCompare = e1.key().compareTo(e2.key());
+            if (keyCompare == 0) {
+                if (Utils.isTombstone(e1) || Utils.isTombstone(e2)) {
+                    return 0;
+                }
+                //return e1.value().compareTo(e2.value());
+            }
+            return keyCompare;
         }
+    }
 
-        public double elapse() {
-            return (double)(clock.millis() - startTime) / 1000;
+    public static class IteratorComparator implements Comparator<PeekIterator> {
+        @Override
+        public int compare(PeekIterator it1, PeekIterator it2) {
+            if (it1.hasNext() && it2.hasNext()) {
+                int compare = Utils.entryComparator.compare(it1.peek(), it2.peek());
+                if (compare == 0) {
+                    compare = Integer.compare(it1.getPriority(), it2.getPriority());
+                }
+                return compare;
+            }
+            return Boolean.compare(it2.hasNext(), it1.hasNext());
         }
-
-        public void refresh() {
-            startTime = clock.millis();
-        }
-
     }
 
 }

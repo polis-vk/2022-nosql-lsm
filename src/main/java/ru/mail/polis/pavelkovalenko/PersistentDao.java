@@ -1,5 +1,6 @@
 package ru.mail.polis.pavelkovalenko;
 
+import java.util.Map;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -15,15 +16,13 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
+public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
     private final NavigableMap<Integer, Entry<Path>> pathsToPairedFiles = new TreeMap<>();
-    private final Reader reader;
-    private final Writer writer;
     private final Config config;
 
-    public InMemoryDao(Config config) throws IOException {
+    public PersistentDao(Config config) throws IOException {
         this.config = config;
 
         String[] files = new File(config.basePath().toString()).list();
@@ -32,19 +31,20 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
                 addPairedFiles();
             }
         }
-
-        reader = new Reader(data, pathsToPairedFiles);
-        writer = new Writer(data, pathsToPairedFiles);
     }
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        return reader.get(from, to);
+        return new MergeIterator(from ,to, data, pathsToPairedFiles);
     }
 
     @Override
     public Entry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        return reader.get(key);
+        Entry<ByteBuffer> result = findKeyInStorage(key);
+        if (result == null) {
+            result = findKeyInFile(key);
+        }
+        return Utils.isTombstone(result) ? null : result;
     }
 
     @Override
@@ -54,7 +54,8 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        writer.write();
+        Entry<Path> newestFilePair = pathsToPairedFiles.lastEntry().getValue();
+        Serializer.write(newestFilePair.key(), newestFilePair.value(), data);
     }
 
     @Override
@@ -88,6 +89,28 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         if (!Files.exists(filename)) {
             Files.createFile(filename);
         }
+    }
+
+    private Entry<ByteBuffer> findKeyInStorage(ByteBuffer key) {
+        return data.get(key);
+    }
+
+    private Entry<ByteBuffer> findKeyInFile(ByteBuffer key) throws IOException {
+        Entry<ByteBuffer> result = null;
+        for (Map.Entry<Integer, Entry<Path>> pathToPairedFiles: pathsToPairedFiles.entrySet()) {
+            Path pathToDataFile = pathToPairedFiles.getValue().key();
+            Path pathToIndexesFile = pathToPairedFiles.getValue().value();
+            try (FileIterator fileIterator = new FileIterator(pathToDataFile, pathToIndexesFile, key, null)) {
+                if (!fileIterator.hasNext()) {
+                    continue;
+                }
+                result = fileIterator.next();
+                if (result != null && !result.key().equals(key)) {
+                    return null;
+                }
+            }
+        }
+        return result;
     }
 
 }

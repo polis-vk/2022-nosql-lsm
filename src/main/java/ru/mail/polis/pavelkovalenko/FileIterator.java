@@ -17,8 +17,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
     private final ByteBuffer from;
     private final ByteBuffer to;
     private final Entry<ByteBuffer> toEntry;
-    private Entry<ByteBuffer> lastEntry = Utils.EMPTY_ENTRY;
-    private boolean isSetCeilFilePointer = false;
+    private Entry<ByteBuffer> current;
 
     public FileIterator(Path pathToDataFile, Path pathToIndexesFile, ByteBuffer from, ByteBuffer to)
             throws IOException {
@@ -27,12 +26,17 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
         this.from = from;
         this.to = to;
         toEntry = new BaseEntry<>(to, to);
+        current = binarySearchInFile();
+
+        if (current == null) {
+            close();
+        }
     }
 
     @Override
     public boolean hasNext() {
         try {
-            boolean hasNext = (dataExists() || (!dataExists() && lastEntry != null)) && canContinue();
+            boolean hasNext = dataExists() && canContinue();
             if (!hasNext) {
                 close();
             }
@@ -44,29 +48,16 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
 
     @Override
     public Entry<ByteBuffer> next() {
-        if (lastEntry == null) {
-            throw new IndexOutOfBoundsException("Out-of-bound file iteration");
-        }
-
-        Entry<ByteBuffer> res;
-
         try {
-            if (!isSetCeilFilePointer && !isGettingAllHeadData()) {
-                setCeilFilePointer();
-                isSetCeilFilePointer = true;
+            Entry<ByteBuffer> peek = peek();
+            current = null;
+            if (!dataExists() || !canContinue()) {
+                close();
             }
-            res = lastEntry;
-
-            if (!dataExists()) {
-                lastEntry = null;
-                return res;
-            }
-            lastEntry = readEntry();
+            return peek;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-
-        return res;
     }
 
     @Override
@@ -75,34 +66,24 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
         indexesFile.close();
     }
 
-    private int readDataFileOffset() throws IOException {
-        int dataFileOffset = indexesFile.readInt();
-        indexesFile.readLine();
-        return dataFileOffset;
-    }
-
-    private void setCeilFilePointer() throws IOException {
-        lastEntry = binarySearchInFile();
+    private Entry<ByteBuffer> peek() throws IOException {
+        if (current == null && !isEOFReached()) {
+            current = Serializer.readEntry(dataFile, indexesFile);
+        }
+        return current;
     }
 
     private boolean dataExists() throws IOException {
-        return dataFile.getChannel().isOpen() && dataFile.getFilePointer() < dataFile.length();
+        return peek() != null;
     }
 
-    private boolean canContinue() {
-        return (to == null && lastEntry != null)
-                || (lastEntry != null && Utils.entryComparator.compare(lastEntry, toEntry) < 0);
+    private boolean canContinue() throws IOException {
+        return (to == null && peek() != null)
+                || (peek() != null && Utils.entryComparator.compare(peek(), toEntry) < 0);
     }
 
-    private Entry<ByteBuffer> readEntry() throws IOException {
-        int dataFileOffset = readDataFileOffset();
-        dataFile.seek(dataFileOffset);
-        byte tombstone = readByte(dataFile);
-        ByteBuffer key = readByteBuffer(dataFile);
-        ByteBuffer value = Utils.isTombstone(tombstone) ? null : readByteBuffer(dataFile);
-        Entry<ByteBuffer> entry = new BaseEntry<>(key, value);
-        dataFile.readLine();
-        return entry;
+    private boolean isEOFReached() throws IOException {
+        return !dataFile.getChannel().isOpen() || dataFile.getFilePointer() >= dataFile.length();
     }
 
     private Entry<ByteBuffer> binarySearchInFile() throws IOException {
@@ -110,21 +91,27 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
             return null;
         }
 
+        setIndexesFileOffset(getIndexesFileLength() - Utils.INDEX_OFFSET);
+        Entry<ByteBuffer> ceilEntry = Serializer.readEntry(dataFile, indexesFile);
+        if (from.compareTo(ceilEntry.key()) > 0) {
+            return null;
+        }
+        setIndexesFileOffset(0);
+
         long a = 0;
-        long b = getIndexesFileLength() / Utils.OFFSET_VALUES_DISTANCE;
-        Entry<ByteBuffer> ceilEntry = new BaseEntry<>(to, Utils.EMPTY_BYTEBUFFER);
+        long b = getIndexesFileLength() / Utils.INDEX_OFFSET;
         long lastDataFileOffset = 0;
         long lastIndexesFileOffset = 0;
 
         while (b - a >= 1) {
             long c = (b + a) / 2;
-            setIndexesFileOffset(c * Utils.OFFSET_VALUES_DISTANCE);
-            Entry<ByteBuffer> curEntry = readEntry();
+            setIndexesFileOffset(c * Utils.INDEX_OFFSET);
+            Entry<ByteBuffer> curEntry = Serializer.readEntry(dataFile, indexesFile);
 
-            if (curEntry.key().compareTo(from) >= 0 && Utils.entryComparator.compare(curEntry, ceilEntry) < 0) {
+            if (curEntry.key().compareTo(from) >= 0 && Utils.entryComparator.compare(curEntry, ceilEntry) <= 0) {
                 ceilEntry = curEntry;
-                lastDataFileOffset = getDataFileOffset();
                 lastIndexesFileOffset = getIndexesFileOffset();
+                lastDataFileOffset = getDataFileOffset();
             }
 
             int compare = curEntry.key().compareTo(from);
@@ -144,29 +131,9 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
             }
         }
 
-        if (to == null && ceilEntry.key() == null || ceilEntry.key().equals(to)) {
-            return null;
-        }
-
         setIndexesFileOffset(lastIndexesFileOffset);
         setDataFileOffset(lastDataFileOffset);
         return ceilEntry;
-    }
-
-    private ByteBuffer readByteBuffer(RandomAccessFile dataFile) throws IOException {
-        int bbSize = dataFile.readInt();
-        ByteBuffer bb = ByteBuffer.allocate(bbSize);
-        dataFile.getChannel().read(bb);
-        bb.rewind();
-        return bb;
-    }
-
-    private boolean isGettingAllHeadData() {
-        return this.from == null;
-    }
-
-    private byte readByte(RandomAccessFile dataFile) throws IOException {
-        return dataFile.readByte();
     }
 
     private long getIndexesFileLength() throws IOException {

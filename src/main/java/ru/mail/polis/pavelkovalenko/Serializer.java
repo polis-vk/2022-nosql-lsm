@@ -1,42 +1,37 @@
 package ru.mail.polis.pavelkovalenko;
 
-import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
-import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentNavigableMap;
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Entry;
 
-public class Writer {
+public class Serializer {
 
-    private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data;
-    private final NavigableMap<Integer, Entry<Path>> pathsToPairedFiles;
-
-    public Writer(ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data,
-                  NavigableMap<Integer, Entry<Path>> pathsToPairedFiles) {
-        this.data = data;
-        this.pathsToPairedFiles = pathsToPairedFiles;
+    public static Entry<ByteBuffer> readEntry(RandomAccessFile dataFile, RandomAccessFile indexesFile) throws IOException {
+        int dataFileOffset = readDataFileOffset(indexesFile);
+        dataFile.seek(dataFileOffset);
+        byte tombstone = readByte(dataFile);
+        ByteBuffer key = readByteBuffer(dataFile);
+        ByteBuffer value = Utils.isTombstone(tombstone) ? null : readByteBuffer(dataFile);
+        Entry<ByteBuffer> entry = new BaseEntry<>(key, value);
+        dataFile.readLine();
+        return entry;
     }
 
-    public void write() throws IOException {
+    public static void write(Path pathToDataFile, Path pathToIndexesFile,
+                             ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data) throws IOException {
         if (data.isEmpty()) {
             return;
         }
 
-        String pathToDataFile;
-        String pathToIndexesFile;
-        {
-            Entry<Path> entry = pathsToPairedFiles.lastEntry().getValue();
-            pathToDataFile = entry.key().toString();
-            pathToIndexesFile = entry.value().toString();
-        }
-
-        try (RandomAccessFile dataFile = new RandomAccessFile(pathToDataFile, "rw");
-             RandomAccessFile indexesFile = new RandomAccessFile(pathToIndexesFile, "rw")) {
+        try (RandomAccessFile dataFile = new RandomAccessFile(pathToDataFile.toString(), "rw");
+             RandomAccessFile indexesFile = new RandomAccessFile(pathToIndexesFile.toString(), "rw")) {
             int curOffset = 0;
             int bbSize = 0;
-            ByteBuffer offset = ByteBuffer.allocate(Utils.OFFSET_VALUES_DISTANCE);
+            ByteBuffer offset = ByteBuffer.allocate(Utils.INDEX_OFFSET);
             for (Entry<ByteBuffer> entry: data.values()) {
                 curOffset += bbSize;
                 writeOffset(curOffset, offset, indexesFile);
@@ -45,13 +40,40 @@ public class Writer {
         }
     }
 
+    public static int sizeOf(Entry<ByteBuffer> entry) {
+        int size = 1 + Integer.BYTES + entry.key().remaining();
+        if (!Utils.isTombstone(entry)) {
+            size += Integer.BYTES + entry.value().remaining();
+        }
+        size += Character.BYTES;
+        return size;
+    }
+
+    private static int readDataFileOffset(RandomAccessFile indexesFile) throws IOException {
+        int dataFileOffset = indexesFile.readInt();
+        indexesFile.readLine();
+        return dataFileOffset;
+    }
+
+    private static byte readByte(RandomAccessFile dataFile) throws IOException {
+        return dataFile.readByte();
+    }
+
+    private static ByteBuffer readByteBuffer(RandomAccessFile dataFile) throws IOException {
+        int bbSize = dataFile.readInt();
+        ByteBuffer bb = ByteBuffer.allocate(bbSize);
+        dataFile.getChannel().read(bb);
+        bb.rewind();
+        return bb;
+    }
+
     /*
      * Write offsets in format:
      * ┌─────────┬────┐
      * │ integer │ \n │
      * └─────────┴────┘
      */
-    private void writeOffset(int offset, ByteBuffer bbOffset, RandomAccessFile indexesFile) throws IOException {
+    private static void writeOffset(int offset, ByteBuffer bbOffset, RandomAccessFile indexesFile) throws IOException {
         bbOffset.putInt(offset);
         bbOffset.putChar(Utils.LINE_SEPARATOR);
         bbOffset.rewind();
@@ -65,12 +87,8 @@ public class Writer {
      * │ isTombstone: byte │ key: byte[entry.key().remaining()] │ value: byte[entry.value().remaining()] │ \n │
      * └───────────────────┴────────────────────────────────────┴────────────────────────────────────────┴────┘
      */
-    private int writePair(Entry<ByteBuffer> entry, RandomAccessFile dataFile) throws IOException {
-        int bbSize = 1 + Integer.BYTES + entry.key().remaining();
-        if (!Utils.isTombstone(entry)) {
-            bbSize += Integer.BYTES + entry.value().remaining();
-        }
-        bbSize += Character.BYTES;
+    private static int writePair(Entry<ByteBuffer> entry, RandomAccessFile dataFile) throws IOException {
+        int bbSize = sizeOf(entry);
         ByteBuffer pair = ByteBuffer.allocate(bbSize);
 
         pair.put(Utils.getTombstoneValue(entry));

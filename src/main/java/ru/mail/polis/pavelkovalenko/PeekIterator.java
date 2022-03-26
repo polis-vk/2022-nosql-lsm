@@ -8,16 +8,11 @@ public class PeekIterator implements Iterator<Entry<ByteBuffer>> {
 
     private final Iterator<Entry<ByteBuffer>> delegate;
     private Entry<ByteBuffer> current;
+    private final int priority;
 
-    public PeekIterator(Iterator<Entry<ByteBuffer>> delegate) {
+    public PeekIterator(Iterator<Entry<ByteBuffer>> delegate, int priority) {
         this.delegate = delegate;
-    }
-
-    public Entry<ByteBuffer> peek() {
-        if (current == null && delegate.hasNext()) {
-            current = delegate.next();
-        }
-        return current;
+        this.priority = priority;
     }
 
     @Override
@@ -30,6 +25,17 @@ public class PeekIterator implements Iterator<Entry<ByteBuffer>> {
         Entry<ByteBuffer> peek = peek();
         current = null;
         return peek;
+    }
+
+    public Entry<ByteBuffer> peek() {
+        if (current == null && delegate.hasNext()) {
+            current = delegate.next();
+        }
+        return current;
+    }
+
+    public int getPriority() {
+        return priority;
     }
 
 }
