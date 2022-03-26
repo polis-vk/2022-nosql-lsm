@@ -20,7 +20,9 @@ import java.util.List;
 import java.util.Set;
 
 import static java.nio.file.StandardOpenOption.READ;
-import static ru.mail.polis.daniilbakin.Storage.*;
+import static ru.mail.polis.daniilbakin.Storage.DATA_FILE_NAME;
+import static ru.mail.polis.daniilbakin.Storage.FILE_EXT;
+import static ru.mail.polis.daniilbakin.Storage.INDEX_FILE_NAME;
 
 public class MapsDeserializeStream implements Closeable {
 
@@ -34,8 +36,8 @@ public class MapsDeserializeStream implements Closeable {
         mapData = new ArrayList<>();
         indexesData = new ArrayList<>();
 
-        int i;
-        for (i = 0; ; i++) {
+        int i = 0;
+        while (true) {
             Path mapPath = config.basePath().resolve(DATA_FILE_NAME + i + FILE_EXT);
             Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + i + FILE_EXT);
 
@@ -50,6 +52,7 @@ public class MapsDeserializeStream implements Closeable {
 
                 mapChannel.close();
                 indexesChannel.close();
+                i++;
             } catch (NoSuchFileException e) {
                 break;
             }
