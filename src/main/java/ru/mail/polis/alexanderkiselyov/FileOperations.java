@@ -38,14 +38,18 @@ public class FileOperations {
         basePath = config.basePath();
         tablesSizes = new ConcurrentHashMap<>();
         if (Files.exists(basePath)) {
-                ssTables = Files.list(basePath)
+            try (Stream<Path> pathStream = Files.list(basePath)) {
+                ssTables = pathStream
                         .filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME))
                         .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
                         .collect(Collectors.toList());
-                ssIndexes = Files.list(basePath)
+            }
+            try (Stream<Path> indexPathStream = Files.list(basePath)) {
+                ssIndexes = indexPathStream
                         .filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME))
                         .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
                         .collect(Collectors.toList());
+            }
         } else {
             ssTables = new ArrayList<>();
             ssIndexes = new ArrayList<>();
