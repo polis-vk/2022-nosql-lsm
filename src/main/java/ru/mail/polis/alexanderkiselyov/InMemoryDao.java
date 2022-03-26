@@ -5,30 +5,19 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.stream.Stream;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
-    private static final String FILE_NAME = "myData";
-    private long filesCount;
     private final FileOperations fileOperations;
 
     public InMemoryDao(Config config) throws IOException {
         pairs = new ConcurrentSkipListMap<>(Arrays::compare);
-        if (Files.exists(config.basePath())) {
-            try (Stream<Path> stream = Files.list(config.basePath())) {
-                filesCount = stream.filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME)).count();
-            }
-        } else {
-            filesCount = 0;
-        }
-        fileOperations = new FileOperations(config, filesCount, FILE_NAME);
+        fileOperations = new FileOperations(config);
     }
 
     @Override
@@ -44,23 +33,27 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             memoryIterator = pairs.subMap(from, to).values().iterator();
         }
         Iterator<BaseEntry<byte[]>> diskIterator = fileOperations.diskIterator(from, to);
-        return new MergeIterator(memoryIterator, diskIterator);
+        Iterator<BaseEntry<byte[]>> mergeIterator = MergeIterator.of(
+                List.of(
+                        new IndexedPeekIterator(0, memoryIterator),
+                        new IndexedPeekIterator(1, diskIterator)
+                ),
+                EntryKeyComparator.INSTANCE
+        );
+        return new SkipNullValuesIterator(new IndexedPeekIterator(0, mergeIterator));
     }
 
     @Override
     public BaseEntry<byte[]> get(byte[] key) throws IOException {
-        BaseEntry<byte[]> value = pairs.get(key);
-        if (value != null && value.value() == null) {
+        Iterator<BaseEntry<byte[]>> iterator = get(key, null);
+        if (!iterator.hasNext()) {
             return null;
         }
-        if (value != null && Arrays.equals(value.key(), key)) {
-            return value;
+        BaseEntry<byte[]> next = iterator.next();
+        if (Arrays.equals(key, next.key())) {
+            return next;
         }
-        BaseEntry<byte[]> fileEntry = fileOperations.findInFiles(key);
-        if (fileEntry == null || fileEntry.value() == null) {
-            return null;
-        }
-        return fileEntry;
+        return null;
     }
 
     @Override
@@ -70,9 +63,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     @Override
     public void flush() throws IOException {
-        fileOperations.saveData(pairs);
-        fileOperations.saveIndexes(pairs);
-        filesCount++;
+        throw new UnsupportedOperationException("Flush is not supported!");
+    }
+
+    @Override
+    public void close() throws IOException {
+        fileOperations.save(pairs);
         pairs.clear();
     }
 }

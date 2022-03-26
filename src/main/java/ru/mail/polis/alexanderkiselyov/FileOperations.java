@@ -11,19 +11,111 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.NavigableMap;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.NoSuchElementException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
-public record FileOperations(Config config, long filesCount, String fileName) {
+public class FileOperations {
+    private long filesCount;
     private static final int BUFFER_SIZE = 4000 * Character.BYTES;
+    private static final String FILE_NAME = "myData";
     private static final String FILE_EXTENSION = ".txt";
     private static final String FILE_INDEX_NAME = "myIndex";
     private static final String FILE_INDEX_EXTENSION = ".txt";
+    private final Path basePath;
+    private final List<Path> ssTables;
+    private final List<Path> ssIndexes;
+    private final Map<Path, Long> tablesSizes;
 
-    void saveData(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
-        Path newFilePath = config.basePath().resolve(fileName + filesCount + FILE_EXTENSION);
+    public FileOperations(Config config) throws IOException {
+        basePath = config.basePath();
+        tablesSizes = new ConcurrentHashMap<>();
+        if (Files.exists(basePath)) {
+            try (Stream<Path> pathStream = Files.list(basePath)) {
+                ssTables = pathStream.filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME)).sorted(Comparator.reverseOrder()).toList();
+            }
+            try (Stream<Path> indexPathStream = Files.list(basePath)) {
+                ssIndexes = indexPathStream.filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME)).sorted(Comparator.reverseOrder()).toList();
+            }
+        } else {
+            ssTables = new ArrayList<>();
+            ssIndexes = new ArrayList<>();
+        }
+        filesCount = ssTables.size();
+        for (int i = 0; i < filesCount; i++) {
+            tablesSizes.put(ssIndexes.get(i), indexSize(ssIndexes.get(i)));
+        }
+    }
+
+    public Iterator<BaseEntry<byte[]>> diskIterator(byte[] from, byte[] to) throws IOException {
+        List<IndexedPeekIterator> peekIterators = new ArrayList<>();
+        for (int i = 0; i < ssTables.size(); i++) {
+            Iterator<BaseEntry<byte[]>> iterator = diskIterator(ssTables.get(i), ssIndexes.get(i), from, to);
+            peekIterators.add(new IndexedPeekIterator(i, iterator));
+        }
+        return MergeIterator.of(peekIterators, EntryKeyComparator.INSTANCE);
+    }
+
+    private Iterator<BaseEntry<byte[]>> diskIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to) throws IOException {
+        long indexSize = tablesSizes.get(ssIndex);
+        long fromPos = from == null ? 0 : getEntryIndex(ssTable, ssIndex, from, indexSize);
+        long toPos = to == null ? indexSize : getEntryIndex(ssTable, ssIndex, to, indexSize);
+        return new Iterator<>() {
+            long pos = fromPos;
+
+            @Override
+            public boolean hasNext() {
+                return pos < toPos;
+            }
+
+            @Override
+            public BaseEntry<byte[]> next() {
+                BaseEntry<byte[]> entry;
+                try {
+                    entry = getCurrent(pos, ssTable, ssIndex);
+                } catch (IOException e) {
+                    throw new NoSuchElementException("There is no next element!");
+                }
+                pos++;
+                return entry;
+            }
+        };
+    }
+
+    private long getEntryIndex(Path ssTable, Path ssIndex, byte[] key, long indexSize) throws IOException {
+        long low = 0;
+        long high = indexSize - 1;
+        long mid = (low + high) / 2;
+        while (low <= high) {
+            BaseEntry<byte[]> current = getCurrent(mid, ssTable, ssIndex);
+            int compare = Arrays.compare(key, current.key());
+            if (compare > 0) {
+                low = mid + 1;
+            } else if (compare < 0) {
+                high = mid - 1;
+            } else {
+                return mid;
+            }
+            mid = (low + high) / 2;
+        }
+        return low;
+    }
+
+    public void save(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
+        saveData(pairs);
+        saveIndexes(pairs);
+        filesCount++;
+    }
+
+    private void saveData(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
+        Path newFilePath = basePath.resolve(FILE_NAME + filesCount + FILE_EXTENSION);
         if (!Files.exists(newFilePath)) {
             Files.createFile(newFilePath);
         }
@@ -49,8 +141,8 @@ public record FileOperations(Config config, long filesCount, String fileName) {
         }
     }
 
-    void saveIndexes(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
-        Path newIndexPath = config.basePath().resolve(FILE_INDEX_NAME + filesCount + FILE_INDEX_EXTENSION);
+    private void saveIndexes(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
+        Path newIndexPath = basePath.resolve(FILE_INDEX_NAME + filesCount + FILE_INDEX_EXTENSION);
         if (!Files.exists(newIndexPath)) {
             Files.createFile(newIndexPath);
         }
@@ -77,29 +169,6 @@ public record FileOperations(Config config, long filesCount, String fileName) {
         }
     }
 
-    BaseEntry<byte[]> findInFiles(byte[] key) throws IOException {
-        for (long i = filesCount - 1; i >= 0; i--) {
-            Path currentFile = config.basePath().resolve(fileName + i + FILE_EXTENSION);
-            Path currentIndexFile = config.basePath().resolve(FILE_INDEX_NAME + i + FILE_INDEX_EXTENSION);
-            long low = 0;
-            long high = indexSize(currentIndexFile) - 1;
-            long mid = (low + high) / 2;
-            while (low <= high) {
-                BaseEntry<byte[]> current = getCurrent(mid, currentFile, currentIndexFile);
-                int compare = Arrays.compare(key, current.key());
-                if (compare > 0) {
-                    low = mid + 1;
-                } else if (compare < 0) {
-                    high = mid - 1;
-                } else {
-                    return current;
-                }
-                mid = (low + high) / 2;
-            }
-        }
-        return null;
-    }
-
     private long indexSize(Path indexPath) throws IOException {
         long size;
         ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
@@ -112,11 +181,11 @@ public record FileOperations(Config config, long filesCount, String fileName) {
         return size;
     }
 
-    private BaseEntry<byte[]> getCurrent(long mid, Path path, Path indexPath) throws IOException {
+    private BaseEntry<byte[]> getCurrent(long pos, Path path, Path indexPath) throws IOException {
         long position;
         ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
         try (FileInputStream fis = new FileInputStream(String.valueOf(indexPath))) {
-            fis.skipNBytes((mid + 1) * Long.BYTES);
+            fis.skipNBytes((pos + 1) * Long.BYTES);
             buffer.put(fis.readNBytes(Long.BYTES));
             buffer.flip();
             position = buffer.getLong();
@@ -140,66 +209,5 @@ public record FileOperations(Config config, long filesCount, String fileName) {
             currentValue = fis.readNBytes(valueLength);
         }
         return new BaseEntry<>(currentKey, currentValue);
-    }
-
-    Iterator<BaseEntry<byte[]>> diskIterator(byte[] from, byte[] to) throws IOException {
-        NavigableMap<byte[], BaseEntry<byte[]>> diskPairs = new ConcurrentSkipListMap<>(Arrays::compare);
-        for (long i = filesCount - 1; i >= 0; i--) {
-            Path currentFile = config.basePath().resolve(fileName + i + FILE_EXTENSION);
-            Path currentIndexFile = config.basePath().resolve(FILE_INDEX_NAME + i + FILE_INDEX_EXTENSION);
-            addPairsFromDisk(from, to, diskPairs, currentFile, currentIndexFile);
-        }
-        return diskPairs.values().iterator();
-    }
-
-    private void addPairsFromDisk(byte[] from, byte[] to, NavigableMap<byte[], BaseEntry<byte[]>> diskPairs,
-                                  Path currentFile, Path currentIndexFile) throws IOException {
-        long low = 0;
-        long high = indexSize(currentIndexFile) - 1;
-        long fromIndex = low;
-        long toIndex = high;
-        long mid = (low + high) / 2;
-        while (low <= high) {
-            BaseEntry<byte[]> current = getCurrent(mid, currentFile, currentIndexFile);
-            int compare = Arrays.compare(from, current.key());
-            if (compare > 0) {
-                low = mid + 1;
-                fromIndex = low;
-            } else if (compare < 0) {
-                high = mid - 1;
-            } else {
-                fromIndex = mid;
-                break;
-            }
-            mid = (low + high) / 2;
-        }
-        if (to != null) {
-            low = fromIndex;
-            high = toIndex;
-            mid = (low + high) / 2;
-            while (low <= high) {
-                BaseEntry<byte[]> current = getCurrent(mid, currentFile, currentIndexFile);
-                int compare = Arrays.compare(to, current.key());
-                if (compare > 0) {
-                    low = mid + 1;
-                } else if (compare < 0) {
-                    high = mid - 1;
-                    toIndex = high;
-                } else {
-                    toIndex = mid - 1;
-                    break;
-                }
-                mid = (low + high) / 2;
-            }
-        }
-        putPairs(fromIndex, toIndex, currentFile, currentIndexFile, diskPairs);
-    }
-
-    private void putPairs(long fromIndex, long toIndex, Path currentFile, Path currentIndexFile,
-                          NavigableMap<byte[], BaseEntry<byte[]>> diskPairs) throws IOException {
-        for (long j = fromIndex; j <= toIndex; j++) {
-            BaseEntry<byte[]> current = getCurrent(j, currentFile, currentIndexFile);
-            diskPairs.putIfAbsent(current.key(), current);
-        }
     }
 }
