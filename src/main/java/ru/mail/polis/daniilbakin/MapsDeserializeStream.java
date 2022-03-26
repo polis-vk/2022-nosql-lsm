@@ -35,8 +35,9 @@ public class MapsDeserializeStream implements Closeable {
         mapData = new ArrayList<>();
         indexesData = new ArrayList<>();
 
-        int i;
-        for (i = 0; ; i++) {
+        int i = 0;
+        boolean hasFile = true;
+        while (hasFile) {
             Path mapPath = config.basePath().resolve(DATA_FILE_NAME + i);
             Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + i);
 
@@ -53,10 +54,7 @@ public class MapsDeserializeStream implements Closeable {
                 indexesChannel.close();
                 i++;
             } catch (NoSuchFileException e) {
-                //code climate work crutch
-                if (i >= 0) {
-                    break;
-                }
+                hasFile = false;
             }
         }
 
