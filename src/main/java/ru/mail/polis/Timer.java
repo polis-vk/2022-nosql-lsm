@@ -2,6 +2,7 @@ package ru.mail.polis;
 
 public class Timer {
 
+    private static final char TIME_SEPARATOR = ':';
     private long startTime;
 
     public Timer() {
@@ -17,7 +18,7 @@ public class Timer {
             if (Double.compare(elapse * time.getFactor(), 0) > 0) {
                 times = (long)Math.floor(elapse * time.getFactor());
                 elapse -= times * time.getFactor();
-                resultStr.append(times).append(time.getSystem()).append(":");
+                resultStr.append(times).append(time.getSystem()).append(TIME_SEPARATOR);
             }
         }
 
