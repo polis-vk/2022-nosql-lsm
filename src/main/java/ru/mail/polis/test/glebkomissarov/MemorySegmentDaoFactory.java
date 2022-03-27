@@ -8,7 +8,7 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.glebkomissarov.MyMemoryDao;
 import ru.mail.polis.test.DaoFactory;
 
-@DaoFactory(stage = 3, week = 2)
+@DaoFactory(stage = 3, week = 1)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
     @Override
     public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) {
