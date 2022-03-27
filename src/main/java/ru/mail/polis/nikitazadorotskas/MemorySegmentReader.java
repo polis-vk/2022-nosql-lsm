@@ -13,12 +13,12 @@ import java.util.Iterator;
 import static java.nio.channels.FileChannel.MapMode.READ_ONLY;
 
 class MemorySegmentReader {
-    private MemorySegment mappedSegmentForIndexes;
-    private MemorySegment mappedSegmentForData;
+    private final long dataOffset;
+    private final long lastIndex;
+    private final int number;
     private final Utils utils;
     private final ResourceScope scope;
-    private final int number;
-    private long lastIndex;
+    private final MemorySegment mappedSegment;
     private long lastIndexFoundInBinarySearch;
 
     MemorySegmentReader(Utils utils, ResourceScope scope, int number) throws IOException {
@@ -26,23 +26,16 @@ class MemorySegmentReader {
         this.scope = scope;
         this.number = number;
 
-        createMappedForData();
-        createMappedForIndexes();
+        this.mappedSegment = createMapped();
+
+        long numberOfEntries = MemoryAccess.getLongAtIndex(mappedSegment, 0);
+        this.lastIndex = numberOfEntries / 2 - 1;
+        this.dataOffset = numberOfEntries * Long.BYTES + Long.BYTES;
     }
 
-    BaseEntry<MemorySegment> getFromDisk(MemorySegment key) {
-        return binarySearch(key);
-    }
-
-    private void createMappedForIndexes() throws IOException {
-        long fileSize = Files.size(utils.getIndexesPath(number));
-        lastIndex = fileSize / (Long.BYTES * 2) - 1;
-        mappedSegmentForIndexes = createMappedSegment(utils.getIndexesPath(number), fileSize);
-    }
-
-    private void createMappedForData() throws IOException {
+    private MemorySegment createMapped() throws IOException {
         long fileSize = Files.size(utils.getStoragePath(number));
-        mappedSegmentForData = createMappedSegment(utils.getStoragePath(number), fileSize);
+        return createMappedSegment(utils.getStoragePath(number), fileSize);
     }
 
     private MemorySegment createMappedSegment(Path path, long size) throws IOException {
@@ -53,6 +46,10 @@ class MemorySegmentReader {
                 READ_ONLY,
                 scope
         );
+    }
+
+    BaseEntry<MemorySegment> getFromDisk(MemorySegment key) {
+        return binarySearch(key);
     }
 
     private BaseEntry<MemorySegment> binarySearch(MemorySegment key) {
@@ -89,7 +86,7 @@ class MemorySegmentReader {
             segmentIndex++;
         }
 
-        long nextOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex + 1);
+        long nextOffset = MemoryAccess.getLongAtIndex(mappedSegment, segmentIndex + 2);
         if (nextOffset == -1) {
             return null;
         }
@@ -97,14 +94,14 @@ class MemorySegmentReader {
         long byteOffset = getByteOffset(segmentIndex);
         long byteSize = nextOffset - byteOffset;
 
-        return mappedSegmentForData.asSlice(byteOffset, byteSize);
+        return mappedSegment.asSlice(dataOffset + byteOffset, byteSize);
     }
 
     private long getByteOffset(long segmentIndex) {
-        long byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex);
+        long byteOffset = MemoryAccess.getLongAtIndex(mappedSegment, segmentIndex + 1);
 
         if (byteOffset == -1) {
-            byteOffset = MemoryAccess.getLongAtIndex(mappedSegmentForIndexes, segmentIndex - 1);
+            byteOffset = MemoryAccess.getLongAtIndex(mappedSegment, segmentIndex);
         }
 
         return byteOffset;
@@ -140,5 +137,9 @@ class MemorySegmentReader {
 
         binarySearch(key);
         return lastIndexFoundInBinarySearch;
+    }
+
+    public int getNumber() {
+        return number;
     }
 }
