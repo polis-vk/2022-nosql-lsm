@@ -1,15 +1,15 @@
 package ru.mail.polis.glebkomissarov;
 
-import java.util.Iterator;
-
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
+
+import java.util.Iterator;
 
 public class PeekIterator implements Iterator<BaseEntry<MemorySegment>> {
 
     private final long priority;
 
-    private BaseEntry<MemorySegment> current = null;
+    private BaseEntry<MemorySegment> current;
     private final Iterator<BaseEntry<MemorySegment>> iterator;
 
     public PeekIterator(Iterator<BaseEntry<MemorySegment>> iterator, long priority) {

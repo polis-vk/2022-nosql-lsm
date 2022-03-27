@@ -10,6 +10,7 @@ import java.util.NoSuchElementException;
 public class FileIterator implements Iterator<BaseEntry<MemorySegment>> {
 
     private static final int FROM_OFFSET_TO_IDX = 3;
+    private static final int WRONG_SIZE = -1;
 
     private final MemorySegment entries;
     private final MemorySegment offsets;
@@ -43,10 +44,10 @@ public class FileIterator implements Iterator<BaseEntry<MemorySegment>> {
         MemorySegment key = entries.asSlice(keyOffset, keySize);
 
         MemorySegment value;
-        try {
-            long valueSize = MemoryAccess.getLongAtIndex(offsets, idx * FROM_OFFSET_TO_IDX + 2);
+        long valueSize = MemoryAccess.getLongAtIndex(offsets, idx * FROM_OFFSET_TO_IDX + 2);
+        if (valueSize != WRONG_SIZE) {
             value = entries.asSlice(keyOffset + key.byteSize(), valueSize);
-        } catch (IndexOutOfBoundsException e) {
+        } else {
             value = null;
         }
 

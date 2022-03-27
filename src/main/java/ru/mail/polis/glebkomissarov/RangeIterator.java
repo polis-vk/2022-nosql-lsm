@@ -13,7 +13,7 @@ public class RangeIterator implements Iterator<BaseEntry<MemorySegment>> {
     private final PriorityQueue<PeekIterator> iterators = new PriorityQueue<>(
             Comparator::iteratorsCompare
     );
-    private MemorySegment previous = null;
+    private MemorySegment previous;
 
     public RangeIterator(List<PeekIterator> iterators) {
         iterators.removeIf(i -> !i.hasNext());
@@ -31,11 +31,10 @@ public class RangeIterator implements Iterator<BaseEntry<MemorySegment>> {
                 continue;
             }
 
-            if (previous != null && isEquals(current.key(), previous)) {
-                reInsert();
-                continue;
+            if (!isEquals(current.key(), previous)) {
+                return true;
             }
-            return true;
+            reInsert();
         }
         return false;
     }
@@ -68,6 +67,9 @@ public class RangeIterator implements Iterator<BaseEntry<MemorySegment>> {
     }
 
     private boolean isEquals(MemorySegment o1, MemorySegment o2) {
+        if (o2 == null) {
+            return false;
+        }
         return Comparator.compare(o1, o2) == 0;
     }
 }

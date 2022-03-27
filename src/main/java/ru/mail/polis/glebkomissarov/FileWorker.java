@@ -15,31 +15,28 @@ import java.util.Collections;
 import java.util.List;
 
 public class FileWorker {
-    private static final long NOT_FOUND = -1;
     private static final long WRONG_SIZE = -1;
-    private static final MemorySegment ALTERNATIVE = MemorySegment.ofArray(new byte[]{});
-
-    private MemorySegment entries;
-    private MemorySegment offsets;
-    private Path pathToEntries;
-    private Path pathToOffsets;
-    private Status status;
 
     public void writeEntries(Collection<BaseEntry<MemorySegment>> data, Path basePath) throws IOException {
-        long fileSize = data.stream()
-                .mapToLong(entry -> entry.key().byteSize()
-                        + (entry.value() == null ? Byte.BYTES : entry.value().byteSize()))
-                .sum() + 2L * Long.BYTES * data.size();
+        long fileSize = 0;
+        for (BaseEntry<MemorySegment> entry : data) {
+            fileSize += entry.key().byteSize();
+            if (entry.value() != null) {
+                fileSize += entry.value().byteSize();
+                continue;
+            }
+            fileSize += Long.BYTES;
+        }
 
-        long count = createFiles(basePath);
-        pathToEntries = basePath.resolve(FileName.SAVED_DATA.getName() + count);
-        pathToOffsets = basePath.resolve(FileName.OFFSETS.getName() + count);
+        long millis = createFiles(basePath);
+        Path pathToEntries = basePath.resolve(FileName.SAVED_DATA.getName() + millis);
+        Path pathToOffsets = basePath.resolve(FileName.OFFSETS.getName() + millis);
 
         try (ResourceScope scopeEntries = ResourceScope.newConfinedScope();
              ResourceScope scopeOffsets = ResourceScope.newConfinedScope()) {
-            entries = createMappedSegment(pathToEntries, fileSize,
+            MemorySegment entries = createMappedSegment(pathToEntries, fileSize,
                     FileChannel.MapMode.READ_WRITE, scopeEntries);
-            offsets = createMappedSegment(pathToOffsets, 3L * Long.BYTES * data.size() + 1,
+            MemorySegment offsets = createMappedSegment(pathToOffsets, 3L * Long.BYTES * data.size() + 1,
                     FileChannel.MapMode.READ_WRITE, scopeOffsets);
 
             long index = 0L;
@@ -54,36 +51,56 @@ public class FileWorker {
 
                 entries.asSlice(offset).copyFrom(entry.key());
                 offset += keySize;
-                entries.asSlice(offset).copyFrom(valueSize == WRONG_SIZE
-                        ? ALTERNATIVE : entry.value());
-                offset += valueSize == WRONG_SIZE ? ALTERNATIVE.byteSize() : valueSize;
+
+                if (entry.value() != null) {
+                    entries.asSlice(offset).copyFrom(entry.value());
+                    offset += valueSize;
+                }
             }
         }
     }
 
     public BaseEntry<MemorySegment> findEntry(MemorySegment key, Path basePath) throws IOException {
-        long fileCount = getFileCount(basePath);
-        if (fileCount == 0 || key == null) {
+        Path[] paths = getPaths(basePath);
+        if (paths.length == 0 || key == null) {
             return null;
         }
 
-        for (long i = fileCount - 1; i >= 0; i--) {
-            createCurrentFiles(basePath, i);
-            long result = binarySearch(key,
-                    Files.size(pathToOffsets) / (Long.BYTES * 3) - 1,
-                    SearchMode.SPECIFIC);
+        int count = paths.length / 2;
+        for (int i = count - 1; i >= 0; i--) {
+            MemorySegment offsets = createMappedSegment(paths[i], Files.size(paths[i]),
+                    FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
+            MemorySegment entries = createMappedSegment(paths[i + count], Files.size(paths[i + count]),
+                    FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
 
-            if (result != NOT_FOUND) {
-                BaseEntry<MemorySegment> found;
-                try {
-                    found = new BaseEntry<>(key, entries.asSlice(
-                            MemoryAccess.getLongAtIndex(offsets, result * 3) + key.byteSize(),
-                            MemoryAccess.getLongAtIndex(offsets, result * 3 + 2)
-                    ));
-                } catch (IndexOutOfBoundsException e) {
+            long result = binarySearch(
+                    key,
+                    offsets,
+                    entries,
+                    Files.size(paths[i]) / (Long.BYTES * 3) - 1
+            );
+
+            if (result >= 0) {
+                long valueSize =  MemoryAccess.getLongAtIndex(offsets, result * 3 + 2);
+                if (valueSize == WRONG_SIZE) {
                     return null;
                 }
-                return found;
+
+                MemorySegment currentKey = entries.asSlice(
+                        MemoryAccess.getLongAtIndex(offsets, result * 3),
+                        MemoryAccess.getLongAtIndex(offsets, result * 3 + 1)
+                );
+
+                if (Comparator.compare(currentKey, key) != 0) {
+                    return null;
+                }
+
+                return new BaseEntry<>(key,
+                        entries.asSlice(
+                                MemoryAccess.getLongAtIndex(offsets, result * 3) + key.byteSize(),
+                                valueSize
+                        )
+                );
             }
         }
         return null;
@@ -92,71 +109,57 @@ public class FileWorker {
     public List<PeekIterator> findEntries(MemorySegment from,
                                                      MemorySegment to,
                                                      Path basePath) throws IOException {
-        long count = getFileCount(basePath) - 1;
-        if (count == -1) {
+        Path[] paths = getPaths(basePath);
+        if (paths.length == 0) {
             return new ArrayList<>();
         }
 
-        List<PeekIterator> itr = new ArrayList<>();
-        for (long i = count; i >= 0; i--) {
-            createCurrentFiles(basePath, i);
+        List<PeekIterator> iterator = new ArrayList<>();
+        int count = paths.length / 2;
 
-            long boarder = Files.size(pathToOffsets) / (Long.BYTES * 3) - 1;
-            long start = binarySearch(from, boarder, SearchMode.FROM);
-            if (status == Status.LOWER) {
-                if (start == boarder) {
-                    itr.add(new PeekIterator(Collections.emptyIterator(), i));
-                    continue;
-                }
-                start++;
-            }
+        for (int i = count - 1; i >= 0; i--) {
+            MemorySegment offsets = createMappedSegment(paths[i], Files.size(paths[i]),
+                    FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
+            MemorySegment entries = createMappedSegment(paths[i + count], Files.size(paths[i + count]),
+                    FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
 
-            long end = binarySearch(to, boarder, SearchMode.TO);
-            if (status == Status.EQUALS || status == Status.HIGHER) {
-                if (end == 0) {
-                    itr.add(new PeekIterator(Collections.emptyIterator(), i));
-                    continue;
-                }
-                end--;
-            }
+            long boarder = Files.size(paths[i]) / (Long.BYTES * 3) - 1;
+            long start = from == null ? 0 : Math.abs(binarySearch(from, offsets, entries, boarder));
+            long end = to == null ? boarder : Math.abs(binarySearch(to, offsets, entries, boarder)) - 1;
 
             if (start > end) {
-                itr.add(new PeekIterator(Collections.emptyIterator(), i));
+                iterator.add(new PeekIterator(Collections.emptyIterator(), i));
                 continue;
             }
-            itr.add(new PeekIterator(new FileIterator(entries, offsets, start, end), i));
+
+            iterator.add(new PeekIterator(new FileIterator(entries, offsets, start, end), i));
         }
-        return itr;
+        return iterator;
     }
 
-    private long binarySearch(MemorySegment key, long boarder, SearchMode mode) {
-        if (key == null) {
-            status = Status.BOARDER;
-            return mode == SearchMode.FROM ? 0 : boarder;
-        }
-
-        long mid = 0L;
+    private long binarySearch(MemorySegment key,
+                              MemorySegment offsets,
+                              MemorySegment entries,
+                              long boarder) {
+        long mid;
         long left = 0L;
         long right = boarder;
         MemorySegment currentKey;
 
         while (left <= right) {
-            mid = (left + right) / 2;
+            mid = (left + right) >>> 1;
             currentKey = entries.asSlice(MemoryAccess.getLongAtIndex(offsets, mid * 3),
                     MemoryAccess.getLongAtIndex(offsets, mid * 3 + 1));
             int result = Comparator.compare(currentKey, key);
             if (result < 0) {
-                status = Status.LOWER;
                 left = mid + 1;
             } else if (result > 0) {
-                status = Status.HIGHER;
                 right = mid - 1;
             } else {
-                status = Status.EQUALS;
                 return mid;
             }
         }
-        return mode == SearchMode.SPECIFIC ? NOT_FOUND : mid;
+        return -left;
     }
 
     private MemorySegment createMappedSegment(Path path, long size,
@@ -171,27 +174,13 @@ public class FileWorker {
     }
 
     private long createFiles(Path basePath) throws IOException {
-        long count = getFileCount(basePath);
-        Files.createFile(basePath.resolve(FileName.SAVED_DATA.getName() + count));
-        Files.createFile(basePath.resolve(FileName.OFFSETS.getName() + count));
-        return count;
+        long nano = System.nanoTime();
+        Files.createFile(basePath.resolve(FileName.SAVED_DATA.getName() + nano));
+        Files.createFile(basePath.resolve(FileName.OFFSETS.getName() + nano));
+        return nano;
     }
 
-    private void createCurrentFiles(Path basePath, long i) throws IOException {
-        pathToEntries = basePath.resolve(FileName.SAVED_DATA.getName() + i);
-        pathToOffsets = basePath.resolve(FileName.OFFSETS.getName() + i);
-        entries = createMappedSegment(pathToEntries, Files.size(pathToEntries),
-                FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
-        offsets = createMappedSegment(pathToOffsets, Files.size(pathToOffsets),
-                FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
-
-    }
-
-    private long getFileCount(Path basePath) {
-        long count = 0;
-        while (Files.exists(basePath.resolve(FileName.SAVED_DATA.getName() + count))) {
-            count++;
-        }
-        return count;
+    private Path[] getPaths(Path basePath) throws IOException {
+        return Files.list(basePath).toArray(Path[]::new);
     }
 }

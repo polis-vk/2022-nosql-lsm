@@ -39,7 +39,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             }
 
             Iterator<BaseEntry<MemorySegment>> memoryIterator;
-            if (to == null)  {
+            if (to == null) {
                 memoryIterator = data.tailMap(newFrom).values().iterator();
             } else {
                 memoryIterator = data.subMap(newFrom, to).values().iterator();
