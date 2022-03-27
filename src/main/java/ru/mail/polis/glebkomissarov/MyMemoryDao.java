@@ -18,7 +18,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<>(
-            SegmentsComparator::compare
+            Comparator::compare
     );
     private final Path basePath;
     private final FileWorker fileWorker = new FileWorker();
@@ -31,15 +31,22 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
         lock.readLock().lock();
         try {
-            List<Iterator<BaseEntry<MemorySegment>>> iterators = fileWorker.findEntries(from, to, basePath);
+            List<PeekIterator> iterators = fileWorker.findEntries(from, to, basePath);
 
             MemorySegment newFrom = from;
             if (from == null) {
                 newFrom = FIRST_KEY;
             }
-            iterators.add(0, to == null ? data.tailMap(newFrom).values().iterator() :
-                    data.subMap(newFrom, to).values().iterator());
-            return new FinalIterator(iterators);
+
+            Iterator<BaseEntry<MemorySegment>> memoryIterator;
+            if (to == null)  {
+                memoryIterator = data.tailMap(newFrom).values().iterator();
+            } else {
+                memoryIterator = data.subMap(newFrom, to).values().iterator();
+            }
+
+            iterators.add(new PeekIterator(memoryIterator, iterators.size()));
+            return new RangeIterator(iterators);
         } finally {
             lock.readLock().unlock();
         }
@@ -47,7 +54,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     @Override
     public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
-        lock.readLock().lock();
+         lock.readLock().lock();
         try {
             BaseEntry<MemorySegment> result = data.get(key);
             if (result == null) {
@@ -83,6 +90,9 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     public void close() throws IOException {
         lock.writeLock().lock();
         try {
+            if (data.isEmpty()) {
+                return;
+            }
             fileWorker.writeEntries(data.values(), basePath);
         } finally {
             lock.writeLock().unlock();

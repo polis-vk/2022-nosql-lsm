@@ -12,7 +12,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 
 public class FileWorker {
@@ -90,7 +89,7 @@ public class FileWorker {
         return null;
     }
 
-    public List<Iterator<BaseEntry<MemorySegment>>> findEntries(MemorySegment from,
+    public List<PeekIterator> findEntries(MemorySegment from,
                                                      MemorySegment to,
                                                      Path basePath) throws IOException {
         long count = getFileCount(basePath) - 1;
@@ -98,7 +97,7 @@ public class FileWorker {
             return new ArrayList<>();
         }
 
-        List<Iterator<BaseEntry<MemorySegment>>> iterators = new ArrayList<>();
+        List<PeekIterator> itr = new ArrayList<>();
         for (long i = count; i >= 0; i--) {
             createCurrentFiles(basePath, i);
 
@@ -106,7 +105,7 @@ public class FileWorker {
             long start = binarySearch(from, boarder, SearchMode.FROM);
             if (status == Status.LOWER) {
                 if (start == boarder) {
-                    iterators.add(Collections.emptyIterator());
+                    itr.add(new PeekIterator(Collections.emptyIterator(), i));
                     continue;
                 }
                 start++;
@@ -115,19 +114,19 @@ public class FileWorker {
             long end = binarySearch(to, boarder, SearchMode.TO);
             if (status == Status.EQUALS || status == Status.HIGHER) {
                 if (end == 0) {
-                    iterators.add(Collections.emptyIterator());
+                    itr.add(new PeekIterator(Collections.emptyIterator(), i));
                     continue;
                 }
                 end--;
             }
 
             if (start > end) {
-                iterators.add(Collections.emptyIterator());
+                itr.add(new PeekIterator(Collections.emptyIterator(), i));
                 continue;
             }
-            iterators.add(new FileIterator(entries, offsets, start, end));
+            itr.add(new PeekIterator(new FileIterator(entries, offsets, start, end), i));
         }
-        return iterators;
+        return itr;
     }
 
     private long binarySearch(MemorySegment key, long boarder, SearchMode mode) {
@@ -145,7 +144,7 @@ public class FileWorker {
             mid = (left + right) / 2;
             currentKey = entries.asSlice(MemoryAccess.getLongAtIndex(offsets, mid * 3),
                     MemoryAccess.getLongAtIndex(offsets, mid * 3 + 1));
-            int result = SegmentsComparator.compare(currentKey, key);
+            int result = Comparator.compare(currentKey, key);
             if (result < 0) {
                 status = Status.LOWER;
                 left = mid + 1;

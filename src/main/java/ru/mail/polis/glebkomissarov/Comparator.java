@@ -3,9 +3,9 @@ package ru.mail.polis.glebkomissarov;
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 
-public final class SegmentsComparator {
+public final class Comparator {
 
-    private SegmentsComparator() {
+    private Comparator() {
     }
 
     public static int compare(MemorySegment o1, MemorySegment o2) {
@@ -24,5 +24,13 @@ public final class SegmentsComparator {
         }
         return Byte.compare(MemoryAccess.getByteAtOffset(o1, offset),
                 MemoryAccess.getByteAtOffset(o2, offset));
+    }
+
+    public static int iteratorsCompare(PeekIterator o1, PeekIterator o2) {
+        int compare = Comparator.compare(o1.peek().key(), o2.peek().key());
+        if (compare == 0) {
+            return o1.getPriority() > o2.getPriority() ? -1 : 1;
+        }
+        return compare;
     }
 }
