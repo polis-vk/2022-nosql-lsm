@@ -9,7 +9,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
@@ -71,17 +70,16 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         }
         for (int fileNumber = daoFiles.size() - 1; fileNumber >= 0; fileNumber--) {
             DaoFile daoFile = daoFiles.get(fileNumber);
-            int entryIndex = getEntryIndex(key, daoFile, threadLocalBuffer.get());
+            int entryIndex = getEntryIndex(key, threadLocalBuffer.get(), daoFile);
             if (entryIndex > daoFile.getLastIndex()) {
                 continue;
             }
-            entry = readEntry(entryIndex, daoFiles.get(fileNumber), threadLocalBuffer.get());
+            entry = readEntryFromBuffer(threadLocalBuffer.get(), daoFile, entryIndex);
             if (entry.key().equals(key)) {
-                break;
+                return entry.value() == null ? null : entry;
             }
-            entry = null;
         }
-        return entry == null || entry.value() == null ? null : entry;
+        return null;
     }
 
     @Override
@@ -98,9 +96,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     @Override
     public void close() throws IOException {
         flush();
-        for (DaoFile daoFile : daoFiles) {
-            daoFile.close();
-        }
+        closeFiles();
     }
 
     private Iterator<BaseEntry<String>> getDataMapIterator(String from, String to) {
@@ -117,12 +113,12 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         return subMap.values().iterator();
     }
 
-    static int getEntryIndex(String keyToFind, DaoFile daoFile, ByteBuffer buffer) throws IOException {
+    static int getEntryIndex(String keyToFind, ByteBuffer buffer, DaoFile daoFile) throws IOException {
         int left = 0;
         int right = daoFile.getLastIndex();
         while (left <= right) {
             int middle = (right - left) / 2 + left;
-            StringDao.fillBufferWithEntry(daoFile, buffer, middle);
+            StringDao.fillBufferWithEntry(buffer, daoFile, middle);
             String key = StringDao.readKeyFromBuffer(buffer);
             int comparison = keyToFind.compareTo(key);
             if (comparison < 0) {
@@ -171,12 +167,11 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     //key|value|valueSize|keySize or key|keySize if value == null
     private int writeEntryInStream(DataOutputStream dataStream, BaseEntry<String> entry) throws IOException {
         long before = dataStream.size();
-        dataStream.writeBytes(entry.key());
+        dataStream.writeChars(entry.key());
+        short keySize = (short) (dataStream.size() - before);
         long current = dataStream.size();
-        short keySize = (short) (current - before);
-        current = dataStream.size();
         if (entry.value() != null) {
-            dataStream.writeBytes(entry.value());
+            dataStream.writeChars(entry.value());
             short valueSize = (short) (dataStream.size() - current);
             dataStream.writeShort(valueSize);
         }
@@ -184,44 +179,40 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         return (int) (dataStream.size() - before);
     }
 
-    static BaseEntry<String> readEntry(int index, DaoFile daoFile, ByteBuffer buffer) throws IOException {
-        StringDao.fillBufferWithEntry(daoFile, buffer, index);
-        String key = StringDao.readKeyFromBuffer(buffer);
-        String value = StringDao.readValueFromBuffer(daoFile, buffer, index);
+    static BaseEntry<String> readEntryFromBuffer(ByteBuffer buffer, DaoFile daoFile, int index) throws IOException {
+        StringDao.fillBufferWithEntry(buffer, daoFile, index);
+        int entrySize = daoFile.entrySize(index);
+        short keySize = readLastBytesAsShort(buffer);
+        buffer.limit(keySize);
+        String key = buffer.asCharBuffer().toString();
+        String value = null;
+        buffer.position(keySize);
+        buffer.limit(entrySize - Short.BYTES);
+        if (buffer.hasRemaining()) {
+            short valueSize = readLastBytesAsShort(buffer);
+            buffer.limit(entrySize - Short.BYTES * 2);
+            value = valueSize == 0 ? "" : buffer.asCharBuffer().toString();
+        }
         return new BaseEntry<>(key, value);
-    }
-
-    private static void fillBufferWithEntry(DaoFile daoFile, ByteBuffer buffer, int index) throws IOException {
-        buffer.clear();
-        buffer.limit(daoFile.entrySize(index));
-        daoFile.getChannel().read(buffer, daoFile.getOffset(index));
-        buffer.flip();
     }
 
     private static String readKeyFromBuffer(ByteBuffer buffer) {
         short keySize = readLastBytesAsShort(buffer);
         buffer.limit(keySize);
-        return StandardCharsets.UTF_8.decode(buffer).toString();
-    }
-
-    private static String readValueFromBuffer(DaoFile daoFile, ByteBuffer buffer, int index) {
-        int entrySize = daoFile.entrySize(index);
-        buffer.limit(entrySize - Short.BYTES);
-        if (!buffer.hasRemaining()) {
-            return null;
-        }
-        short valueSize = readLastBytesAsShort(buffer);
-        if (valueSize == 0) {
-            return "";
-        }
-        buffer.limit(entrySize - Short.BYTES * 2);
-        return StandardCharsets.UTF_8.decode(buffer).toString();
+        return buffer.asCharBuffer().toString();
     }
 
     private static short readLastBytesAsShort(ByteBuffer buffer) {
         byte high = buffer.get(buffer.limit() - Short.BYTES);
         byte low = buffer.get(buffer.limit() - Short.BYTES + 1);
         return (short) (((high & 0xff) << 8) | (low & 0xff));
+    }
+
+    private static void fillBufferWithEntry(ByteBuffer buffer, DaoFile daoFile, int index) throws IOException {
+        buffer.clear();
+        buffer.limit(daoFile.entrySize(index));
+        daoFile.getChannel().read(buffer, daoFile.getOffset(index));
+        buffer.flip();
     }
 
     private Path pathToFile(int fileNumber, String fileName) {
@@ -238,5 +229,11 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             daoFiles.add(daoFile);
         }
         return maxSize;
+    }
+
+    private void closeFiles() throws IOException {
+        for (DaoFile daoFile : daoFiles) {
+            daoFile.close();
+        }
     }
 }

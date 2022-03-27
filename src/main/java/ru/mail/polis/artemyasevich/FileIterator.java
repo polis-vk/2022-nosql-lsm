@@ -17,7 +17,7 @@ public class FileIterator implements Iterator<BaseEntry<String>> {
         this.daoFile = daoFile;
         this.buffer = buffer;
         this.to = to;
-        this.entryToRead = from == null ? 0 : StringDao.getEntryIndex(from, daoFile, buffer);
+        this.entryToRead = from == null ? 0 : StringDao.getEntryIndex(from, buffer, daoFile);
         this.next = readEntry();
     }
 
@@ -41,7 +41,7 @@ public class FileIterator implements Iterator<BaseEntry<String>> {
         if (daoFile.getOffset(entryToRead) == daoFile.sizeOfFile()) {
             return null;
         }
-        BaseEntry<String> entry = StringDao.readEntry(entryToRead, daoFile, buffer);
+        BaseEntry<String> entry = StringDao.readEntryFromBuffer(buffer, daoFile, entryToRead);
         if (to != null && entry.key().compareTo(to) >= 0) {
             return null;
         }
