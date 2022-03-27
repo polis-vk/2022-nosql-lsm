@@ -85,9 +85,9 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void compact() throws IOException {
-        int filesBefore = daoFiles.size();
         Iterator<BaseEntry<String>> mergeIterator = get(null, null);
         savaData(mergeIterator, totalFileUpserts + dataMap.size());
+        int filesBefore = daoFiles.size();
         closeFiles();
         daoFiles.clear();
         for (int i = 0; i < filesBefore; i++) {
