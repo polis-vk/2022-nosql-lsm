@@ -33,6 +33,7 @@ public class Timer {
         }
 
         public String getSystem() {
+            System.out.println();
             return system;
         }
     }
