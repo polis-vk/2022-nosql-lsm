@@ -14,6 +14,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 
 public class StoragePart implements AutoCloseable {
     public static final int LEN_FOR_NULL = -1;
@@ -72,23 +73,23 @@ public class StoragePart implements AutoCloseable {
 
     private BaseEntry<ByteBuffer> readEntry(int entryN) {
         int ind = (int) indexBB.getLong(entryN * Long.BYTES);
-        byte[] key = readBytes(ind);
-        assert (key != null);
-        ind += Integer.BYTES + key.length;
-        byte[] value = readBytes(ind);
-        return new BaseEntry<>(ByteBuffer.wrap(key), value == null ? null : ByteBuffer.wrap(value));
+        var key = readBytes(ind);
+        assert (key.isPresent());
+        ind += Integer.BYTES + key.get().length;
+        var value = readBytes(ind);
+        return new BaseEntry<>(ByteBuffer.wrap(key.get()), value.map(ByteBuffer::wrap).orElse(null));
     }
 
-    private byte[] readBytes(int ind) {
+    private Optional<byte[]> readBytes(int ind) {
         int currInd = ind;
         int len = memoryBB.getInt(currInd);
         if (len == LEN_FOR_NULL) {
-            return null;
+            return Optional.empty();
         }
         currInd += Integer.BYTES;
         byte[] bytes = new byte[len];
         memoryBB.get(currInd, bytes);
-        return bytes;
+        return Optional.of(bytes);
     }
 
     private static MappedByteBuffer mapFile(Path filePath) throws IOException {
