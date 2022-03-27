@@ -1,5 +1,6 @@
 package ru.mail.polis.levsaskov;
 
+import org.jetbrains.annotations.Nullable;
 import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
@@ -72,24 +73,23 @@ public class StoragePart implements AutoCloseable {
 
     private BaseEntry<ByteBuffer> readEntry(int entryN) {
         int ind = (int) indexBB.getLong(entryN * Long.BYTES);
-        int len = memoryBB.getInt(ind);
-        ind += Integer.BYTES;
-        byte[] key = new byte[len];
-        memoryBB.get(ind, key);
-
-        ind += key.length;
-
-        byte[] value;
-        len = memoryBB.getInt(ind);
-        ind += Integer.BYTES;
-        if (len == LEN_FOR_NULL) {
-            value = null;
-        } else {
-            value = new byte[len];
-            memoryBB.get(ind, value);
-        }
-
+        byte[] key = readBytes(ind);
+        assert (key != null);
+        ind += Integer.BYTES + key.length;
+        byte[] value = readBytes(ind);
         return new BaseEntry<>(ByteBuffer.wrap(key), value == null ? null : ByteBuffer.wrap(value));
+    }
+
+    private byte[] readBytes(int ind) {
+        int currInd = ind;
+        int len = memoryBB.getInt(currInd);
+        if (len == LEN_FOR_NULL) {
+            return null;
+        }
+        currInd += Integer.BYTES;
+        byte[] bytes = new byte[len];
+        memoryBB.get(currInd, bytes);
+        return bytes;
     }
 
     private static MappedByteBuffer mapFile(Path filePath) throws IOException {
