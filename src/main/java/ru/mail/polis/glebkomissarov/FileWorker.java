@@ -183,7 +183,8 @@ public class FileWorker {
 
     private Path[] getPaths(Path basePath) throws IOException {
         try (Stream<Path> str = Files.list(basePath)) {
-            return str.toArray(Path[]::new);
+            return str.filter(i -> i.toString().contains(FileName.SAVED_DATA.getName())
+            || i.toString().contains(FileName.OFFSETS.getName())).toArray(Path[]::new);
         }
     }
 }
