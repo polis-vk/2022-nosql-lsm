@@ -5,9 +5,6 @@ public class Timer {
     private static final char TIME_SEPARATOR = ':';
     private long startTime;
 
-    public Timer() {
-    }
-
     public String elapse() {
         double elapse = System.nanoTime() - startTime;
         long times;
