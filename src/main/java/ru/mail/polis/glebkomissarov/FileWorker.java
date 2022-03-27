@@ -10,6 +10,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -183,8 +184,7 @@ public class FileWorker {
 
     private Path[] getPaths(Path basePath) throws IOException {
         try (Stream<Path> str = Files.list(basePath)) {
-            return str.filter(i -> i.toString().contains(FileName.SAVED_DATA.getName())
-            || i.toString().contains(FileName.OFFSETS.getName())).toArray(Path[]::new);
+            return str.sorted(java.util.Comparator.comparing(Path::toString)).toArray(Path[]::new);
         }
     }
 }
