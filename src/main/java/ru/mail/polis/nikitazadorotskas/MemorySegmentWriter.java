@@ -22,10 +22,9 @@ class MemorySegmentWriter {
         this.scope = scope;
         utils.createStorageFile(number);
 
-        long numberOfEntriesByteSize = Long.BYTES;
         long numberOfEntries = arraySize * 2L + 1;
         long indexesSize = Long.BYTES * numberOfEntries;
-        this.dataOffset = numberOfEntriesByteSize + indexesSize;
+        this.dataOffset = Long.BYTES + indexesSize;
 
         // sizes:       1 long       numberOfEntries * 2 + 1 longs      storageSize
         // storage: ((numberOfEntries)(key0index, value0index...)(key0, value0...))
