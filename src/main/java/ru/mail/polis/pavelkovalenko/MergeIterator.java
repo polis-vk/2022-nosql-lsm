@@ -37,6 +37,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     public boolean hasNext() {
         iterators.removeIf(this::removeIteratorIf);
         skipTombstones();
+        iterators.removeIf(this::removeIteratorIf);
         return !iterators.isEmpty();
     }
 
@@ -94,62 +95,47 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     private void skipTombstones() {
         while (!iterators.isEmpty() && hasTombstoneForFirstElement()) {
-            skipWhileFirstHasMinTombstones();
-            iterators.removeIf(this::removeIteratorIf);
-            skipWhileBothHaveTombstones();
-            refreshIterators();
-            iterators.removeIf(this::removeIteratorIf);
+            if (iterators.size() == 1) {
+                skipIfLastOneStanding();
+            } else {
+                skipIfSeveralStanding();
+            }
         }
     }
 
-    private boolean hasTombstoneForFirstElement() {
+    private void skipIfLastOneStanding() {
         PeekIterator first = iterators.remove();
-        backIterators(first);
-        first = iterators.remove();
-        Entry<ByteBuffer> firstEntry = first.peek();
-        backIterators(first);
-
-        return !iterators.isEmpty() && Utils.isTombstone(firstEntry);
+        while (Utils.isTombstone(first.peek()) && first.hasNext()) {
+            first.next();
+        }
+        backIterator(first);
     }
 
-    private boolean needToFallEntry(Entry<ByteBuffer> first, Entry<ByteBuffer> second) {
-        return Utils.isTombstone(first) && first.key().equals(second.key());
+    private void skipIfSeveralStanding() {
+        Entry<PeekIterator> its = confiscateFirsIteratorsPair();
+        PeekIterator first = its.key();
+        PeekIterator second = its.value();
+        while (Utils.isTombstone(first.peek()) && first.hasNext()) {
+            backIterators(first, second);
+            fallEntry(first.peek());
+            refreshIterators();
+            its = confiscateFirsIteratorsPair();
+            first = its.key();
+            second = its.value();
+        }
+        backIterators(first, second);
+        iterators.removeIf(this::removeIteratorIf);
+    }
+
+    private boolean hasTombstoneForFirstElement() {
+        refreshIterators();
+        return !iterators.isEmpty() && Utils.isTombstone(iterators.peek().peek());
     }
 
     private void refreshIterators() {
         List<PeekIterator> peekIterators = iterators.stream().toList();
         iterators.clear();
         iterators.addAll(peekIterators);
-    }
-
-    private void skipWhileFirstHasMinTombstones() {
-        PeekIterator first = iterators.remove();
-        PeekIterator second = iterators.poll();
-        if (second == null) {
-            while (Utils.isTombstone(first.peek()) && first.hasNext()) {
-                first.next();
-            }
-        } else {
-            while (Utils.isTombstone(first.peek()) && first.hasNext()
-                    && first.peek().key().compareTo(second.peek().key()) < 0) {
-                first.next();
-            }
-        }
-        backIterators(first, second);
-    }
-
-    private void skipWhileBothHaveTombstones() {
-        if (iterators.size() >= 2) {
-            Entry<PeekIterator> its = confiscateFirsIteratorsPair();
-            PeekIterator first = its.key();
-            PeekIterator second = its.value();
-
-            while (first.hasNext() && second.hasNext() && needToFallEntry(first.peek(), second.peek())) {
-                first.next();
-                second.next();
-            }
-            backIterators(first, second);
-        }
     }
 
 }
