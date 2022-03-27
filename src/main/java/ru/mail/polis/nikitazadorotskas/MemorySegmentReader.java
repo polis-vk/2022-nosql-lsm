@@ -8,6 +8,7 @@ import ru.mail.polis.BaseEntry;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Iterator;
 
 import static java.nio.channels.FileChannel.MapMode.READ_ONLY;
@@ -19,7 +20,6 @@ class MemorySegmentReader {
     private final Utils utils;
     private final ResourceScope scope;
     private final MemorySegment mappedSegment;
-    private long lastIndexFoundInBinarySearch;
 
     MemorySegmentReader(Utils utils, ResourceScope scope, int number) throws IOException {
         this.utils = utils;
@@ -49,10 +49,21 @@ class MemorySegmentReader {
     }
 
     BaseEntry<MemorySegment> getFromDisk(MemorySegment key) {
-        return binarySearch(key);
+        long index = binarySearch(key);
+
+        if (index < 0) {
+            return null;
+        }
+
+        return getEntry(index);
     }
 
-    private BaseEntry<MemorySegment> binarySearch(MemorySegment key) {
+    private BaseEntry<MemorySegment> getEntry(long segmentIndex) {
+        return new BaseEntry<>(getMemorySegment(segmentIndex, false),
+                getMemorySegment(segmentIndex, true));
+    }
+
+    private long binarySearch(MemorySegment key) {
         long low = 0;
         long high = lastIndex;
 
@@ -65,15 +76,13 @@ class MemorySegmentReader {
             if (compare > 0) {
                 low = mid + 1;
             } else if (compare == 0) {
-                lastIndexFoundInBinarySearch = mid;
-                return new BaseEntry<>(currentKey, getMemorySegment(mid, true));
+                return mid;
             } else {
                 high = mid - 1;
             }
         }
 
-        lastIndexFoundInBinarySearch = low;
-        return null;
+        return -(low + 1);
     }
 
     private long countMid(long low, long high) {
@@ -125,7 +134,7 @@ class MemorySegmentReader {
 
             @Override
             public BaseEntry<MemorySegment> next() {
-                return new BaseEntry<>(getMemorySegment(next, false), getMemorySegment(next++, true));
+                return getEntry(next++);
             }
         });
     }
@@ -135,8 +144,8 @@ class MemorySegmentReader {
             return defaultIndex;
         }
 
-        binarySearch(key);
-        return lastIndexFoundInBinarySearch;
+        long index = binarySearch(key);
+        return index < 0 ? -(index + 1) : index;
     }
 
     public int getNumber() {

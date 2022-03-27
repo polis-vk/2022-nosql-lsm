@@ -24,6 +24,7 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     private final MemorySegmentReader[] readers;
     private final Utils utils;
     private final ResourceScope scope = ResourceScope.newSharedScope();
+    private boolean flushed;
 
     public PersistentDao(Config config) throws IOException {
         utils = new Utils(config);
@@ -178,6 +179,11 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
 
     private void flush(Iterator<BaseEntry<MemorySegment>> values, int fileIndex, int entriesCount, long byteSize)
             throws IOException {
+        if (flushed) {
+            return;
+        }
+        flushed = true;
+
         try (ResourceScope confinedScope = ResourceScope.newConfinedScope()) {
             MemorySegmentWriter segmentWriter = new MemorySegmentWriter(
                     entriesCount,
