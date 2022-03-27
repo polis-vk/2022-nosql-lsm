@@ -6,7 +6,6 @@ public class Timer {
     private long startTime;
 
     public Timer() {
-        this.startTime = System.nanoTime();
     }
 
     public String elapse() {
@@ -25,7 +24,7 @@ public class Timer {
         return resultStr.toString();
     }
 
-    public void refresh() {
+    public void set() {
         startTime = System.nanoTime();
     }
 
