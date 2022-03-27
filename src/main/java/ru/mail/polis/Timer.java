@@ -9,7 +9,7 @@ public class Timer {
     }
 
     public String elapse() {
-        double result = (System.nanoTime() - startTime) / Math.pow(10, 9);
+        double result = (System.nanoTime() - startTime) / Time.NANOSECONDS.getMultiplier();
         long times;
         StringBuilder resultStr = new StringBuilder();
 
