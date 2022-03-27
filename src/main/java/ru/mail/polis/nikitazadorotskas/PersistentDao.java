@@ -107,6 +107,10 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
             return null;
         }
 
+        return getFromStorage(key);
+    }
+
+    private BaseEntry<MemorySegment> getFromStorage(MemorySegment key) {
         for (int i = readers.length - 1; i >= 0; i--) {
             BaseEntry<MemorySegment> res = readers[i].getFromDisk(key);
             if (res != null) {
