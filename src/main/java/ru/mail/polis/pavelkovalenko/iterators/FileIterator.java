@@ -1,4 +1,4 @@
-package ru.mail.polis.pavelkovalenko;
+package ru.mail.polis.pavelkovalenko.iterators;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
@@ -9,6 +9,9 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.Iterator;
+import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
+import ru.mail.polis.pavelkovalenko.Serializer;
+import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
 
@@ -79,7 +82,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
 
     private boolean canContinue() throws IOException {
         return (to == null && peek() != null)
-                || (peek() != null && Utils.entryComparator.compare(peek(), toEntry) < 0);
+                || (peek() != null && EntryComparator.INSTANSE.compare(peek(), toEntry) < 0);
     }
 
     private boolean isEOFReached() throws IOException {
@@ -102,7 +105,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
             setIndexesFileOffset(c * Utils.INDEX_OFFSET);
             Entry<ByteBuffer> curEntry = Serializer.readEntry(dataFile, indexesFile);
 
-            if (curEntry.key().compareTo(from) >= 0 && Utils.entryComparator.compare(curEntry, ceilEntry) <= 0) {
+            if (curEntry.key().compareTo(from) >= 0 && EntryComparator.INSTANSE.compare(curEntry, ceilEntry) <= 0) {
                 ceilEntry = curEntry;
                 lastIndexesFileOffset = getIndexesFileOffset();
                 lastDataFileOffset = getDataFileOffset();

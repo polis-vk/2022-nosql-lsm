@@ -7,6 +7,7 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.concurrent.ConcurrentNavigableMap;
+import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 public final class Serializer {
 
@@ -21,12 +22,12 @@ public final class Serializer {
         ByteBuffer key = readByteBuffer(dataFile);
         ByteBuffer value = Utils.isTombstone(tombstone) ? null : readByteBuffer(dataFile);
         Entry<ByteBuffer> entry = new BaseEntry<>(key, value);
-        dataFile.readLine();
+        readLineSeparator(dataFile);
         return entry;
     }
 
     public static void write(Path pathToDataFile, Path pathToIndexesFile,
-                             ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data) throws IOException {
+                ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data) throws IOException {
         if (data.isEmpty()) {
             return;
         }
@@ -35,10 +36,9 @@ public final class Serializer {
              RandomAccessFile indexesFile = new RandomAccessFile(pathToIndexesFile.toString(), "rw")) {
             int curOffset = 0;
             int bbSize = 0;
-            ByteBuffer offset = ByteBuffer.allocate(Utils.INDEX_OFFSET);
             for (Entry<ByteBuffer> entry: data.values()) {
                 curOffset += bbSize;
-                writeOffset(curOffset, offset, indexesFile);
+                writeOffset(curOffset, indexesFile);
                 bbSize = writePair(entry, dataFile);
             }
         }
@@ -55,8 +55,12 @@ public final class Serializer {
 
     private static int readDataFileOffset(RandomAccessFile indexesFile) throws IOException {
         int dataFileOffset = indexesFile.readInt();
-        indexesFile.readLine();
+        readLineSeparator(indexesFile);
         return dataFileOffset;
+    }
+
+    private static void readLineSeparator(RandomAccessFile file) throws IOException {
+        file.readChar();
     }
 
     private static byte readByte(RandomAccessFile dataFile) throws IOException {
@@ -77,12 +81,12 @@ public final class Serializer {
      * │ integer │ \n │
      * └─────────┴────┘
      */
-    private static void writeOffset(int offset, ByteBuffer bbOffset, RandomAccessFile indexesFile) throws IOException {
+    private static void writeOffset(int offset, RandomAccessFile indexesFile) throws IOException {
+        ByteBuffer bbOffset = ByteBuffer.allocate(Utils.INDEX_OFFSET);
         bbOffset.putInt(offset);
         bbOffset.putChar(Utils.LINE_SEPARATOR);
         bbOffset.rewind();
         indexesFile.getChannel().write(bbOffset);
-        bbOffset.rewind();
     }
 
     /*
@@ -98,10 +102,12 @@ public final class Serializer {
         pair.put(Utils.getTombstoneValue(entry));
         pair.putInt(entry.key().remaining());
         pair.put(entry.key());
+
         if (!Utils.isTombstone(entry)) {
             pair.putInt(entry.value().remaining());
             pair.put(entry.value());
         }
+
         pair.putChar(Utils.LINE_SEPARATOR);
         pair.rewind();
         dataFile.getChannel().write(pair);

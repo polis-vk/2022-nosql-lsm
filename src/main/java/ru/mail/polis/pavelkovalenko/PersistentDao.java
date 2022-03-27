@@ -1,6 +1,5 @@
 package ru.mail.polis.pavelkovalenko;
 
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
@@ -10,16 +9,18 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import ru.mail.polis.pavelkovalenko.iterators.FileIterator;
+import ru.mail.polis.pavelkovalenko.iterators.MergeIterator;
+import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    private final NavigableMap<Integer, Entry<Path>> pathsToPairedFiles = new TreeMap<>();
+    private final NavigableMap<Integer /*priority*/, FilePair> sstablesPaths = new TreeMap<>();
     private final Config config;
 
     public PersistentDao(Config config) throws IOException {
@@ -35,7 +36,7 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        return new MergeIterator(from, to, data, pathsToPairedFiles);
+        return new MergeIterator(from, to, data, sstablesPaths);
     }
 
     @Override
@@ -54,8 +55,8 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        Entry<Path> newestFilePair = pathsToPairedFiles.lastEntry().getValue();
-        Serializer.write(newestFilePair.key(), newestFilePair.value(), data);
+        FilePair newestFilePair = sstablesPaths.lastEntry().getValue();
+        Serializer.write(newestFilePair.dataFile(), newestFilePair.indexesFile(), data);
     }
 
     @Override
@@ -65,24 +66,16 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     }
 
     private void addPairedFiles() throws IOException {
-        Path pathToDataFile = addDataFile();
-        Path pathToIndexesFile = addIndexFile();
-        BaseEntry<Path> pathToPairedFiles = new BaseEntry<>(pathToDataFile, pathToIndexesFile);
-        pathsToPairedFiles.put(pathsToPairedFiles.size() + 1, pathToPairedFiles);
+        Path pathToDataFile = addFile(Utils.DATA_FILENAME);
+        Path pathToIndexesFile = addFile(Utils.INDEXES_FILENAME);
+        FilePair pathToPairedFiles = new FilePair(pathToDataFile, pathToIndexesFile);
+        sstablesPaths.put(sstablesPaths.size() + 1, pathToPairedFiles);
     }
 
-    private Path addDataFile() throws IOException {
-        Path newDataFile = config.basePath()
-                .resolve(Utils.DATA_FILENAME + (pathsToPairedFiles.size() + 1) + Utils.FILE_EXTENSION);
-        createFile(newDataFile);
-        return newDataFile;
-    }
-
-    private Path addIndexFile() throws IOException {
-        Path newIndexesFile = config.basePath()
-                .resolve(Utils.INDEXES_FILENAME + (pathsToPairedFiles.size() + 1) + Utils.FILE_EXTENSION);
-        createFile(newIndexesFile);
-        return newIndexesFile;
+    private Path addFile(String filename) throws IOException {
+        Path file = config.basePath().resolve(filename + (sstablesPaths.size() + 1) + Utils.FILE_EXTENSION);
+        createFile(file);
+        return file;
     }
 
     private void createFile(Path filename) throws IOException {
@@ -97,9 +90,10 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     private Entry<ByteBuffer> findKeyInFile(ByteBuffer key) throws IOException {
         Entry<ByteBuffer> result = null;
-        for (Map.Entry<Integer, Entry<Path>> pathToPairedFiles: pathsToPairedFiles.entrySet()) {
-            Path pathToDataFile = pathToPairedFiles.getValue().key();
-            Path pathToIndexesFile = pathToPairedFiles.getValue().value();
+
+        for (FilePair filePair: sstablesPaths.values()) {
+            Path pathToDataFile = filePair.dataFile();
+            Path pathToIndexesFile = filePair.indexesFile();
             try (FileIterator fileIterator = new FileIterator(pathToDataFile, pathToIndexesFile, key, null)) {
                 if (!fileIterator.hasNext()) {
                     continue;
@@ -110,6 +104,7 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
                 }
             }
         }
+
         return result;
     }
 

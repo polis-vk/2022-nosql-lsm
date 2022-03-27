@@ -1,11 +1,11 @@
-package ru.mail.polis.pavelkovalenko;
+package ru.mail.polis.pavelkovalenko.utils;
 
-public class Timer {
+public final class Timer {
 
+    public static final Timer INSTANSE = new Timer();
     private long startTime;
 
-    public Timer() {
-        this.startTime = System.nanoTime();
+    private Timer() {
     }
 
     private enum Time {
@@ -38,6 +38,10 @@ public class Timer {
         }
     }
 
+    public void set() {
+        startTime = System.nanoTime();
+    }
+
     public String elapse() {
         double result = (System.nanoTime() - startTime) / Math.pow(10, 9);
         long times;
@@ -52,10 +56,6 @@ public class Timer {
         }
 
         return resultStr.toString();
-    }
-
-    public void refresh() {
-        startTime = System.nanoTime();
     }
 
 }
