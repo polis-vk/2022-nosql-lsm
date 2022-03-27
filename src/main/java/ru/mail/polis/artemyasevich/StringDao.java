@@ -168,7 +168,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     private int writeEntryInStream(DataOutputStream dataStream, BaseEntry<String> entry) throws IOException {
         long before = dataStream.size();
         dataStream.writeChars(entry.key());
-        short keySize = (short) (dataStream.size() - before);
+        final short keySize = (short) (dataStream.size() - before);
         long current = dataStream.size();
         if (entry.value() != null) {
             dataStream.writeChars(entry.value());
