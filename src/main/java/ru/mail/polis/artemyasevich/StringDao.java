@@ -31,6 +31,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     private final Path pathToDirectory;
     private final List<DaoFile> daoFiles;
     private final ThreadLocal<ByteBuffer> threadLocalBuffer;
+    private int totalFileUpserts;
 
     public StringDao(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
@@ -83,13 +84,28 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
+    public void compact() throws IOException {
+        int filesBefore = daoFiles.size();
+        Iterator<BaseEntry<String>> mergeIterator = get(null, null);
+        savaData(mergeIterator, totalFileUpserts + dataMap.size());
+        closeFiles();
+        daoFiles.clear();
+        for (int i = 0; i < filesBefore; i++) {
+            Files.delete(pathToFile(i, DATA_FILE));
+            Files.delete(pathToFile(i, META_FILE));
+        }
+        Files.move(pathToFile(filesBefore, DATA_FILE), pathToFile(0, DATA_FILE));
+        Files.move(pathToFile(filesBefore, META_FILE), pathToFile(0, META_FILE));
+    }
+
+    @Override
     public void upsert(BaseEntry<String> entry) {
         dataMap.put(entry.key(), entry);
     }
 
     @Override
     public void flush() throws IOException {
-        savaData();
+        savaData(dataMap.values().iterator(), dataMap.size());
         dataMap.clear();
     }
 
@@ -132,8 +148,8 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         return left;
     }
 
-    private void savaData() throws IOException {
-        if (dataMap.isEmpty()) {
+    private void savaData(Iterator<BaseEntry<String>> iterator, int sizeToDeclare) throws IOException {
+        if (!iterator.hasNext()) {
             return;
         }
         try (DataOutputStream dataStream = new DataOutputStream(new BufferedOutputStream(
@@ -141,14 +157,14 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
                      Files.newOutputStream(pathToFile(daoFiles.size(), META_FILE), writeOptions)
              ))) {
-            metaStream.writeInt(dataMap.size());
-            Iterator<BaseEntry<String>> dataIterator = dataMap.values().iterator();
-            BaseEntry<String> entry = dataIterator.next();
+            //It is allowed that this size may be larger than the actual one.
+            metaStream.writeInt(sizeToDeclare);
+            BaseEntry<String> entry = iterator.next();
             int currentRepeats = 1;
             int currentBytes = writeEntryInStream(dataStream, entry);
 
-            while (dataIterator.hasNext()) {
-                entry = dataIterator.next();
+            while (iterator.hasNext()) {
+                entry = iterator.next();
                 int bytesWritten = writeEntryInStream(dataStream, entry);
                 if (bytesWritten == currentBytes) {
                     currentRepeats++;
@@ -217,6 +233,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             if (daoFile.maxEntrySize() > maxSize) {
                 maxSize = daoFile.maxEntrySize();
             }
+            totalFileUpserts += daoFile.getLastIndex() + 1;
             daoFiles.add(daoFile);
         }
         return maxSize;
@@ -227,4 +244,5 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             daoFile.close();
         }
     }
+
 }

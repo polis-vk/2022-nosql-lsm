@@ -12,12 +12,14 @@ public class DaoFile {
     private final long[] offsets;
     private final Path pathToMeta;
     private final RandomAccessFile reader;
+    private int size;
+    private int entries;
     private int maxEntrySize;
 
     public DaoFile(Path pathToFile, Path pathToMeta) throws IOException {
         this.reader = new RandomAccessFile(pathToFile.toFile(), "r");
         this.pathToMeta = pathToMeta;
-        this.offsets = readOffsets();
+        this.offsets = processMetaAndGetOffsets();
     }
 
     public FileChannel getChannel() {
@@ -29,14 +31,14 @@ public class DaoFile {
     }
 
     public long sizeOfFile() {
-        return offsets[offsets.length - 1];
+        return size;
     }
 
     public int maxEntrySize() {
         return maxEntrySize;
     }
 
-    //Returns fileSize if index == offsets.length - 1
+    //Returns fileSize if index == entries count
     public long getOffset(int index) {
         return offsets[index];
     }
@@ -46,32 +48,39 @@ public class DaoFile {
     }
 
     public int getLastIndex() {
-        return offsets.length - 2;
+        return entries - 1;
     }
 
-    private long[] readOffsets() throws IOException {
+    private long[] processMetaAndGetOffsets() throws IOException {
+        int maxEntry = 0;
+        int actualEntries;
+        int actualSize = 0;
         long[] fileOffsets;
         try (DataInputStream metaStream = new DataInputStream(new BufferedInputStream(
                 Files.newInputStream(pathToMeta)))) {
-            int dataSize = metaStream.readInt();
-            fileOffsets = new long[dataSize + 1];
-
+            //It is allowed that the size of array may be larger than necessary
+            int declaredSize = metaStream.readInt();
+            fileOffsets = new long[declaredSize + 1];
             long currentOffset = 0;
             fileOffsets[0] = currentOffset;
-            int i = 1;
+            actualEntries = 1;
             while (metaStream.available() > 0) {
                 int numberOfEntries = metaStream.readInt();
                 int entryBytesSize = metaStream.readInt();
-                if (entryBytesSize > maxEntrySize) {
-                    maxEntrySize = entryBytesSize;
+                if (entryBytesSize > maxEntry) {
+                    maxEntry = entryBytesSize;
                 }
                 for (int j = 0; j < numberOfEntries; j++) {
                     currentOffset += entryBytesSize;
-                    fileOffsets[i] = currentOffset;
-                    i++;
+                    fileOffsets[actualEntries] = currentOffset;
+                    actualEntries++;
+                    actualSize += entryBytesSize;
                 }
             }
         }
+        this.maxEntrySize = maxEntry;
+        this.size = actualSize;
+        this.entries = actualEntries - 1;
         return fileOffsets;
     }
 }
