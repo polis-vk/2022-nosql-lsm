@@ -9,14 +9,14 @@ public class Timer {
     }
 
     public String elapse() {
-        double result = (System.nanoTime() - startTime) / Time.NANOSECONDS.getMultiplier();
+        double elapse = System.nanoTime() - startTime;
         long times;
         StringBuilder resultStr = new StringBuilder();
 
         for (Time time: Time.values()) {
-            if (Double.compare(result * time.getMultiplier(), 0) > 0) {
-                times = (long)Math.floor(result * time.getMultiplier());
-                result -= times * time.getDivider();
+            if (Double.compare(elapse * time.getFactor(), 0) > 0) {
+                times = (long)Math.floor(elapse * time.getFactor());
+                elapse -= times * time.getFactor();
                 resultStr.append(times).append(time.getSystem()).append(":");
             }
         }
@@ -28,28 +28,23 @@ public class Timer {
         startTime = System.nanoTime();
     }
 
+    // Relatively to nanoseconds
     private enum Time {
-        SECONDS(0, "s"),
-        MILLISECONDS(3, "ms"),
-        MICROSECONDS(6, "mcs"),
-        NANOSECONDS(9, "ns");
+        SECONDS(-9, "s"),
+        MILLISECONDS(-6, "ms"),
+        MICROSECONDS(-3, "mcs"),
+        NANOSECONDS(0, "ns");
 
-        private final double multiplier;
-        private final double divider;
+        private final double factor;
         private final String system;
 
         Time(double factor, String system) {
-            this.multiplier = Math.pow(10, factor);
-            this.divider = Math.pow(10, -factor);
+            this.factor = Math.pow(10, factor);
             this.system = system;
         }
 
-        public double getMultiplier() {
-            return multiplier;
-        }
-
-        public double getDivider() {
-            return divider;
+        public double getFactor() {
+            return factor;
         }
 
         public String getSystem() {
