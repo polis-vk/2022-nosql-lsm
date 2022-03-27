@@ -8,7 +8,6 @@ import ru.mail.polis.BaseEntry;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.Iterator;
 
 import static java.nio.channels.FileChannel.MapMode.READ_ONLY;
