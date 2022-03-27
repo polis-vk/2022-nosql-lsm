@@ -95,7 +95,7 @@ public final class DaoUtils {
      * mark делается всегда в начале entry то есть в позиции left. В первом случае чтобы вернуться, как бы skip наоборот
      * Во втором чтобы сделать peek для nextKey и была возможность просмотреть его и вернуться в его начало.
      * В итоге идея следующая найти пару ключей, между которыми лежит исходный и вернуть второй или равный исходному,
-     * при этом не храня индексы для сдвигов ключей вовсе.
+     * При этом не храня индексы для сдвигов ключей вовсе.
      */
     public static BaseEntry<String> ceilKey(Path path, BufferedReader bufferedReader,
                                             String key, long offset) throws IOException {
