@@ -44,8 +44,8 @@ public class FileIterator implements Iterator<BaseEntry<MemorySegment>> {
         MemorySegment key = entries.asSlice(keyOffset, keySize);
 
         long valueSize = MemoryAccess.getLongAtIndex(offsets, idx * FROM_OFFSET_TO_IDX + 2);
-        MemorySegment value = valueSize != WRONG_SIZE
-                ? entries.asSlice(keyOffset + key.byteSize(), valueSize) : null;
+        MemorySegment value = valueSize == WRONG_SIZE
+                ? null : entries.asSlice(keyOffset + key.byteSize(), valueSize);
 
         idx++;
         return new BaseEntry<>(key, value);
