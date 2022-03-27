@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Stream;
 
 public class FileWorker {
     private static final long WRONG_SIZE = -1;
@@ -81,7 +82,7 @@ public class FileWorker {
             );
 
             if (result >= 0) {
-                long valueSize =  MemoryAccess.getLongAtIndex(offsets, result * 3 + 2);
+                long valueSize = MemoryAccess.getLongAtIndex(offsets, result * 3 + 2);
                 if (valueSize == WRONG_SIZE) {
                     return null;
                 }
@@ -181,6 +182,8 @@ public class FileWorker {
     }
 
     private Path[] getPaths(Path basePath) throws IOException {
-        return Files.list(basePath).toArray(Path[]::new);
+        try (Stream<Path> str = Files.list(basePath)) {
+            return str.toArray(Path[]::new);
+        }
     }
 }
