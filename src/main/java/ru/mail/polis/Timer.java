@@ -35,8 +35,8 @@ public class Timer {
         private final double factor;
         private final String system;
 
-        Time(double factor, String system) {
-            this.factor = Math.pow(10, factor);
+        Time(int degree, String system) {
+            this.factor = Math.pow(10, degree);
             this.system = system;
         }
 
