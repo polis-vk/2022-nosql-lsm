@@ -164,48 +164,39 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         }
     }
 
-    //key|value|valueSize|keySize or key|keySize if value == null
+    //keySize|key|valueSize|value or key|keySize if value == null
     private int writeEntryInStream(DataOutputStream dataStream, BaseEntry<String> entry) throws IOException {
-        long before = dataStream.size();
-        dataStream.writeChars(entry.key());
-        short keySize = (short) (dataStream.size() - before);
-        long current = dataStream.size();
-        if (entry.value() != null) {
-            dataStream.writeChars(entry.value());
-            short valueSize = (short) (dataStream.size() - current);
-            dataStream.writeShort(valueSize);
-        }
+        int keySize = entry.key().length() * 2;
+        int valueBlockSize = 0;
         dataStream.writeShort(keySize);
-        return (int) (dataStream.size() - before);
+        dataStream.writeChars(entry.key());
+        if (entry.value() != null) {
+            int valueSize = entry.value().length() * 2;
+            valueBlockSize = valueSize + Short.BYTES;
+            dataStream.writeShort(valueSize);
+            dataStream.writeChars(entry.value());
+        }
+        return keySize + Short.BYTES + valueBlockSize;
     }
 
     static BaseEntry<String> readEntryFromBuffer(ByteBuffer buffer, DaoFile daoFile, int index) throws IOException {
         StringDao.fillBufferWithEntry(buffer, daoFile, index);
-        int entrySize = daoFile.entrySize(index);
-        short keySize = readLastBytesAsShort(buffer);
-        buffer.limit(keySize);
-        final String key = buffer.asCharBuffer().toString();
+        String key = readKeyFromBuffer(buffer);
+        buffer.limit(daoFile.entrySize(index));
         String value = null;
-        buffer.position(keySize);
-        buffer.limit(entrySize - Short.BYTES);
         if (buffer.hasRemaining()) {
-            short valueSize = readLastBytesAsShort(buffer);
-            buffer.limit(entrySize - Short.BYTES * 2);
+            short valueSize = buffer.getShort();
             value = valueSize == 0 ? "" : buffer.asCharBuffer().toString();
         }
         return new BaseEntry<>(key, value);
     }
 
     private static String readKeyFromBuffer(ByteBuffer buffer) {
-        short keySize = readLastBytesAsShort(buffer);
-        buffer.limit(keySize);
-        return buffer.asCharBuffer().toString();
-    }
-
-    private static short readLastBytesAsShort(ByteBuffer buffer) {
-        byte high = buffer.get(buffer.limit() - Short.BYTES);
-        byte low = buffer.get(buffer.limit() - Short.BYTES + 1);
-        return (short) (((high & 0xff) << 8) | (low & 0xff));
+        short keySize = buffer.getShort();
+        buffer.limit(keySize + Short.BYTES);
+        String key = buffer.asCharBuffer().toString();
+        buffer.position(Short.BYTES + keySize);
+        return key;
     }
 
     private static void fillBufferWithEntry(ByteBuffer buffer, DaoFile daoFile, int index) throws IOException {
