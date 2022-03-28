@@ -5,8 +5,11 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
+import java.io.Closeable;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 
 class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
 
@@ -15,6 +18,8 @@ class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
     final DaoFactory.Factory<D, E> factory;
     final Config config;
     final String name;
+
+    final List<Closeable> children = new ArrayList<>();
 
     TestDao(DaoFactory.Factory<D, E> factory, Config config) throws IOException {
         this.factory = factory;
@@ -29,7 +34,12 @@ class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
     }
 
     public Dao<String, Entry<String>> reopen() throws IOException {
-        return new TestDao<>(factory, config);
+        if (delegate != null) {
+            throw new IllegalStateException("Reopening open db");
+        }
+        TestDao<D, E> child = new TestDao<>(factory, config);
+        children.add(child);
+        return child;
     }
 
     @Override
@@ -81,7 +91,16 @@ class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
     }
 
     @Override
+    public void compact() throws IOException {
+        delegate.compact();
+    }
+
+    @Override
     public void close() throws IOException {
+        for (Closeable child : children) {
+            child.close();
+        }
+        children.clear();
         if (delegate != null) {
             delegate.close();
             delegate = null;
