@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
     private final FileOperations fileOperations;
+    private boolean isCompacted;
 
     public InMemoryDao(Config config) throws IOException {
         pairs = new ConcurrentSkipListMap<>(Arrays::compare);
@@ -67,8 +68,18 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
+    public void compact() throws IOException {
+        Iterator<BaseEntry<byte[]>> iterator = get(null, null);
+        fileOperations.compact(iterator);
+        isCompacted = true;
+    }
+
+    @Override
     public void close() throws IOException {
-        fileOperations.save(pairs);
+        if (!isCompacted)
+        {
+            fileOperations.save(pairs);
+        }
         pairs.clear();
     }
 }

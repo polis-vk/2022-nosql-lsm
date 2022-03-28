@@ -115,6 +115,16 @@ public class FileOperations {
         return low;
     }
 
+    public void compact(Iterator<BaseEntry<byte[]>> iterator) throws IOException {
+        long elementsCount = saveDataCompact(iterator);
+        saveIndexesCompact(iterator, elementsCount);
+        deleteAllFiles();
+        ssTables.clear();
+        ssIndexes.clear();
+        tablesSizes.clear();
+        filesCount = 1;
+    }
+
     public void save(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
         saveData(pairs);
         saveIndexes(pairs);
@@ -122,58 +132,118 @@ public class FileOperations {
     }
 
     private void saveData(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
+        if (sortedPairs == null) {
+            return;
+        }
         Path newFilePath = basePath.resolve(FILE_NAME + filesCount + FILE_EXTENSION);
         if (!Files.exists(newFilePath)) {
             Files.createFile(newFilePath);
         }
-        ByteBuffer intBuffer = ByteBuffer.allocate(Integer.BYTES);
         try (FileOutputStream fos = new FileOutputStream(String.valueOf(newFilePath));
              BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
             for (var pair : sortedPairs.entrySet()) {
-                intBuffer.putInt(pair.getKey().length);
-                writer.write(intBuffer.array());
-                intBuffer.clear();
-                writer.write(pair.getKey());
-                if (pair.getValue().value() == null) {
-                    intBuffer.putInt(-1);
-                    writer.write(intBuffer.array());
-                    intBuffer.clear();
-                } else {
-                    intBuffer.putInt(pair.getValue().value().length);
-                    writer.write(intBuffer.array());
-                    intBuffer.clear();
-                    writer.write(pair.getValue().value());
-                }
+                writePair(writer, pair);
             }
         }
     }
 
+    private long saveDataCompact(Iterator<BaseEntry<byte[]>> iterator) throws IOException {
+        if (!iterator.hasNext()) {
+            return 0;
+        }
+        Path newFilePath = basePath.resolve(FILE_NAME + filesCount + FILE_EXTENSION);
+        if (!Files.exists(newFilePath)) {
+            Files.createFile(newFilePath);
+        }
+        long elementsCount = 0;
+        try (FileOutputStream fos = new FileOutputStream(String.valueOf(newFilePath));
+             BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
+            while (iterator.hasNext()) {
+                BaseEntry<byte[]> current = iterator.next();
+                writePair(writer, Map.entry(current.key(), new BaseEntry<>(current.key(), current.value())));
+                elementsCount++;
+            }
+        }
+        return elementsCount;
+    }
+
     private void saveIndexes(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
+        if (sortedPairs == null) {
+            return;
+        }
         Path newIndexPath = basePath.resolve(FILE_INDEX_NAME + filesCount + FILE_INDEX_EXTENSION);
         if (!Files.exists(newIndexPath)) {
             Files.createFile(newIndexPath);
         }
-        long size = 0;
-        ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
+        long offset = 0;
         try (FileOutputStream fos = new FileOutputStream(String.valueOf(newIndexPath));
              BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
-            longBuffer.putLong(sortedPairs.size());
-            writer.write(longBuffer.array());
-            longBuffer.clear();
-            longBuffer.putLong(0);
-            writer.write(longBuffer.array());
-            longBuffer.clear();
+            writeFileSizeAndInitialPosition(writer, sortedPairs.size());
             for (var pair : sortedPairs.entrySet()) {
-                if (pair.getValue().value() == null) {
-                    size += 2 * Integer.BYTES + pair.getKey().length;
-                } else {
-                    size += 2 * Integer.BYTES + pair.getKey().length + pair.getValue().value().length;
-                }
-                longBuffer.putLong(size);
-                writer.write(longBuffer.array());
-                longBuffer.clear();
+                offset = writeEntryPosition(writer, pair, offset);
             }
         }
+    }
+
+    private void saveIndexesCompact(Iterator<BaseEntry<byte[]>> iterator, long elementsCount) throws IOException {
+        if (!iterator.hasNext()) {
+            return;
+        }
+        Path newIndexPath = basePath.resolve(FILE_INDEX_NAME + filesCount + FILE_INDEX_EXTENSION);
+        if (!Files.exists(newIndexPath)) {
+            Files.createFile(newIndexPath);
+        }
+        long offset = 0;
+        try (FileOutputStream fos = new FileOutputStream(String.valueOf(newIndexPath));
+             BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
+            writeFileSizeAndInitialPosition(writer, elementsCount);
+            while (iterator.hasNext()) {
+                BaseEntry<byte[]> current = iterator.next();
+                offset = writeEntryPosition(writer, Map.entry(current.key(), new BaseEntry<>(current.key(), current.value())), offset);
+            }
+        }
+    }
+
+    private void writePair(BufferedOutputStream writer, Map.Entry<byte[], BaseEntry<byte[]>> pair) throws IOException {
+        ByteBuffer intBuffer = ByteBuffer.allocate(Integer.BYTES);
+        intBuffer.putInt(pair.getKey().length);
+        writer.write(intBuffer.array());
+        intBuffer.clear();
+        writer.write(pair.getKey());
+        if (pair.getValue().value() == null) {
+            intBuffer.putInt(-1);
+            writer.write(intBuffer.array());
+            intBuffer.clear();
+        } else {
+            intBuffer.putInt(pair.getValue().value().length);
+            writer.write(intBuffer.array());
+            intBuffer.clear();
+            writer.write(pair.getValue().value());
+        }
+    }
+
+    private void writeFileSizeAndInitialPosition(BufferedOutputStream writer, long pairsSize) throws IOException {
+        ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
+        longBuffer.putLong(pairsSize);
+        writer.write(longBuffer.array());
+        longBuffer.clear();
+        longBuffer.putLong(0);
+        writer.write(longBuffer.array());
+        longBuffer.clear();
+    }
+
+    private long writeEntryPosition(BufferedOutputStream writer, Map.Entry<byte[],
+            BaseEntry<byte[]>> pair, long size) throws IOException {
+        ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
+        if (pair.getValue().value() == null) {
+            size += 2 * Integer.BYTES + pair.getKey().length;
+        } else {
+            size += 2 * Integer.BYTES + pair.getKey().length + pair.getValue().value().length;
+        }
+        longBuffer.putLong(size);
+        writer.write(longBuffer.array());
+        longBuffer.clear();
+        return size;
     }
 
     private long indexSize(Path indexPath) throws IOException {
@@ -216,5 +286,12 @@ public class FileOperations {
             currentValue = fis.readNBytes(valueLength);
         }
         return new BaseEntry<>(currentKey, currentValue);
+    }
+
+    private void deleteAllFiles() throws IOException {
+        for (int i = 0; i < filesCount; i++) {
+            Files.delete(ssTables.get(i));
+            Files.delete(ssIndexes.get(i));
+        }
     }
 }
