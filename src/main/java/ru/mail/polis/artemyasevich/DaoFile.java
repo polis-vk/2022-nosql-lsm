@@ -1,6 +1,5 @@
 package ru.mail.polis.artemyasevich;
 
-
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;

@@ -101,7 +101,6 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         Files.move(pathToFile(filesBefore, META_FILE), pathToFile(0, META_FILE));
     }
 
-
     @Override
     public void flush() throws IOException {
         flush(dataMap.values().iterator());
