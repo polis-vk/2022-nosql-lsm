@@ -31,7 +31,6 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     private final Path pathToDirectory;
     private final List<DaoFile> daoFiles;
     private final ThreadLocal<ByteBuffer> threadLocalBuffer;
-    private int totalFileUpserts;
 
     public StringDao(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
@@ -86,10 +85,11 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     @Override
     public void compact() throws IOException {
         Iterator<BaseEntry<String>> mergeIterator = get(null, null);
-        savaData(mergeIterator, totalFileUpserts + dataMap.size());
+        savaData(mergeIterator);
         int filesBefore = daoFiles.size();
         closeFiles();
         daoFiles.clear();
+        dataMap.clear();
         for (int i = 0; i < filesBefore; i++) {
             Files.delete(pathToFile(i, DATA_FILE));
             Files.delete(pathToFile(i, META_FILE));
@@ -105,7 +105,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void flush() throws IOException {
-        savaData(dataMap.values().iterator(), dataMap.size());
+        savaData(dataMap.values().iterator());
         dataMap.clear();
     }
 
@@ -148,7 +148,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         return left;
     }
 
-    private void savaData(Iterator<BaseEntry<String>> iterator, int sizeToDeclare) throws IOException {
+    private void savaData(Iterator<BaseEntry<String>> iterator) throws IOException {
         if (!iterator.hasNext()) {
             return;
         }
@@ -157,14 +157,14 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
                      Files.newOutputStream(pathToFile(daoFiles.size(), META_FILE), writeOptions)
              ))) {
-            //It is allowed that this size may be larger than the actual one.
-            metaStream.writeInt(sizeToDeclare);
             BaseEntry<String> entry = iterator.next();
             int currentRepeats = 1;
             int currentBytes = writeEntryInStream(dataStream, entry);
-
+            int size = 1;
             while (iterator.hasNext()) {
                 entry = iterator.next();
+                size++;
+                System.out.println(size + ": " + entry);
                 int bytesWritten = writeEntryInStream(dataStream, entry);
                 if (bytesWritten == currentBytes) {
                     currentRepeats++;
@@ -177,6 +177,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             }
             metaStream.writeInt(currentRepeats);
             metaStream.writeInt(currentBytes);
+            metaStream.writeInt(size);
         }
     }
 
@@ -233,7 +234,6 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             if (daoFile.maxEntrySize() > maxSize) {
                 maxSize = daoFile.maxEntrySize();
             }
-            totalFileUpserts += daoFile.getLastIndex() + 1;
             daoFiles.add(daoFile);
         }
         return maxSize;
