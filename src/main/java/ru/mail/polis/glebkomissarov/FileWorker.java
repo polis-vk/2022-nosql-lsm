@@ -88,10 +88,8 @@ public class FileWorker {
 
         int count = paths.length / 2;
         for (int i = count - 1; i >= 0; i--) {
-            MemorySegment offsets = createMappedSegment(paths[i], Files.size(paths[i]),
-                    FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
-            MemorySegment entries = createMappedSegment(paths[i + count], Files.size(paths[i + count]),
-                    FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
+            MemorySegment offsets = files.get(i).key();
+            MemorySegment entries = files.get(i).value();
 
             long result = binarySearch(
                     key,
