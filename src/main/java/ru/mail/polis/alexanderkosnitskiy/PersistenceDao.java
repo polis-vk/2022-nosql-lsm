@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -117,18 +118,16 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         private final PriorityQueue<PriorityConstruction> queue;
-        private final Iterator<BaseEntry<ByteBuffer>> memIter;
-        private final List<FileIterator> list;
         private BaseEntry<ByteBuffer> nextElement;
 
         public MergeIterator(ByteBuffer from, ByteBuffer to) {
-            list = new ArrayList<>();
-            memIter = getMemory(from, to);
+            List<Iterator<BaseEntry<ByteBuffer>>> iterators = new ArrayList<>();
+            iterators.add(getMemory(from, to));
             for (DaoReader reader : readers) {
-                list.add(new FileIterator(reader, from, to));
+                iterators.add(new FileIterator(reader, from, to));
             }
             queue = new PriorityQueue<>((l, r) -> {
-                int comparison = l.entry.key().compareTo(r.entry.key());
+                int comparison = l.curEntry.key().compareTo(r.curEntry.key());
                 if (comparison > 0) {
                     return 1;
                 }
@@ -137,12 +136,10 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 }
                 return Integer.compare(l.index, r.index);
             });
-            if (memIter.hasNext()) {
-                queue.add(new PriorityConstruction(0, memIter.next()));
-            }
-            for (int i = 0; i < list.size(); i++) {
-                if (list.get(i).peek() != null) {
-                    queue.add(new PriorityConstruction(i + 1, list.get(i).next()));
+            int priority = 0;
+            for(Iterator<BaseEntry<ByteBuffer>> iter : iterators) {
+                if(iter.hasNext()) {
+                    queue.add(new PriorityConstruction(priority++, iter));
                 }
             }
             nextElement = getNextElement();
@@ -156,52 +153,52 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         @Override
         public BaseEntry<ByteBuffer> next() {
             if (!hasNext()) {
-                throw new UnsupportedOperationException();
+                throw new NoSuchElementException();
             }
             BaseEntry<ByteBuffer> temp = nextElement;
             nextElement = getNextElement();
             return temp;
         }
 
-        private PriorityConstruction getConstruction() {
+        private BaseEntry<ByteBuffer> getNextEntry() {
             PriorityConstruction construction = queue.remove();
-            if (construction.index == 0) {
-                if (memIter.hasNext()) {
-                    queue.add(new PriorityConstruction(0, memIter.next()));
-                }
-            } else if (list.get(construction.index - 1).hasNext()) {
-                queue.add(new PriorityConstruction(construction.index, list.get(construction.index - 1).next()));
+            BaseEntry<ByteBuffer> temp = construction.curEntry;
+            if(construction.iterator.hasNext()) {
+                construction.curEntry = construction.iterator.next();
+                queue.add(construction);
             }
-            return construction;
+            return temp;
         }
 
         private BaseEntry<ByteBuffer> getNextElement() {
             if (queue.isEmpty()) {
                 return null;
             }
-            PriorityConstruction curr = getConstruction();
-            while (!queue.isEmpty() && queue.peek().entry.key().equals(curr.entry.key())) {
-                getConstruction();
+            BaseEntry<ByteBuffer> curr = getNextEntry();
+            while (!queue.isEmpty() && queue.peek().curEntry.key().equals(curr.key())) {
+                getNextEntry();
             }
-            while (curr.entry.value() == null) {
+            while (curr.value() == null) {
                 if (queue.isEmpty()) {
                     return null;
                 }
-                curr = getConstruction();
-                while (!queue.isEmpty() && queue.peek().entry.key().equals(curr.entry.key())) {
-                    getConstruction();
+                curr = getNextEntry();
+                while (!queue.isEmpty() && queue.peek().curEntry.key().equals(curr.key())) {
+                    getNextEntry();
                 }
             }
-            return curr.entry;
+            return curr;
         }
 
         private static class PriorityConstruction {
             int index;
-            BaseEntry<ByteBuffer> entry;
+            Iterator<BaseEntry<ByteBuffer>> iterator;
+            BaseEntry<ByteBuffer> curEntry;
 
-            PriorityConstruction(int index, BaseEntry<ByteBuffer> entry) {
+            PriorityConstruction(int index, Iterator<BaseEntry<ByteBuffer>> iterator) {
                 this.index = index;
-                this.entry = entry;
+                this.iterator = iterator;
+                curEntry = iterator.next();
             }
         }
     }
