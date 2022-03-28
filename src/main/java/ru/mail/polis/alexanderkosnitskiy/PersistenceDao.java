@@ -137,8 +137,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 return Integer.compare(l.index, r.index);
             });
             int priority = 0;
-            for(Iterator<BaseEntry<ByteBuffer>> iter : iterators) {
-                if(iter.hasNext()) {
+            for (Iterator<BaseEntry<ByteBuffer>> iter : iterators) {
+                if (iter.hasNext()) {
                     queue.add(new PriorityConstruction(priority++, iter));
                 }
             }
@@ -163,7 +163,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         private BaseEntry<ByteBuffer> getNextEntry() {
             PriorityConstruction construction = queue.remove();
             BaseEntry<ByteBuffer> temp = construction.curEntry;
-            if(construction.iterator.hasNext()) {
+            if (construction.iterator.hasNext()) {
                 construction.curEntry = construction.iterator.next();
                 queue.add(construction);
             }
