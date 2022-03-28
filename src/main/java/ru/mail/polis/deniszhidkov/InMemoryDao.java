@@ -4,13 +4,19 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.nio.file.Path;
+import java.io.RandomAccessFile;
+import java.nio.file.Files;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -21,18 +27,43 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private static final String DATA_FILE_NAME = "storage";
     private static final String OFFSETS_FILE_NAME = "offsets";
     private static final String FILE_EXTENSION = ".txt";
-    private final Config config;
-    private final DaoWriter writer;
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final ConcurrentNavigableMap<String, BaseEntry<String>> storage = new ConcurrentSkipListMap<>();
+    private final DaoWriter writer;
+    private final List<DaoReader> readers = new ArrayList<>();
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final int filesCounter;
 
     public InMemoryDao(Config config) throws IOException {
-        this.config = config;
-        File[] filesInDirectory = new File(String.valueOf(config.basePath())).listFiles();
+        File[] filesInDirectory = new File(String.valueOf(config.basePath())).listFiles(); // Добавить проверку имён
         this.filesCounter = filesInDirectory == null ? 0 : filesInDirectory.length / 2;
-        Path[] paths = resolvePaths(filesCounter);
-        this.writer = new DaoWriter(paths[0], paths[1]);
+        for (int i = filesCounter - 1; i >= 0; i--) {
+            try {
+                long[] fileOffsets;
+                try (DataInputStream offsetsFileReader = new DataInputStream(
+                        new BufferedInputStream(
+                                Files.newInputStream(
+                                        config.basePath().resolve(OFFSETS_FILE_NAME + i + FILE_EXTENSION)
+                                )))) {
+                    fileOffsets = new long[offsetsFileReader.readInt()];
+                    for (int j = 0; j < fileOffsets.length; j++) {
+                        fileOffsets[j] = offsetsFileReader.readLong();
+                    }
+                }
+                readers.add(new DaoReader(
+                                new RandomAccessFile(
+                                        config.basePath().resolve(DATA_FILE_NAME + i + FILE_EXTENSION).toString(),
+                                        "r"),
+                                fileOffsets
+                        )
+                );
+            } catch (FileNotFoundException e) {
+                break;
+            }
+        }
+        this.writer = new DaoWriter(
+                config.basePath().resolve(DATA_FILE_NAME + filesCounter + FILE_EXTENSION),
+                config.basePath().resolve(OFFSETS_FILE_NAME + filesCounter + FILE_EXTENSION)
+        );
     }
 
     @Override
@@ -53,9 +84,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         lock.readLock().lock();
         try {
-            for (int i = filesCounter - 1; i >= 0; i--) {
-                Path[] paths = resolvePaths(i);
-                FileIterator fileIterator = new FileIterator(from, to, paths[0], paths[1]);
+            for (int i = 0; i < filesCounter; i++) {
+                FileIterator fileIterator = new FileIterator(from, to, readers.get(i));
                 if (fileIterator.hasNext()) {
                     queueOfIterators.add(new PeekIterator(fileIterator));
                 }
@@ -72,10 +102,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (value == null) {
             lock.readLock().lock();
             try {
-                for (int i = filesCounter - 1; i >= 0; i--) {
-                    Path[] paths = resolvePaths(i);
-                    DaoReader reader = new DaoReader(paths[0], paths[1]);
-                    value = reader.findByKey(key);
+                for (int i = 0; i < filesCounter; i++) {
+                    value = readers.get(i).findByKey(key);
                     if (value != null) {
                         return value.value() == null ? null : value;
                     }
@@ -94,6 +122,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         try {
             writer.writeDAO(storage);
             storage.clear();
+            for (DaoReader reader : readers) {
+                reader.close();
+            }
         } finally {
             lock.writeLock().unlock();
         }
@@ -107,12 +138,5 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         } finally {
             lock.readLock().unlock();
         }
-    }
-
-    private Path[] resolvePaths(int numberOfFile) {
-        return new Path[]{
-                config.basePath().resolve(DATA_FILE_NAME + numberOfFile + FILE_EXTENSION),
-                config.basePath().resolve(OFFSETS_FILE_NAME + numberOfFile + FILE_EXTENSION)
-        };
     }
 }

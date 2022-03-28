@@ -2,115 +2,104 @@ package ru.mail.polis.deniszhidkov;
 
 import ru.mail.polis.BaseEntry;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.file.Path;
 
-public class DaoReader {
+public class DaoReader implements Closeable {
 
-    private final Path pathToDataFile;
-    private final String endReadFactor;
-    private int startReadIndex;
+    private final RandomAccessFile reader;
     private final long[] offsets;
+    private String endReadFactor;
+    private int startReadIndex;
 
-    public DaoReader(Path pathToDataFile, Path pathToOffsetsFile, String from, String to) throws IOException {
-        this.pathToDataFile = pathToDataFile;
-        this.endReadFactor = to;
-        try (RandomAccessFile reader = new RandomAccessFile(pathToOffsetsFile.toString(), "r")) {
-            this.offsets = new long[reader.readInt()];
-            for (int i = 0; i < offsets.length; i++) {
-                offsets[i] = reader.readLong();
-            }
-        }
-        this.startReadIndex = from == null ? 0 : findByRange(from, to);
-    }
-
-    public DaoReader(Path pathToDataFile, Path pathToOffsetsFile) throws IOException {
-        this.pathToDataFile = pathToDataFile;
-        this.endReadFactor = null;
-        try (RandomAccessFile reader = new RandomAccessFile(pathToOffsetsFile.toString(), "r")) {
-            this.offsets = new long[reader.readInt()];
-            for (int i = 0; i < offsets.length; i++) {
-                offsets[i] = reader.readLong();
-            }
-        }
+    public DaoReader(RandomAccessFile reader, long[] offsets) {
+        this.reader = reader;
+        this.offsets = offsets;
     }
 
     public BaseEntry<String> findByKey(String key) throws IOException {
-        try (RandomAccessFile reader = new RandomAccessFile(pathToDataFile.toString(), "r")) {
-            int start = 0;
-            int finish = offsets.length;
-            while (start <= finish) {
-                int middle = start + (finish - start) / 2;
-                if (middle >= offsets.length) {
-                    return null;
-                }
-                reader.seek(offsets[middle]);
-                String currentKey = reader.readUTF();
-                int comparison = currentKey.compareTo(key);
-                if (comparison < 0) {
-                    start = middle + 1;
-                } else if (comparison == 0) {
-                    boolean hasValue = reader.readBoolean();
-                    if (!hasValue) {
-                        return new BaseEntry<>(currentKey, null);
-                    }
-                    return new BaseEntry<>(currentKey, reader.readUTF());
-                } else {
-                    finish = middle - 1;
-                }
+        int start = 0;
+        int finish = offsets.length;
+        while (start <= finish) {
+            int middle = start + (finish - start) / 2;
+            if (middle >= offsets.length) {
+                return null;
             }
+            reader.seek(offsets[middle]);
+            String currentKey = reader.readUTF();
+            int comparison = currentKey.compareTo(key);
+            if (comparison < 0) {
+                start = middle + 1;
+            } else if (comparison == 0) {
+                boolean hasValue = reader.readBoolean();
+                if (!hasValue) {
+                    return new BaseEntry<>(currentKey, null);
+                }
+                return new BaseEntry<>(currentKey, reader.readUTF());
+            } else {
+                finish = middle - 1;
+            }
+        }
+        return null;
+    }
+
+    public BaseEntry<String> readNextEntry() throws IOException {
+        if (startReadIndex < offsets.length && startReadIndex != -1) {
+            reader.seek(offsets[startReadIndex]);
+            startReadIndex += 1;
+            String currentKey = reader.readUTF();
+            if (endReadFactor != null && currentKey.compareTo(endReadFactor) >= 0) {
+                return null;
+            } else {
+                boolean hasValue = reader.readBoolean();
+                if (!hasValue) {
+                    return new BaseEntry<>(currentKey, null);
+                }
+                return new BaseEntry<>(currentKey, reader.readUTF());
+            }
+        } else {
             return null;
         }
     }
 
-    public BaseEntry<String> readNextEntry() throws IOException {
-        try (RandomAccessFile reader = new RandomAccessFile(pathToDataFile.toString(), "r")) {
-            if (startReadIndex < offsets.length && startReadIndex != -1) {
-                reader.seek(offsets[startReadIndex]);
-                startReadIndex += 1;
-                String currentKey = reader.readUTF();
-                if (endReadFactor != null && currentKey.compareTo(endReadFactor) >= 0) {
-                    return null;
-                } else {
-                    boolean hasValue = reader.readBoolean();
-                    if (!hasValue) {
-                        return new BaseEntry<>(currentKey, null);
-                    }
-                    return new BaseEntry<>(currentKey, reader.readUTF());
-                }
+    public int findNearestStartIndex(String from, String to) throws IOException {
+        int start = 0;
+        int finish = offsets.length;
+        int resultIndex = -1;
+        while (start <= finish) {
+            int middle = start + (finish - start) / 2;
+            if (middle >= offsets.length) {
+                return resultIndex;
+            }
+            reader.seek(offsets[middle]);
+            String currentKey = reader.readUTF();
+            int comparisonWithFrom = currentKey.compareTo(from);
+            if (comparisonWithFrom < 0) {
+                start = middle + 1;
+            } else if (comparisonWithFrom == 0) {
+                resultIndex = middle;
+                break;
             } else {
-                return null;
+                finish = middle - 1;
+                if (to == null || currentKey.compareTo(to) < 0) {
+                    resultIndex = middle;
+                }
             }
         }
+        return resultIndex;
     }
 
-    private int findByRange(String from, String to) throws IOException {
-        try (RandomAccessFile reader = new RandomAccessFile(pathToDataFile.toString(), "r")) {
-            int start = 0;
-            int finish = offsets.length;
-            int resultIndex = -1;
-            while (start <= finish) {
-                int middle = start + (finish - start) / 2;
-                if (middle >= offsets.length) {
-                    return resultIndex;
-                }
-                reader.seek(offsets[middle]);
-                String currentKey = reader.readUTF();
-                int comparisonWithFrom = currentKey.compareTo(from);
-                if (comparisonWithFrom < 0) {
-                    start = middle + 1;
-                } else if (comparisonWithFrom == 0) {
-                    resultIndex = middle;
-                    break;
-                } else {
-                    finish = middle - 1;
-                    if (to == null || currentKey.compareTo(to) < 0) {
-                        resultIndex = middle;
-                    }
-                }
-            }
-            return resultIndex;
-        }
+    public void setEndReadFactor(String endReadFactor) {
+        this.endReadFactor = endReadFactor;
+    }
+
+    public void setStartReadIndex(String from, String to) throws IOException {
+        this.startReadIndex = from == null ? 0 : findNearestStartIndex(from, to);
+    }
+
+    @Override
+    public void close() throws IOException {
+        reader.close();
     }
 }
