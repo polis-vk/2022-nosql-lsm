@@ -183,8 +183,14 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             while (!queue.isEmpty() && queue.peek().entry.key().equals(curr.entry.key())) {
                 getConstruction();
             }
-            if (curr.entry.value() == null) {
-                return getNextElement();
+            while (curr.entry.value() == null) {
+                if (queue.isEmpty()) {
+                    return null;
+                }
+                curr = getConstruction();
+                while (!queue.isEmpty() && queue.peek().entry.key().equals(curr.entry.key())) {
+                    getConstruction();
+                }
             }
             return curr.entry;
         }
