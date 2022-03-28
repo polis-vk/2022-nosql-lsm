@@ -18,6 +18,28 @@ import java.util.stream.Stream;
 public class FileWorker {
     private static final long WRONG_SIZE = -1;
 
+    private List<BaseEntry<MemorySegment>> files = new ArrayList<>();
+    private Path[] paths;
+
+    public void load(Path basePath) {
+        paths = getPaths(basePath);
+
+        if (paths != null) {
+            try {
+                int count = paths.length / 2;
+                for (int i = 0; i < count; i++) {
+                    MemorySegment offsets = createMappedSegment(paths[i], Files.size(paths[i]),
+                            FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
+                    MemorySegment entries = createMappedSegment(paths[i + count], Files.size(paths[i + count]),
+                            FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
+                    files.add(new BaseEntry<>(offsets, entries));
+                }
+            } catch (IOException e) {
+                files = null;
+            }
+        }
+    }
+
     public void writeEntries(Collection<BaseEntry<MemorySegment>> data, Path basePath) throws IOException {
         long fileSize = 0;
         for (BaseEntry<MemorySegment> entry : data) {
@@ -61,8 +83,7 @@ public class FileWorker {
         }
     }
 
-    public BaseEntry<MemorySegment> findEntry(MemorySegment key, Path basePath) throws IOException {
-        Path[] paths = getPaths(basePath);
+    public BaseEntry<MemorySegment> findEntry(MemorySegment key) throws IOException {
         if (paths.length == 0 || key == null) {
             return null;
         }
@@ -107,10 +128,7 @@ public class FileWorker {
         return null;
     }
 
-    public List<PeekIterator> findEntries(MemorySegment from,
-                                                     MemorySegment to,
-                                                     Path basePath) throws IOException {
-        Path[] paths = getPaths(basePath);
+    public List<PeekIterator> findEntries(MemorySegment from, MemorySegment to) throws IOException {
         if (paths.length == 0) {
             return new ArrayList<>();
         }
@@ -119,10 +137,8 @@ public class FileWorker {
         int count = paths.length / 2;
 
         for (int i = count - 1; i >= 0; i--) {
-            MemorySegment offsets = createMappedSegment(paths[i], Files.size(paths[i]),
-                    FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
-            MemorySegment entries = createMappedSegment(paths[i + count], Files.size(paths[i + count]),
-                    FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
+            MemorySegment offsets = files.get(i).key();
+            MemorySegment entries = files.get(i).value();
 
             long boarder = Files.size(paths[i]) / (Long.BYTES * 3) - 1;
             long start = from == null ? 0 : Math.abs(binarySearch(from, offsets, entries, boarder));
@@ -136,6 +152,19 @@ public class FileWorker {
             iterator.add(new PeekIterator(new FileIterator(entries, offsets, start, end), i));
         }
         return iterator;
+    }
+
+    public long fileCount() {
+        return paths.length;
+    }
+
+    private Path[] getPaths(Path basePath) {
+        try (Stream<Path> str = Files.list(basePath)) {
+            return str.sorted(java.util.Comparator.comparing(Path::toString)).toArray(Path[]::new);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     private long binarySearch(MemorySegment key,
@@ -179,11 +208,5 @@ public class FileWorker {
         Files.createFile(basePath.resolve(FileName.SAVED_DATA.getName() + nano));
         Files.createFile(basePath.resolve(FileName.OFFSETS.getName() + nano));
         return nano;
-    }
-
-    private Path[] getPaths(Path basePath) throws IOException {
-        try (Stream<Path> str = Files.list(basePath)) {
-            return str.sorted(java.util.Comparator.comparing(Path::toString)).toArray(Path[]::new);
-        }
     }
 }
