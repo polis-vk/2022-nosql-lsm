@@ -9,14 +9,11 @@ import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
 import java.util.stream.Stream;
 
 public final class SSTable {
+    public static final int NULL_VALUE = -1;
     public static final String TEMP = "_tmp";
     public static final String INDEX = "_i";
     private final MemorySegment mapFile;
@@ -31,12 +28,9 @@ public final class SSTable {
         try (Stream<Path> files = Files.list(dir)) {
             return files
                     .filter(path -> !path.toString().endsWith(INDEX))
-                    .sorted((p1, p2) -> {
-                        int first = Integer.parseInt(p1.getFileName().toString());
-                        int second = Integer.parseInt(p2.getFileName().toString());
-                        return Integer.compare(first, second);
-                    })
-                    .map(SSTable::mapToTable)
+                    .mapToInt(path -> Integer.parseInt(path.getFileName().toString()))
+                    .sorted()
+                    .mapToObj(i -> mapToTable(dir.resolve(String.valueOf(i))))
                     .toList();
         } catch (IOException e) {
             return Collections.emptyList();
@@ -79,7 +73,7 @@ public final class SSTable {
             fileOffset += Utils.writeSegment(entry.key(), fileMap, fileOffset);
 
             if (entry.value() == null) {
-                MemoryAccess.setLongAtOffset(fileMap, fileOffset, -1);
+                MemoryAccess.setLongAtOffset(fileMap, fileOffset, NULL_VALUE);
                 fileOffset += Long.BYTES;
                 continue;
             }
@@ -95,35 +89,31 @@ public final class SSTable {
         MemorySegment readOnlyFile = mapFile.asReadOnly();
         MemorySegment readOnlyIndex = mapIndex.asReadOnly();
         long li = 0;
+        long ri = readOnlyIndex.byteSize() / Long.BYTES;
         if (from != null) {
             li = Utils.binarySearch(from, readOnlyFile, readOnlyIndex);
             if (li == -1) {
                 li = 0;
             }
-            if (li < -1) {
+            if (li == ri) {
                 return Collections.emptyIterator();
             }
-
         }
-        long ri = readOnlyIndex.byteSize() / Long.BYTES;
         if (to != null) {
             ri = Utils.binarySearch(to, readOnlyFile, readOnlyIndex);
             if (ri == -1) {
                 return Collections.emptyIterator();
-            }
-            if (ri < -1) {
-                ri = readOnlyIndex.byteSize() / Long.BYTES;
             }
         }
 
         long finalLi = li;
         long finalRi = ri;
         return new Iterator<>() {
-            long left = finalLi;
+            long pos = finalLi;
 
             @Override
             public boolean hasNext() {
-                return left < finalRi;
+                return pos < finalRi;
             }
 
             @Override
@@ -131,8 +121,8 @@ public final class SSTable {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
                 }
-                Entry<MemorySegment> res = Utils.getByIndex(readOnlyFile, readOnlyIndex, left);
-                left++;
+                Entry<MemorySegment> res = Utils.getByIndex(readOnlyFile, readOnlyIndex, pos);
+                pos++;
                 return res;
             }
         };

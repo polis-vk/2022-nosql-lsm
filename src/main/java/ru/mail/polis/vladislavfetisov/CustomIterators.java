@@ -13,21 +13,25 @@ public final class CustomIterators {
 
     }
 
-    public static Iterator<Entry<MemorySegment>> merge(List<Iterator<Entry<MemorySegment>>> iterators) {
+    public static Iterator<Entry<MemorySegment>> merge(
+            List<Iterator<Entry<MemorySegment>>> iterators) {
+
         return switch (iterators.size()) {
             case 0 -> Collections.emptyIterator();
             case 1 -> iterators.get(0);
-            case 2 -> mergeTwo(new PeekingIterator<>(iterators.get(0)), new PeekingIterator<>(iterators.get(1)));
+            case 2 -> mergeTwo(new PeekingIterator<>(iterators.get(0)),
+                    new PeekingIterator<>(iterators.get(1)));
             default -> mergeList(iterators);
         };
     }
 
-    private static PeekingIterator<Entry<MemorySegment>> mergeList(List<Iterator<Entry<MemorySegment>>> iterators) {
+    private static PeekingIterator<Entry<MemorySegment>> mergeList(
+            List<Iterator<Entry<MemorySegment>>> iterators) {
         return iterators
                 .stream()
                 .map(PeekingIterator::new)
                 .reduce(CustomIterators::mergeTwo)
-                .orElse(new PeekingIterator<>(Collections.emptyIterator()));
+                .orElseThrow();
     }
 
     /**
@@ -37,8 +41,10 @@ public final class CustomIterators {
      * @param it2 second iterator, also has more priority than {@code it1}
      * @return merged iterator of {@code it1} and {@code it2}
      */
-    public static PeekingIterator<Entry<MemorySegment>> mergeTwo(PeekingIterator<Entry<MemorySegment>> it1,
-                                                                 PeekingIterator<Entry<MemorySegment>> it2) {
+    public static PeekingIterator<Entry<MemorySegment>> mergeTwo(
+            PeekingIterator<Entry<MemorySegment>> it1,
+            PeekingIterator<Entry<MemorySegment>> it2) {
+
         return new PeekingIterator<>(new Iterator<>() {
 
             @Override
@@ -76,7 +82,9 @@ public final class CustomIterators {
         });
     }
 
-    public static Iterator<Entry<MemorySegment>> filter(PeekingIterator<Entry<MemorySegment>> iterator) {
+    public static Iterator<Entry<MemorySegment>> skipTombstones(
+            PeekingIterator<Entry<MemorySegment>> iterator) {
+
         return new Iterator<>() {
             @Override
             public boolean hasNext() {
@@ -94,6 +102,9 @@ public final class CustomIterators {
 
             @Override
             public Entry<MemorySegment> next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
                 return iterator.next();
             }
         };

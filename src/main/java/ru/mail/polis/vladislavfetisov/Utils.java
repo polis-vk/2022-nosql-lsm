@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
 public final class Utils {
+
     private Utils() {
 
     }
@@ -44,6 +45,9 @@ public final class Utils {
         long l = 0;
         long rightBound = mapIndex.byteSize() / Long.BYTES;
         long r = rightBound;
+        if (r == 0) {
+            return -1;
+        }
         while (l <= r) {
             long middle = (l + r) >>> 1;
             Entry<MemorySegment> middleEntry = getByIndex(mapFile, mapIndex, middle);
@@ -52,11 +56,11 @@ public final class Utils {
                 return middle;
             } else if (res < 0) {
                 l = middle + 1;
+                if (l == rightBound) {
+                    return rightBound;
+                }
             } else {
                 r = middle - 1;
-            }
-            if (l == rightBound) {
-                return -(l + 1);
             }
         }
         if (r == -1) {
@@ -75,7 +79,7 @@ public final class Utils {
         offset += keyLength;
         long valueLength = getLength(mapFile, offset);
         MemorySegment value;
-        if (valueLength == -1) {
+        if (valueLength == SSTable.NULL_VALUE) {
             value = null;
         } else {
             value = mapFile.asSlice(offset + Long.BYTES, valueLength);
@@ -105,9 +109,7 @@ public final class Utils {
     }
 
     public static void rename(Path source, Path target) throws IOException {
-        Files.deleteIfExists(target);
-        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-        Files.deleteIfExists(source);
+        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
 
     public static Path withSuffix(Path path, String suffix) {

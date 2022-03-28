@@ -13,7 +13,7 @@ public class PeekingIterator<T> implements Iterator<T> {
 
     public T peek() {
         if (current == null) {
-            if (!hasNext()) {
+            if (!iterator.hasNext()) {
                 throw new NoSuchElementException();
             }
             current = iterator.next();

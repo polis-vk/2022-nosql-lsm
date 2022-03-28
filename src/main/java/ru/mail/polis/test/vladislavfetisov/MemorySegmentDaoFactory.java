@@ -10,7 +10,7 @@ import ru.mail.polis.vladislavfetisov.LsmDao;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 3, week = 1)
+@DaoFactory(stage = 3, week = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, Entry<MemorySegment>> {
     @Override
     public Dao<MemorySegment, Entry<MemorySegment>> createDao(Config config) throws IOException {
