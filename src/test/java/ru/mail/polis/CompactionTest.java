@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.LongSummaryStatistics;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -98,6 +99,37 @@ class CompactionTest extends BaseTest {
         LongSummaryStatistics stats = sizes.stream().mapToLong(k -> k).summaryStatistics();
         // Heuristic
         assertTrue(stats.getMax() - stats.getMin() < 1024);
+    }
+
+    @DaoTest(stage = 4)
+    void compactAndAdd(Dao<String, Entry<String>> dao) throws IOException {
+        List<Entry<String>> entries = entries(100);
+        List<Entry<String>> firstHalf = entries.subList(0, 50);
+        List<Entry<String>> lastHalf = entries.subList(50, 100);
+
+        for (Entry<String> entry : firstHalf) {
+            dao.upsert(entry);
+        }
+        dao.compact();
+        dao.close();
+
+        dao = DaoFactory.Factory.reopen(dao);
+        for (Entry<String> entry : lastHalf) {
+            dao.upsert(entry);
+        }
+        assertSame(dao.all(), entries);
+
+        dao.flush();
+        assertSame(dao.all(), entries);
+
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+        assertSame(dao.all(), entries);
+
+        dao.compact();
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
+        assertSame(dao.all(), entries);
     }
 
 }
