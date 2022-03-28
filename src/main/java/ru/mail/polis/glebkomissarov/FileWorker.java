@@ -24,19 +24,17 @@ public class FileWorker {
     public void load(Path basePath) {
         paths = getPaths(basePath);
 
-        if (paths != null) {
-            try {
-                int count = paths.length / 2;
-                for (int i = 0; i < count; i++) {
-                    MemorySegment offsets = createMappedSegment(paths[i], Files.size(paths[i]),
-                            FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
-                    MemorySegment entries = createMappedSegment(paths[i + count], Files.size(paths[i + count]),
-                            FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
-                    files.add(new BaseEntry<>(offsets, entries));
-                }
-            } catch (IOException e) {
-                files = null;
+        try {
+            int count = paths.length / 2;
+            for (int i = 0; i < count; i++) {
+                MemorySegment offsets = createMappedSegment(paths[i], Files.size(paths[i]),
+                        FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
+                MemorySegment entries = createMappedSegment(paths[i + count], Files.size(paths[i + count]),
+                        FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
+                files.add(new BaseEntry<>(offsets, entries));
             }
+        } catch (IOException e) {
+            files = null;
         }
     }
 
@@ -164,7 +162,7 @@ public class FileWorker {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        return null;
+        return new Path[]{};
     }
 
     private long binarySearch(MemorySegment key,
