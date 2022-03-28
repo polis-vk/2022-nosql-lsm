@@ -2,13 +2,8 @@ package ru.mail.polis.alexanderkosnitskiy;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 
 public class DaoReader {
     private final MappedByteBuffer mapper;
@@ -17,12 +12,9 @@ public class DaoReader {
     private int position = -1;
     private int lastPosition = -1;
 
-    public DaoReader(Path fileName, Path indexName) throws IOException {
-        try (FileChannel reader = FileChannel.open(fileName, StandardOpenOption.READ);
-             FileChannel indexReader = FileChannel.open(indexName, StandardOpenOption.READ)) {
-            mapper = reader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(fileName));
-            indexMapper = indexReader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(indexName));
-        }
+    public DaoReader(MappedByteBuffer mapper, MappedByteBuffer indexMapper) {
+        this.mapper = mapper;
+        this.indexMapper = indexMapper;
     }
 
     public BaseEntry<ByteBuffer> binarySearch(ByteBuffer key) {
@@ -127,10 +119,5 @@ public class DaoReader {
             return getNextEntry();
         }
         return null;
-    }
-
-    public void reset() {
-        position = -1;
-        lastPosition = -1;
     }
 }

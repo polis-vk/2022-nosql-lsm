@@ -13,7 +13,6 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
     public FileIterator(DaoReader reader, ByteBuffer initialKey, ByteBuffer to) {
         this.reader = reader;
-        reader.reset();
         if (initialKey == null) {
             nextValue = reader.getFirstEntry();
         } else {

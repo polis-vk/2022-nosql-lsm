@@ -6,9 +6,12 @@ import ru.mail.polis.Dao;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -25,7 +28,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final Config config;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory = new ConcurrentSkipListMap<>();
     private long amountOfFiles;
-    private final List<DaoReader> readers = new ArrayList<>();
+    private final List<FilePack> readers = new ArrayList<>();
 
     public PersistenceDao(Config config) throws IOException {
         long numberOfFiles;
@@ -48,8 +51,16 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
         this.amountOfFiles = numberOfFiles;
         for (long i = amountOfFiles - 1; i >= 0; i--) {
-            readers.add(new DaoReader(config.basePath().resolve(FILE + i + EXTENSION),
+            readers.add(mapFile(config.basePath().resolve(FILE + i + EXTENSION),
                     config.basePath().resolve(INDEX + i + EXTENSION)));
+        }
+    }
+
+    private FilePack mapFile(Path fileName, Path indexName) throws IOException {
+        try (FileChannel reader = FileChannel.open(fileName, StandardOpenOption.READ);
+             FileChannel indexReader = FileChannel.open(indexName, StandardOpenOption.READ)) {
+            return new FilePack(reader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(fileName)),
+                    indexReader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(indexName)));
         }
     }
 
@@ -104,8 +115,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private BaseEntry<ByteBuffer> findInFiles(ByteBuffer key) {
         BaseEntry<ByteBuffer> result;
-        for (DaoReader reader : readers) {
-            result = reader.binarySearch(key);
+        for (FilePack pack : readers) {
+            result = pack.getReader().binarySearch(key);
             if (result != null) {
                 if (result.value() == null) {
                     return null;
@@ -123,8 +134,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         public MergeIterator(ByteBuffer from, ByteBuffer to) {
             List<Iterator<BaseEntry<ByteBuffer>>> iterators = new ArrayList<>();
             iterators.add(getMemory(from, to));
-            for (DaoReader reader : readers) {
-                iterators.add(new FileIterator(reader, from, to));
+            for (FilePack pack : readers) {
+                iterators.add(new FileIterator(pack.getReader(), from, to));
             }
             queue = new PriorityQueue<>((l, r) -> {
                 int comparison = l.curEntry.key().compareTo(r.curEntry.key());
@@ -200,6 +211,20 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 this.iterator = iterator;
                 curEntry = iterator.next();
             }
+        }
+    }
+
+    private static class FilePack {
+        private final MappedByteBuffer valueFile;
+        private final MappedByteBuffer indexFile;
+
+        public FilePack(MappedByteBuffer valueFile, MappedByteBuffer indexFile) {
+            this.valueFile = valueFile;
+            this.indexFile = indexFile;
+        }
+
+        public DaoReader getReader() {
+            return new DaoReader(valueFile, indexFile);
         }
     }
 }
