@@ -83,13 +83,16 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
+    public void upsert(BaseEntry<String> entry) {
+        dataMap.put(entry.key(), entry);
+    }
+
+    @Override
     public void compact() throws IOException {
-        Iterator<BaseEntry<String>> mergeIterator = get(null, null);
-        savaData(mergeIterator);
-        int filesBefore = daoFiles.size();
+        flush(get(null, null));
         closeFiles();
+        int filesBefore = daoFiles.size();
         daoFiles.clear();
-        dataMap.clear();
         for (int i = 0; i < filesBefore; i++) {
             Files.delete(pathToFile(i, DATA_FILE));
             Files.delete(pathToFile(i, META_FILE));
@@ -98,21 +101,23 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         Files.move(pathToFile(filesBefore, META_FILE), pathToFile(0, META_FILE));
     }
 
-    @Override
-    public void upsert(BaseEntry<String> entry) {
-        dataMap.put(entry.key(), entry);
-    }
 
     @Override
     public void flush() throws IOException {
-        savaData(dataMap.values().iterator());
-        dataMap.clear();
+        flush(dataMap.values().iterator());
+        int fileToAdd = daoFiles.size();
+        daoFiles.add(new DaoFile(pathToFile(fileToAdd, DATA_FILE), pathToFile(fileToAdd, META_FILE)));
     }
 
     @Override
     public void close() throws IOException {
-        flush();
+        flush(dataMap.values().iterator());
         closeFiles();
+    }
+
+    private void flush(Iterator<BaseEntry<String>> iterator) throws IOException {
+        savaData(iterator);
+        dataMap.clear();
     }
 
     private Iterator<BaseEntry<String>> getDataMapIterator(String from, String to) {
@@ -164,7 +169,6 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             while (iterator.hasNext()) {
                 entry = iterator.next();
                 size++;
-                System.out.println(size + ": " + entry);
                 int bytesWritten = writeEntryInStream(dataStream, entry);
                 if (bytesWritten == currentBytes) {
                     currentRepeats++;
@@ -244,5 +248,4 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             daoFile.close();
         }
     }
-
 }
