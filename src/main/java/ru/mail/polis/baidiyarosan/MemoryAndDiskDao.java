@@ -30,8 +30,11 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     private final Path path;
 
+    private final int filesCount;
+
     public MemoryAndDiskDao(Config config) throws IOException {
         this.path = config.basePath();
+        this.filesCount = FileUtils.getPaths(path).size();
         Path indexesDir = path.resolve(Paths.get(FileUtils.INDEX_FOLDER));
         if (Files.notExists(indexesDir)) {
             Files.createDirectory(indexesDir);
@@ -45,8 +48,8 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         if (!temp.isEmpty()) {
             list.add(new PeekIterator<>(temp.iterator(), 0));
         }
-        int filesCount = FileUtils.getPaths(path).size();
         for (int i = 0; i < filesCount; ++i) {
+
             // file naming starts from 1, collections ordering starts from 0
             Path filePath = FileUtils.getDataPath(path, i + 1);
             Path indexPath = FileUtils.getIndexPath(path, i + 1);
@@ -65,21 +68,12 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             }
         }
 
-        return new MemoryAndDiskDaoIterator(list);
+        return new MergingIterator(list);
     }
 
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         collection.put(entry.key(), entry);
-    }
-
-    @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> value = Dao.super.get(key);
-        if (value == null) {
-            return null;
-        }
-        return value.value() == null ? null : value;
     }
 
     @Override

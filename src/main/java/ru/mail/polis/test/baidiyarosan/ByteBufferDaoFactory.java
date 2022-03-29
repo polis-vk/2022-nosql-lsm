@@ -4,8 +4,6 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.baidiyarosan.FileUtils;
-import ru.mail.polis.baidiyarosan.InMemoryDao;
 import ru.mail.polis.baidiyarosan.MemoryAndDiskDao;
 import ru.mail.polis.test.DaoFactory;
 
@@ -20,10 +18,6 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
     public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
         // speed up cases when no data is saved on disk
         // TODO remove
-        if (FileUtils.getPaths(config.basePath()).size() == 0) {
-           return new InMemoryDao(config);
-        }
-
         return new MemoryAndDiskDao(config);
     }
 

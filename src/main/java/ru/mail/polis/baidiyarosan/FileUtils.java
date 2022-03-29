@@ -4,7 +4,6 @@ import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,23 +50,26 @@ public final class FileUtils {
         return 2 * Integer.BYTES + entry.key().remaining() + (entry.value() == null ? 0 : entry.value().remaining());
     }
 
-    public static ByteBuffer readMappedBuffer(MappedByteBuffer in, int pos) {
-        int size = in.getInt(pos);
-        return in.slice(pos + Integer.BYTES, size);
+    public static ByteBuffer readBuffer(ByteBuffer buffer, int pos) {
+        int size = buffer.getInt(pos);
+        return buffer.slice(pos + Integer.BYTES, size);
     }
 
-    public static BaseEntry<ByteBuffer> readMappedEntry(MappedByteBuffer in, int pos) {
-        int keySize = in.getInt(pos);
-        ByteBuffer key = in.slice(pos + Integer.BYTES, keySize);
-        int valSize = in.getInt(pos + Integer.BYTES + keySize);
+    public static BaseEntry<ByteBuffer> readEntry(ByteBuffer buffer, int pos) {
+        int currPos = pos;
+        int keySize = buffer.getInt(currPos);
+        currPos += Integer.BYTES;
+        ByteBuffer key = buffer.slice(currPos, keySize);
+        currPos += keySize;
+        int valSize = buffer.getInt(currPos);
         if (valSize == NULL_SIZE_FLAG) {
             return new BaseEntry<>(key, null);
         }
-        ByteBuffer val = in.slice(pos + 2 * Integer.BYTES + keySize, valSize);
-        return new BaseEntry<>(key, val);
+        currPos += Integer.BYTES;
+        return new BaseEntry<>(key, buffer.slice(currPos, valSize));
     }
 
-    public static int intAt(MappedByteBuffer indexes, int position) {
+    public static int intAt(ByteBuffer indexes, int position) {
         return indexes.getInt(position * Integer.BYTES);
     }
 
@@ -122,53 +124,46 @@ public final class FileUtils {
         if (start == null || end == null || start.compareTo(end) > 0) {
             return Collections.emptyList();
         }
+
         return collection.subMap(start, true, end, to == null || !to.equals(collection.floorKey(to))).values();
     }
 
     public static Collection<BaseEntry<ByteBuffer>> getInFileCollection(
-            MappedByteBuffer file, MappedByteBuffer index, ByteBuffer from, ByteBuffer to) {
+            ByteBuffer file, ByteBuffer index, ByteBuffer from, ByteBuffer to) {
         final int size = index.remaining() / Integer.BYTES - 1;
 
         int start = 0;
         int end = size;
         if (from != null) {
             start = getIndex(file, index, from, start, end);
-
-            if (start == -1) {
-                return Collections.emptyList();
-            }
         }
 
         if (to != null) {
             end = getIndex(file, index, to, start, end);
 
-            if (end == -1) {
-                return Collections.emptyList();
-            }
-
-            if (end >= size) {
+            // if end index greater than the highest bound, mean that need to iterate all
+            if (end == size + 1) {
                 end = size;
-            }
-            if (to.compareTo(readMappedBuffer(file, intAt(index, end))) <= 0) {
+                // else iterate to existing bound
+            } else if (to.compareTo(readBuffer(file, intAt(index, end))) <= 0) {
                 --end;
             }
         }
 
         List<BaseEntry<ByteBuffer>> list = new LinkedList<>();
         for (int i = start; i <= end; ++i) {
-            list.add(readMappedEntry(file, intAt(index, i)));
+            list.add(readEntry(file, intAt(index, i)));
         }
         return list;
     }
 
-    public static int getIndex(MappedByteBuffer file, MappedByteBuffer index, ByteBuffer key, int start, int end) {
+    public static int getIndex(ByteBuffer file, ByteBuffer index, ByteBuffer key, int start, int end) {
         int min = start;
         int max = end;
         int mid;
-        int comparison;
         while (min <= max) {
             mid = min + (max - min) / 2;
-            comparison = key.compareTo(readMappedBuffer(file, intAt(index, mid)));
+            int comparison = key.compareTo(readBuffer(file, intAt(index, mid)));
             if (comparison == 0) {
                 return mid;
             }
