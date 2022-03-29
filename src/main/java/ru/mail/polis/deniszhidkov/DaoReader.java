@@ -2,9 +2,14 @@ package ru.mail.polis.deniszhidkov;
 
 import ru.mail.polis.BaseEntry;
 
+import java.io.BufferedInputStream;
 import java.io.Closeable;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 public class DaoReader implements Closeable {
 
@@ -13,9 +18,9 @@ public class DaoReader implements Closeable {
     private String endReadFactor;
     private int startReadIndex;
 
-    public DaoReader(RandomAccessFile reader, long[] offsets) {
-        this.reader = reader;
-        this.offsets = offsets;
+    public DaoReader(Path pathToDataFile, Path pathToOffsetsFile) throws IOException {
+        this.reader = new RandomAccessFile(pathToDataFile.toString(), "r");
+        this.offsets = initOffsets(pathToOffsetsFile);
     }
 
     public BaseEntry<String> findByKey(String key) throws IOException {
@@ -101,5 +106,21 @@ public class DaoReader implements Closeable {
     @Override
     public void close() throws IOException {
         reader.close();
+    }
+
+    private long[] initOffsets(Path pathToOffsetsFile) throws IOException {
+        long[] fileOffsets;
+        try (DataInputStream offsetsFileReader = new DataInputStream(
+                new BufferedInputStream(
+                        Files.newInputStream(
+                                pathToOffsetsFile,
+                                StandardOpenOption.READ
+                        )))) {
+            fileOffsets = new long[offsetsFileReader.readInt()];
+            for (int j = 0; j < fileOffsets.length; j++) {
+                fileOffsets[j] = offsetsFileReader.readLong();
+            }
+        }
+        return fileOffsets;
     }
 }

@@ -4,14 +4,8 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.BufferedInputStream;
-import java.io.DataInputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -116,31 +110,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private List<DaoReader> initDaoReaders(Config config) throws IOException {
         List<DaoReader> resultList = new ArrayList<>();
         for (int i = filesCounter - 1; i >= 0; i--) {
-            long[] fileOffsets;
-            try (DataInputStream offsetsFileReader = new DataInputStream(
-                    new BufferedInputStream(
-                            Files.newInputStream(
-                                    config.basePath().resolve(OFFSETS_FILE_NAME + i + FILE_EXTENSION),
-                                    StandardOpenOption.READ
-                            )))) {
-                fileOffsets = new long[offsetsFileReader.readInt()];
-                for (int j = 0; j < fileOffsets.length; j++) {
-                    fileOffsets[j] = offsetsFileReader.readLong();
-                }
-            } catch (FileNotFoundException e) {
-                throw new FileNotFoundException("File " + OFFSETS_FILE_NAME + i + FILE_EXTENSION + "doesn't exists");
-            }
-            try {
-                resultList.add(new DaoReader(
-                                new RandomAccessFile(
-                                        config.basePath().resolve(DATA_FILE_NAME + i + FILE_EXTENSION).toString(),
-                                        "r"),
-                                fileOffsets
-                        )
-                );
-            } catch (FileNotFoundException e) {
-                throw new FileNotFoundException("File " + DATA_FILE_NAME + i + FILE_EXTENSION + "doesn't exists");
-            }
+            resultList.add(new DaoReader(
+                    config.basePath().resolve(DATA_FILE_NAME + i + FILE_EXTENSION),
+                    config.basePath().resolve(OFFSETS_FILE_NAME + i + FILE_EXTENSION)
+            ));
         }
         return resultList;
     }
