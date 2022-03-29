@@ -11,12 +11,14 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
-import java.util.ArrayDeque;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Deque;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -29,37 +31,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private static final String FILE_EXTENSION = ".txt";
     private final ConcurrentNavigableMap<String, BaseEntry<String>> storage = new ConcurrentSkipListMap<>();
     private final DaoWriter writer;
-    private final List<DaoReader> readers = new ArrayList<>();
+    private final List<DaoReader> readers;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final int filesCounter;
 
     public InMemoryDao(Config config) throws IOException {
-        File[] filesInDirectory = new File(String.valueOf(config.basePath())).listFiles(); // Добавить проверку имён
+        File[] filesInDirectory = new File(String.valueOf(config.basePath())).listFiles();
         this.filesCounter = filesInDirectory == null ? 0 : filesInDirectory.length / 2;
-        for (int i = filesCounter - 1; i >= 0; i--) {
-            try {
-                long[] fileOffsets;
-                try (DataInputStream offsetsFileReader = new DataInputStream(
-                        new BufferedInputStream(
-                                Files.newInputStream(
-                                        config.basePath().resolve(OFFSETS_FILE_NAME + i + FILE_EXTENSION)
-                                )))) {
-                    fileOffsets = new long[offsetsFileReader.readInt()];
-                    for (int j = 0; j < fileOffsets.length; j++) {
-                        fileOffsets[j] = offsetsFileReader.readLong();
-                    }
-                }
-                readers.add(new DaoReader(
-                                new RandomAccessFile(
-                                        config.basePath().resolve(DATA_FILE_NAME + i + FILE_EXTENSION).toString(),
-                                        "r"),
-                                fileOffsets
-                        )
-                );
-            } catch (FileNotFoundException e) {
-                break;
-            }
-        }
+        this.readers = initDaoReaders(config);
         this.writer = new DaoWriter(
                 config.basePath().resolve(DATA_FILE_NAME + filesCounter + FILE_EXTENSION),
                 config.basePath().resolve(OFFSETS_FILE_NAME + filesCounter + FILE_EXTENSION)
@@ -68,32 +47,26 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
-        Deque<PeekIterator> queueOfIterators = new ArrayDeque<>();
-        PeekIterator storageIterator;
-        if (from == null && to == null) {
-            storageIterator = new PeekIterator(storage.values().iterator());
-        } else if (from == null) {
-            storageIterator = new PeekIterator(storage.headMap(to).values().iterator());
-        } else if (to == null) {
-            storageIterator = new PeekIterator(storage.tailMap(from).values().iterator());
-        } else {
-            storageIterator = new PeekIterator(storage.subMap(from, to).values().iterator());
-        }
+        Queue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
+                Comparator.comparing((PriorityPeekIterator o) ->
+                        o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
+        );
+        PriorityPeekIterator storageIterator = findCurrentStorageIteratorByRange(from, to);
         if (storageIterator.hasNext()) {
-            queueOfIterators.add(storageIterator);
+            iteratorsQueue.add(storageIterator);
         }
         lock.readLock().lock();
         try {
             for (int i = 0; i < filesCounter; i++) {
                 FileIterator fileIterator = new FileIterator(from, to, readers.get(i));
                 if (fileIterator.hasNext()) {
-                    queueOfIterators.add(new PeekIterator(fileIterator));
+                    iteratorsQueue.add(new PriorityPeekIterator(fileIterator, i + 1));
                 }
             }
         } finally {
             lock.readLock().unlock();
         }
-        return queueOfIterators.isEmpty() ? Collections.emptyIterator() : new MergeIterator(queueOfIterators);
+        return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new MergeIterator(iteratorsQueue);
     }
 
     @Override
@@ -137,6 +110,50 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             storage.put(entry.key(), entry);
         } finally {
             lock.readLock().unlock();
+        }
+    }
+
+    private List<DaoReader> initDaoReaders(Config config) throws IOException {
+        List<DaoReader> resultList = new ArrayList<>();
+        for (int i = filesCounter - 1; i >= 0; i--) {
+            long[] fileOffsets;
+            try (DataInputStream offsetsFileReader = new DataInputStream(
+                    new BufferedInputStream(
+                            Files.newInputStream(
+                                    config.basePath().resolve(OFFSETS_FILE_NAME + i + FILE_EXTENSION),
+                                    StandardOpenOption.READ
+                            )))) {
+                fileOffsets = new long[offsetsFileReader.readInt()];
+                for (int j = 0; j < fileOffsets.length; j++) {
+                    fileOffsets[j] = offsetsFileReader.readLong();
+                }
+            } catch (FileNotFoundException e) {
+                throw new FileNotFoundException("File " + OFFSETS_FILE_NAME + i + FILE_EXTENSION + "doesn't exists");
+            }
+            try {
+                resultList.add(new DaoReader(
+                                new RandomAccessFile(
+                                        config.basePath().resolve(DATA_FILE_NAME + i + FILE_EXTENSION).toString(),
+                                        "r"),
+                                fileOffsets
+                        )
+                );
+            } catch (FileNotFoundException e) {
+                throw new FileNotFoundException("File " + DATA_FILE_NAME + i + FILE_EXTENSION + "doesn't exists");
+            }
+        }
+        return resultList;
+    }
+
+    private PriorityPeekIterator findCurrentStorageIteratorByRange(String from, String to) {
+        if (from == null && to == null) {
+            return new PriorityPeekIterator(storage.values().iterator(), 0);
+        } else if (from == null) {
+            return new PriorityPeekIterator(storage.headMap(to).values().iterator(), 0);
+        } else if (to == null) {
+            return new PriorityPeekIterator(storage.tailMap(from).values().iterator(), 0);
+        } else {
+            return new PriorityPeekIterator(storage.subMap(from, to).values().iterator(), 0);
         }
     }
 }

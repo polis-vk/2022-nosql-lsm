@@ -4,13 +4,15 @@ import ru.mail.polis.BaseEntry;
 
 import java.util.Iterator;
 
-public class PeekIterator implements Iterator<BaseEntry<String>> {
+public class PriorityPeekIterator implements Iterator<BaseEntry<String>> {
 
     private final Iterator<BaseEntry<String>> delegate;
+    private final int priorityIndex;
     private BaseEntry<String> current;
 
-    public PeekIterator(Iterator<BaseEntry<String>> delegate) {
+    public PriorityPeekIterator(Iterator<BaseEntry<String>> delegate, int priority) {
         this.delegate = delegate;
+        this.priorityIndex = priority;
     }
 
     @Override
@@ -30,5 +32,9 @@ public class PeekIterator implements Iterator<BaseEntry<String>> {
         BaseEntry<String> peek = peek();
         current = null;
         return peek;
+    }
+
+    public int getPriorityIndex() {
+        return priorityIndex;
     }
 }
