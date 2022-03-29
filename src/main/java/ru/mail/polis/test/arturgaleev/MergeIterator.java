@@ -30,7 +30,7 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
     }
 
     public MergeIterator(List<PriorityPeekingIterator<BaseEntry<ByteBuffer>>> iterators) {
-        int iterSize = iterators.size() == 0 ? 1 : iterators.size();
+        int iterSize = iterators.isEmpty() ? 1 : iterators.size();
         iteratorsQueue = new PriorityBlockingQueue<>(iterSize, getComparator());
 
         for (PriorityPeekingIterator<BaseEntry<ByteBuffer>> inFilesIterator : iterators) {
