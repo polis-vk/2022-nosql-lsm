@@ -10,9 +10,9 @@ public class PriorityPeekIterator implements Iterator<BaseEntry<String>> {
     private final int priorityIndex;
     private BaseEntry<String> current;
 
-    public PriorityPeekIterator(Iterator<BaseEntry<String>> delegate, int priority) {
+    public PriorityPeekIterator(Iterator<BaseEntry<String>> delegate, int priorityIndex) {
         this.delegate = delegate;
-        this.priorityIndex = priority;
+        this.priorityIndex = priorityIndex;
     }
 
     @Override
