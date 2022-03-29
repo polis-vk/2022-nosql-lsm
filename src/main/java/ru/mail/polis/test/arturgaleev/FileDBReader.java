@@ -9,15 +9,13 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.NoSuchElementException;
 
 public class FileDBReader implements AutoCloseable {
 
-    private final RandomAccessFile reader;
     private final int size;
-    private int fileID = -1;
+    private final int fileID;
+    private final RandomAccessFile reader;
     private final FileChannel channel;
-    private final MappedByteBuffer page;
     private final MappedByteBuffer pageData;
     private final MappedByteBuffer pageLinks;
 
@@ -26,12 +24,15 @@ public class FileDBReader implements AutoCloseable {
         fileID = Integer.parseInt(fileName.substring(0, fileName.length() - 4));
         reader = new RandomAccessFile(path.toFile(), "r");
         channel = reader.getChannel();
-        page = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
-        page.load();
+        MappedByteBuffer page = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
         size = page.getInt(0);
 
         pageData = page.slice(Integer.BYTES * (1 + size), page.limit() - Integer.BYTES * (1 + size));
         pageLinks = page.slice(Integer.BYTES, Integer.BYTES * size);
+    }
+
+    public int getFileID() {
+        return fileID;
     }
 
     protected BaseEntry<ByteBuffer> readEntry(int pos) {
@@ -77,25 +78,24 @@ public class FileDBReader implements AutoCloseable {
         return entry.key().equals(key) ? entry : null;
     }
 
-    public PeakingIterator getIteratorByKey(ByteBuffer key) {
-        return new PeakingIterator(getPosByKey(key));
+    public FileIterator getIteratorByKey(ByteBuffer key) {
+        return new FileIterator(getPosByKey(key));
     }
 
-    public PeakingIterator getFromToIterator(ByteBuffer fromBuffer, ByteBuffer toBuffer) {
+    public FileIterator getFromToIterator(ByteBuffer fromBuffer, ByteBuffer toBuffer) {
         if (fromBuffer == null && toBuffer == null) {
-            return new PeakingIterator(0, size);
+            return new FileIterator(0, size);
         } else if (fromBuffer == null) {
-            return new PeakingIterator(0, getPosByKey(toBuffer));
+            return new FileIterator(0, getPosByKey(toBuffer));
         } else if (toBuffer == null) {
-            return new PeakingIterator(getPosByKey(fromBuffer), size);
+            return new FileIterator(getPosByKey(fromBuffer), size);
         } else {
-            return new PeakingIterator(getPosByKey(fromBuffer), getPosByKey(toBuffer));
+            return new FileIterator(getPosByKey(fromBuffer), getPosByKey(toBuffer));
         }
     }
 
-    // protected because Im using for my local tests
-    protected PeakingIterator getIteratorByPos(int pos) {
-        return new PeakingIterator(pos);
+    FileIterator getIteratorByPos(int pos) {
+        return new FileIterator(pos);
     }
 
     @Override
@@ -111,42 +111,21 @@ public class FileDBReader implements AutoCloseable {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
-    // If equals to -1 -> id doesn't set
-    // else return file id
-    public int getFileID() {
-        return fileID;
-    }
-
-    // sets file id
-    public void setFileID(int fileID) {
-        this.fileID = fileID;
-    }
-
-    public class PeakingIterator implements java.util.Iterator<BaseEntry<ByteBuffer>> {
+    public class FileIterator implements java.util.Iterator<BaseEntry<ByteBuffer>> {
         private int lastPos = size;
         private int currentPos = -1;
         private BaseEntry<ByteBuffer> current;
 
-        private PeakingIterator() {
+        private FileIterator() {
         }
 
-        private PeakingIterator(int currentPos) {
+        private FileIterator(int currentPos) {
             this.currentPos = currentPos;
         }
 
-        private PeakingIterator(int currentPos, int lastPos) {
+        private FileIterator(int currentPos, int lastPos) {
             this.lastPos = lastPos;
             this.currentPos = currentPos;
-        }
-
-        public BaseEntry<ByteBuffer> peek() {
-            if (current == null) {
-                if (!hasNext()) {
-                    throw new NoSuchElementException();
-                }
-                current = getEntryByPos(currentPos++);
-            }
-            return current;
         }
 
         public int getFileId() {
@@ -160,9 +139,7 @@ public class FileDBReader implements AutoCloseable {
 
         @Override
         public BaseEntry<ByteBuffer> next() {
-            BaseEntry<ByteBuffer> peek = peek();
-            current = null;
-            return peek;
+            return getEntryByPos(currentPos++);
         }
     }
 }

@@ -3,17 +3,13 @@ package ru.mail.polis.test.arturgaleev;
 import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.PriorityBlockingQueue;
 import java.util.stream.Stream;
 
 public class DBReader implements AutoCloseable {
@@ -28,31 +24,28 @@ public class DBReader implements AutoCloseable {
     }
 
     private List<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
-        final List<FileDBReader> fileDBReaderList;
+        List<FileDBReader> fileDBReaderList = new ArrayList<>();
         try (Stream<Path> files = Files.list(dbDirectoryPath)) {
-            fileDBReaderList = files
+            List<Path> paths = files
                     .filter(path -> path.toString().endsWith(DB_FILES_EXTENSION))
-                    .sorted(Comparator.comparing(p -> p.getFileName().toString()))
-                    .map(path -> {
-                        try {
-                            return new FileDBReader(path);
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(e);
-                        }
-                    }).toList();
+                    .toList();
+            for (Path path : paths) {
+                fileDBReaderList.add(new FileDBReader(path));
+            }
         }
+        fileDBReaderList.sort(Comparator.comparing(FileDBReader::getFileID));
         return fileDBReaderList;
     }
 
-    public PeakingIterator get(ByteBuffer from, ByteBuffer to) {
-        List<FileDBReader.PeakingIterator> iterators = new ArrayList<>(fileReaders.size());
+    public MergeIterator get(ByteBuffer from, ByteBuffer to) {
+        List<PriorityPeekingIterator<BaseEntry<ByteBuffer>>> iterators = new ArrayList<>(fileReaders.size());
         for (FileDBReader reader : fileReaders) {
-            FileDBReader.PeakingIterator fromToIterator = reader.getFromToIterator(from, to);
+            FileDBReader.FileIterator fromToIterator = reader.getFromToIterator(from, to);
             if (fromToIterator.hasNext()) {
-                iterators.add(fromToIterator);
+                iterators.add(new PriorityPeekingIterator<>(fromToIterator.getFileId(), fromToIterator));
             }
         }
-        return new PeakingIterator(iterators);
+        return new MergeIterator(iterators);
     }
 
     public BaseEntry<ByteBuffer> get(ByteBuffer key) {
@@ -73,100 +66,6 @@ public class DBReader implements AutoCloseable {
     public void close() throws IOException {
         for (FileDBReader fileReader : fileReaders) {
             fileReader.close();
-        }
-    }
-
-    public class PeakingIterator implements Iterator<BaseEntry<ByteBuffer>> {
-        private final PriorityBlockingQueue<FileDBReader.PeakingIterator> iteratorsQueue;
-        private BaseEntry<ByteBuffer> current;
-
-        public PeakingIterator(List<FileDBReader.PeakingIterator> iterators) {
-            if (iterators.isEmpty()) {
-                iteratorsQueue = new PriorityBlockingQueue<>();
-            } else {
-                iteratorsQueue = new PriorityBlockingQueue<>(iterators.size(),
-                        Comparator.comparing(
-                                        (FileDBReader.PeakingIterator o) -> o.peek().key())
-                                .thenComparing(FileDBReader.PeakingIterator::getFileId, Comparator.reverseOrder())
-                );
-                iteratorsQueue.addAll(iterators);
-            }
-        }
-
-        @Override
-        public boolean hasNext() {
-            if (current == null) {
-                try {
-                    current = peek();
-                } catch (IndexOutOfBoundsException e) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        @Override
-        public BaseEntry<ByteBuffer> next() {
-            if (current != null) {
-                BaseEntry<ByteBuffer> prev = current;
-                current = null;
-                return prev;
-            }
-            if (iteratorsQueue.isEmpty()) {
-                throw new IndexOutOfBoundsException();
-            }
-
-            BaseEntry<ByteBuffer> entry = getNotRemovedDeletedElement();
-
-            if (entry.value() == null) {
-                throw new IndexOutOfBoundsException();
-            }
-            return entry;
-        }
-
-        public String toString(ByteBuffer in) {
-            ByteBuffer data = in.asReadOnlyBuffer();
-            byte[] bytes = new byte[data.remaining()];
-            data.get(bytes);
-            return new String(bytes, StandardCharsets.UTF_8);
-        }
-
-        private BaseEntry<ByteBuffer> getNotRemovedDeletedElement() {
-            FileDBReader.PeakingIterator iterator = iteratorsQueue.poll();
-            BaseEntry<ByteBuffer> entry = iterator.next();
-            if (iterator.hasNext()) {
-                iteratorsQueue.put(iterator);
-            }
-            removeElementsWithKey(entry.key());
-
-            while (!iteratorsQueue.isEmpty() && entry.value() == null) {
-                iterator = iteratorsQueue.poll();
-                entry = iterator.next();
-                if (iterator.hasNext()) {
-                    iteratorsQueue.put(iterator);
-                }
-                removeElementsWithKey(entry.key());
-            }
-            return entry;
-        }
-
-        private void removeElementsWithKey(ByteBuffer lastKey) {
-            while (!iteratorsQueue.isEmpty() && lastKey.equals(iteratorsQueue.peek().peek().key())) {
-                FileDBReader.PeakingIterator poll = iteratorsQueue.poll();
-                if (poll.hasNext()) {
-                    poll.next();
-                    if (poll.hasNext()) {
-                        iteratorsQueue.put(poll);
-                    }
-                }
-            }
-        }
-
-        public BaseEntry<ByteBuffer> peek() {
-            if (current == null) {
-                current = next();
-            }
-            return current;
         }
     }
 }

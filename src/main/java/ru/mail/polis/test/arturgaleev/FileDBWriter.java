@@ -2,6 +2,7 @@ package ru.mail.polis.test.arturgaleev;
 
 import ru.mail.polis.BaseEntry;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
@@ -10,7 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ConcurrentNavigableMap;
 
-public class FileDBWriter implements AutoCloseable {
+public class FileDBWriter implements Closeable {
     private MappedByteBuffer page;
     private final FileChannel dataChannel;
 
@@ -54,7 +55,7 @@ public class FileDBWriter implements AutoCloseable {
     }
 
     @Override
-    public void close() throws Exception {
+    public void close() throws IOException {
         page.force();
         dataChannel.close();
     }
