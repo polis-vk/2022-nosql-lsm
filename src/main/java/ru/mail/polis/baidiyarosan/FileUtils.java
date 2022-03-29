@@ -111,21 +111,24 @@ public final class FileUtils {
 
     public static Collection<BaseEntry<ByteBuffer>> getInMemoryCollection(
             NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, ByteBuffer from, ByteBuffer to) {
+
         if (collection.isEmpty()) {
             return Collections.emptyList();
         }
+
         if (from == null && to == null) {
             return collection.values();
         }
 
-        ByteBuffer start = (from == null ? collection.firstKey() : collection.ceilingKey(from));
-        ByteBuffer end = (to == null ? collection.lastKey() : collection.floorKey(to));
-
-        if (start == null || end == null || start.compareTo(end) > 0) {
-            return Collections.emptyList();
+        if (from == null) {
+            return collection.headMap(to).values();
         }
 
-        return collection.subMap(start, true, end, to == null || !to.equals(collection.floorKey(to))).values();
+        if (to == null) {
+            return collection.tailMap(from).values();
+        }
+
+        return collection.subMap(from, to).values();
     }
 
     public static Collection<BaseEntry<ByteBuffer>> getInFileCollection(

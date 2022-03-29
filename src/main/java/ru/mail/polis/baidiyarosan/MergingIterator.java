@@ -53,7 +53,6 @@ public class MergingIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
                 filter(entry);
 
-
                 if (entry.value() != null) {
                     value = entry;
                     return value;

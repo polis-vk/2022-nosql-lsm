@@ -16,14 +16,25 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
 
     @Override
     public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
-        // speed up cases when no data is saved on disk
-        // TODO remove
         return new MemoryAndDiskDao(config);
     }
 
     @Override
     public String toString(ByteBuffer data) {
-        return data == null ? null : StandardCharsets.UTF_8.decode(data.asReadOnlyBuffer()).toString();
+        if (data == null) {
+            return null;
+        }
+        // decoder is really slow
+        byte[] bytes;
+        if (data.isDirect()) {
+            // concurrency is killing me if i don't make local copy
+            ByteBuffer localData = data.duplicate();
+            bytes = new byte[localData.capacity()];
+            localData.get(bytes);
+        } else {
+            bytes = data.array();
+        }
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     @Override
