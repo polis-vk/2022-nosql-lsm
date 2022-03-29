@@ -73,8 +73,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     private FileIterator getFileIterator(ByteBuffer from, ByteBuffer to, int fileNumber) {
         ByteBuffer fileRange;
-        MappedByteBuffer mappedDataFile = filesList.get(fileNumber).dataFile();
-        MappedByteBuffer mappedIndexFile = filesList.get(fileNumber).indexFile();
+        ByteBuffer mappedDataFile = filesList.get(fileNumber).dataFile();
+        ByteBuffer mappedIndexFile = filesList.get(fileNumber).indexFile();
         int fromOffset = from == null ? 0 : getOffset(mappedDataFile, mappedIndexFile, from);
         int toOffset =
                 to == null ? mappedDataFile.capacity() : getOffset(mappedDataFile, mappedIndexFile, to);
@@ -155,7 +155,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         return config.basePath().resolve(prefix + number + ".dat");
     }
 
-    private static int getOffset(MappedByteBuffer readDataPage, MappedByteBuffer readIndexPage,
+    private static int getOffset(ByteBuffer readDataPage, ByteBuffer readIndexPage,
                                  ByteBuffer key) {
         int indexNumber = binarySearch(readDataPage, readIndexPage, key);
         int indexOffset = indexNumber << 2;
@@ -165,7 +165,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         return readIndexPage.getInt(indexOffset);
     }
 
-    private static int binarySearch(MappedByteBuffer readDataPage, MappedByteBuffer readIndexPage,
+    private static int binarySearch(ByteBuffer readDataPage, ByteBuffer readIndexPage,
                                     ByteBuffer key) {
         int low = 0;
         int high = readIndexPage.capacity() / Integer.BYTES - 1;

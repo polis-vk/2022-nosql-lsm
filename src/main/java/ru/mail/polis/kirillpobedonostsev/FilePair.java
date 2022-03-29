@@ -1,6 +1,6 @@
 package ru.mail.polis.kirillpobedonostsev;
 
-import java.nio.MappedByteBuffer;
+import java.nio.ByteBuffer;
 
-public record FilePair(MappedByteBuffer indexFile, MappedByteBuffer dataFile) {
+public record FilePair(ByteBuffer indexFile, ByteBuffer dataFile) {
 }
