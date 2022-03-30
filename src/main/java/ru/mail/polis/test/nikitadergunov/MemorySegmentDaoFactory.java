@@ -1,37 +1,34 @@
 package ru.mail.polis.test.nikitadergunov;
 
 import jdk.incubator.foreign.MemorySegment;
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.nikitadergunov.InMemoryDao;
+import ru.mail.polis.artyomdrozdov.MemorySegmentDao;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 
 @DaoFactory(stage = 3, week = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public Dao<MemorySegment, Entry<MemorySegment>> createDao(Config config) throws IOException {
-        return new InMemoryDao(config);
+        return new MemorySegmentDao(config);
     }
 
     @Override
-    public String toString(MemorySegment data) {
-        return data == null ? null : new String(data.toByteArray(), StandardCharsets.UTF_8);
-
+    public String toString(MemorySegment s) {
+        return s == null ? null : new String(s.toCharArray());
     }
 
     @Override
     public MemorySegment fromString(String data) {
-        return data == null ? null : MemorySegment.ofArray(data.getBytes(StandardCharsets.UTF_8));
+        return data == null ? null : MemorySegment.ofArray(data.toCharArray());
     }
 
     @Override
-    public BaseEntry<MemorySegment> fromBaseEntry(Entry<MemorySegment> baseEntry) {
-        return new BaseEntry<>(baseEntry.key(), baseEntry.value());
+    public Entry<MemorySegment> fromBaseEntry(Entry<MemorySegment> baseEntry) {
+        return baseEntry;
     }
 }
