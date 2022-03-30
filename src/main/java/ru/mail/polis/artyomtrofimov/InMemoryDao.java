@@ -16,8 +16,6 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<String, Entry<String>> {
     public static final String DATA_EXT = ".dat";
@@ -28,7 +26,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     private final Path basePath;
     private volatile boolean commit;
     private final Deque<String> filesList = new ArrayDeque<>();
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public InMemoryDao(Config config) throws IOException {
         if (config == null) {
@@ -53,15 +50,10 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             start = "";
         }
         Iterator<Entry<String>> dataIterator;
-        lock.readLock().lock();
-        try {
-            if (to == null) {
-                dataIterator = data.tailMap(start).values().iterator();
-            } else {
-                dataIterator = data.subMap(start, to).values().iterator();
-            }
-        } finally {
-            lock.readLock().unlock();
+        if (to == null) {
+            dataIterator = data.tailMap(start).values().iterator();
+        } else {
+            dataIterator = data.subMap(start, to).values().iterator();
         }
         List<PeekingIterator> iterators = new ArrayList<>();
         int priority = 0;
@@ -74,26 +66,21 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     @Override
     public Entry<String> get(String key) throws IOException {
-        lock.readLock().lock();
-        try {
-            Entry<String> entry = data.get(key);
-            if (entry != null) {
-                return getRealEntry(entry);
-            }
-            for (String file : filesList) {
-                try (RandomAccessFile raf = new RandomAccessFile(basePath.resolve(file + DATA_EXT).toString(), "r")) {
-                    entry = Utils.findCeilEntry(raf, key, basePath.resolve(file + INDEX_EXT));
-                }
-                if (entry != null && entry.key().equals(key)) {
-                    break;
-                } else {
-                    entry = null;
-                }
-            }
+        Entry<String> entry = data.get(key);
+        if (entry != null) {
             return getRealEntry(entry);
-        } finally {
-            lock.readLock().unlock();
         }
+        for (String file : filesList) {
+            try (RandomAccessFile raf = new RandomAccessFile(basePath.resolve(file + DATA_EXT).toString(), "r")) {
+                entry = Utils.findCeilEntry(raf, key, basePath.resolve(file + INDEX_EXT));
+            }
+            if (entry != null && entry.key().equals(key)) {
+                break;
+            } else {
+                entry = null;
+            }
+        }
+        return getRealEntry(entry);
     }
 
     private Entry<String> getRealEntry(Entry<String> entry) {
@@ -105,13 +92,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     @Override
     public void upsert(Entry<String> entry) {
-        lock.readLock().lock();
-        try {
-            data.put(entry.key(), entry);
-            commit = false;
-        } finally {
-            lock.readLock().unlock();
-        }
+        data.put(entry.key(), entry);
+        commit = false;
     }
 
     private void loadFilesList() throws IOException {
@@ -138,7 +120,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         Path index = basePath.resolve(name + INDEX_EXT);
         filesList.addFirst(name);
 
-        lock.writeLock().lock();
         try (RandomAccessFile output = new RandomAccessFile(file.toString(), "rw");
              RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
              RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw")
@@ -157,8 +138,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             }
             commit = true;
             data.clear();
-        } finally {
-            lock.writeLock().unlock();
         }
     }
 
@@ -171,7 +150,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         } while (filesList.contains(name));
         Path file = basePath.resolve(name + DATA_EXT);
         Path index = basePath.resolve(name + INDEX_EXT);
-        lock.writeLock().lock();
         try (RandomAccessFile output = new RandomAccessFile(file.toString(), "rw");
              RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
              RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw")
@@ -211,8 +189,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 throw exception;
             }
             commit = true;
-        } finally {
-            lock.writeLock().unlock();
         }
     }
 }
