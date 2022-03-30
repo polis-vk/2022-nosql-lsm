@@ -248,9 +248,6 @@ public class PersistentRangeTest extends BaseTest {
             dao.upsert(entry(keyAt(entry), null));
         }
 
-        dao.close();
-        dao = DaoFactory.Factory.reopen(dao);
-
         assertFalse(dao.all().hasNext());
     }
 
@@ -261,6 +258,9 @@ public class PersistentRangeTest extends BaseTest {
         for (int entry = 0; entry < entries; entry++) {
             dao.upsert(entry(keyAt(entry), null));
         }
+
+        dao.close();
+        dao = DaoFactory.Factory.reopen(dao);
 
         assertFalse(dao.all().hasNext());
     }

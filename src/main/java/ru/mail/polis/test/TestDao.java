@@ -91,6 +91,11 @@ class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
     }
 
     @Override
+    public void compact() throws IOException {
+        delegate.compact();
+    }
+
+    @Override
     public void close() throws IOException {
         for (Closeable child : children) {
             child.close();
