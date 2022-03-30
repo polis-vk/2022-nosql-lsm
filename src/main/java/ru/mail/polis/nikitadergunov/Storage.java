@@ -14,9 +14,13 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Iterator;
 
-class Storage implements Closeable {
+final class Storage implements Closeable {
 
     private static final long VERSION = 0;
     private static final int INDEX_HEADER_SIZE = Long.BYTES * 2;
@@ -75,11 +79,11 @@ class Storage implements Closeable {
             }
 
             MemorySegment nextSSTable = MemorySegment.mapFile(
-                            sstableTmpPath,
-                            0,
-                            dataStart + size,
-                            FileChannel.MapMode.READ_WRITE,
-                            writeScope
+                    sstableTmpPath,
+                    0,
+                    dataStart + size,
+                    FileChannel.MapMode.READ_WRITE,
+                    writeScope
             );
 
             long index = 0;

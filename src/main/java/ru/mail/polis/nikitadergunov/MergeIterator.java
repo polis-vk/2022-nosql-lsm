@@ -1,6 +1,11 @@
 package ru.mail.polis.nikitadergunov;
 
-import java.util.*;
+
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.PriorityQueue;
+import java.util.Collections;
 
 public class MergeIterator<E> implements Iterator<E> {
 
