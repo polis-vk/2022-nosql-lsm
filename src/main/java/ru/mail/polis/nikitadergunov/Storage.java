@@ -14,7 +14,12 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.stream.Stream;
 
 final class Storage implements Closeable {
 
@@ -35,12 +40,16 @@ final class Storage implements Closeable {
         List<MemorySegment> sstables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
 
-        for (int i = 0; i < 10000; ++i) {
-            Path nextFile = basePath.resolve(FILE_NAME + i + FILE_EXT);
-            try {
-                sstables.add(mapForRead(scope, nextFile));
-            } catch (NoSuchFileException e) {
+        try (Stream<Path> listFiles = Files.list(basePath)){
+            long maxCountFiles = listFiles.count();
+            maxCountFiles = maxCountFiles > Integer.MAX_VALUE ? Integer.MAX_VALUE : maxCountFiles;
+            for (int i = 0; i < maxCountFiles; ++i) {
+                Path nextFile = basePath.resolve(FILE_NAME + i + FILE_EXT);
+                try {
+                    sstables.add(mapForRead(scope, nextFile));
+                } catch (NoSuchFileException e) {
                     break;
+                }
             }
         }
 
