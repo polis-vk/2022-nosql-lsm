@@ -1,5 +1,11 @@
 package ru.mail.polis.alinashestakova;
 
+import jdk.incubator.foreign.MemoryAccess;
+import jdk.incubator.foreign.MemorySegment;
+import jdk.incubator.foreign.ResourceScope;
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -13,12 +19,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
-import jdk.incubator.foreign.MemoryAccess;
-import jdk.incubator.foreign.MemorySegment;
-import jdk.incubator.foreign.ResourceScope;
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
-
 class Storage implements Closeable {
 
     private static final long VERSION = 0;
@@ -29,13 +29,23 @@ class Storage implements Closeable {
     private static final String FILE_EXT = ".dat";
     private static final String FILE_EXT_TMP = ".tmp";
 
+    // supposed to have fresh files first
+
+    private final ResourceScope scope;
+    private final List<MemorySegment> sstables;
+
+    private Storage(ResourceScope scope, List<MemorySegment> sstables) {
+        this.scope = scope;
+        this.sstables = sstables;
+    }
+
     static Storage load(Config config) throws IOException {
         Path basePath = config.basePath();
 
         List<MemorySegment> sstables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
 
-        // FIXME check existing files
+        // FIX-ME check existing files
         for (int i = 0; ; i++) {
             Path nextFile = basePath.resolve(FILE_NAME + i + FILE_EXT);
             try {
@@ -127,16 +137,6 @@ class Storage implements Closeable {
         return MemorySegment.mapFile(file, 0, size, FileChannel.MapMode.READ_ONLY, scope);
     }
 
-    // supposed to have fresh files first
-
-    private final ResourceScope scope;
-    private final List<MemorySegment> sstables;
-
-    private Storage(ResourceScope scope, List<MemorySegment> sstables) {
-        this.scope = scope;
-        this.sstables = sstables;
-    }
-
     // file structure:
     // (fileVersion)(entryCount)((entryPosition)...)|((keySize/key/valueSize/value)...)
     private long greaterOrEqualEntryIndex(MemorySegment sstable, MemorySegment key) {
@@ -181,9 +181,11 @@ class Storage implements Closeable {
         );
     }
 
-    private Iterator<BaseEntry<MemorySegment>> iterate(MemorySegment sstable, MemorySegment keyFrom, MemorySegment keyTo) {
+    private Iterator<BaseEntry<MemorySegment>> iterate(MemorySegment sstable, MemorySegment keyFrom,
+                                                       MemorySegment keyTo) {
         long keyFromPos = keyFrom == null ? 0 : greaterOrEqualEntryIndex(sstable, keyFrom);
-        long keyToPos = keyTo == null ? MemoryAccess.getLongAtOffset(sstable, 8) : greaterOrEqualEntryIndex(sstable, keyTo);
+        long keyToPos = keyTo == null ? MemoryAccess.getLongAtOffset(sstable, 8)
+                : greaterOrEqualEntryIndex(sstable, keyTo);
 
         return new Iterator<>() {
             long pos = keyFromPos;

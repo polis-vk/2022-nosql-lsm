@@ -1,13 +1,16 @@
 package ru.mail.polis.alinashestakova;
 
-import java.util.Comparator;
-
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
+
+import java.util.Comparator;
 
 public class MemorySegmentComparator implements Comparator<MemorySegment> {
 
     public static final Comparator<MemorySegment> INSTANCE = new MemorySegmentComparator();
+
+    private MemorySegmentComparator() {
+    }
 
     @Override
     public int compare(MemorySegment o1, MemorySegment o2) {
