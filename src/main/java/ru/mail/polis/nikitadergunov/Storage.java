@@ -17,8 +17,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
 import java.util.Iterator;
+import java.util.List;
 
 final class Storage implements Closeable {
 
@@ -30,14 +30,17 @@ final class Storage implements Closeable {
     private static final String FILE_EXT = ".dat";
     private static final String FILE_EXT_TMP = ".tmp";
 
+    private final ResourceScope scope;
+    private final List<MemorySegment> sstables;
+
     static Storage load(Config config) throws IOException {
         Path basePath = config.basePath();
 
         List<MemorySegment> sstables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
 
-        // FIXME check existing files
-        for (int i = 0; ; i++) {
+        // FIX_ME check existing files
+        for (int i = 0;; i++) {
             Path nextFile = basePath.resolve(FILE_NAME + i + FILE_EXT);
             try {
                 sstables.add(mapForRead(scope, nextFile));
@@ -124,11 +127,6 @@ final class Storage implements Closeable {
 
         return MemorySegment.mapFile(file, 0, size, FileChannel.MapMode.READ_ONLY, scope);
     }
-
-    // supposed to have fresh files first
-
-    private final ResourceScope scope;
-    private final List<MemorySegment> sstables;
 
     private Storage(ResourceScope scope, List<MemorySegment> sstables) {
         this.scope = scope;
