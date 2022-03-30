@@ -15,6 +15,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
     private final FileOperations fileOperations;
     private boolean isCompacted;
+    private boolean isFlushed;
 
     public InMemoryDao(Config config) throws IOException {
         pairs = new ConcurrentSkipListMap<>(Arrays::compare);
@@ -64,7 +65,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     @Override
     public void flush() throws IOException {
-        throw new UnsupportedOperationException("Flush is not supported!");
+        if (!isCompacted)
+        {
+            fileOperations.save(pairs);
+        }
+        isFlushed = true;
     }
 
     @Override
@@ -76,9 +81,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     @Override
     public void close() throws IOException {
-        if (!isCompacted)
-        {
-            fileOperations.save(pairs);
+        if (!isFlushed) {
+            flush();
+        }
+        if (!isCompacted) {
+            fileOperations.clearFileIterators();
         }
         pairs.clear();
     }

@@ -3,11 +3,8 @@ package ru.mail.polis.alexanderkiselyov;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -24,7 +21,6 @@ import java.util.stream.Stream;
 
 public class FileOperations {
     private long filesCount;
-    private static final int BUFFER_SIZE = 4000 * Character.BYTES;
     private static final String FILE_NAME = "myData";
     private static final String FILE_EXTENSION = ".txt";
     private static final String FILE_INDEX_NAME = "myIndex";
@@ -34,6 +30,7 @@ public class FileOperations {
     private final List<Path> ssIndexes;
     private final Map<Path, Long> tablesSizes;
     private final List<FileIterator> fileIterators = new ArrayList<>();
+    private final CompactOperations compactOperations;
 
     public FileOperations(Config config) throws IOException {
         basePath = config.basePath();
@@ -59,9 +56,10 @@ public class FileOperations {
         for (int i = 0; i < filesCount; i++) {
             tablesSizes.put(ssIndexes.get(i), indexSize(ssIndexes.get(i)));
         }
+        compactOperations = new CompactOperations(basePath, filesCount);
     }
 
-    public Iterator<BaseEntry<byte[]>> diskIterator(byte[] from, byte[] to) throws IOException {
+    Iterator<BaseEntry<byte[]>> diskIterator(byte[] from, byte[] to) throws IOException {
         List<IndexedPeekIterator> peekIterators = new ArrayList<>();
         for (int i = 0; i < ssTables.size(); i++) {
             Iterator<BaseEntry<byte[]>> iterator = diskIterator(ssTables.get(i), ssIndexes.get(i), from, to);
@@ -73,9 +71,9 @@ public class FileOperations {
     private Iterator<BaseEntry<byte[]>> diskIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to)
             throws IOException {
         long indexSize = tablesSizes.get(ssIndex);
-        FileIterator fi = new FileIterator(ssTable, ssIndex, from, to, indexSize);
-        fileIterators.add(fi);
-        return fi;
+        FileIterator fileIterator = new FileIterator(ssTable, ssIndex, from, to, indexSize);
+        fileIterators.add(fileIterator);
+        return fileIterator;
     }
 
     static long getEntryIndex(FileChannel channelTable, FileChannel channelIndex,
@@ -98,22 +96,18 @@ public class FileOperations {
         return low;
     }
 
-    public void compact(Iterator<BaseEntry<byte[]>> iterator) throws IOException {
-        long elementsCount = saveDataCompact(iterator);
-        saveIndexesCompact(iterator, elementsCount);
+    void compact(Iterator<BaseEntry<byte[]>> iterator) throws IOException {
+        compactOperations.saveDataAndIndexesCompact(iterator);
+        clearFileIterators();
         deleteAllFiles();
+        compactOperations.renameCompactedFile();
         ssTables.clear();
         ssIndexes.clear();
         tablesSizes.clear();
         filesCount = 1;
     }
 
-    public void save(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
-        for (FileIterator fi : fileIterators) {
-            if (fi != null) {
-                fi.close();
-            }
-        }
+    void save(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
         saveData(pairs);
         saveIndexes(pairs);
         filesCount++;
@@ -127,32 +121,11 @@ public class FileOperations {
         if (!Files.exists(newFilePath)) {
             Files.createFile(newFilePath);
         }
-        try (FileOutputStream fos = new FileOutputStream(String.valueOf(newFilePath));
-             BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
+        try (RandomAccessFile raf = new RandomAccessFile(String.valueOf(newFilePath), "rw")) {
             for (var pair : sortedPairs.entrySet()) {
-                writePair(writer, pair);
+                writePair(raf, pair);
             }
         }
-    }
-
-    private long saveDataCompact(Iterator<BaseEntry<byte[]>> iterator) throws IOException {
-        if (!iterator.hasNext()) {
-            return 0;
-        }
-        Path newFilePath = basePath.resolve(FILE_NAME + filesCount + FILE_EXTENSION);
-        if (!Files.exists(newFilePath)) {
-            Files.createFile(newFilePath);
-        }
-        long elementsCount = 0;
-        try (FileOutputStream fos = new FileOutputStream(String.valueOf(newFilePath));
-             BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
-            while (iterator.hasNext()) {
-                BaseEntry<byte[]> current = iterator.next();
-                writePair(writer, Map.entry(current.key(), new BaseEntry<>(current.key(), current.value())));
-                elementsCount++;
-            }
-        }
-        return elementsCount;
     }
 
     private void saveIndexes(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
@@ -164,63 +137,44 @@ public class FileOperations {
             Files.createFile(newIndexPath);
         }
         long offset = 0;
-        try (FileOutputStream fos = new FileOutputStream(String.valueOf(newIndexPath));
-             BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
-            writeFileSizeAndInitialPosition(writer, sortedPairs.size());
+        try (RandomAccessFile raf = new RandomAccessFile(String.valueOf(newIndexPath), "rw")) {
+            writeFileSizeAndInitialPosition(raf, sortedPairs.size());
             for (var pair : sortedPairs.entrySet()) {
-                offset = writeEntryPosition(writer, pair, offset);
+                offset = writeEntryPosition(raf, pair, offset);
             }
         }
     }
 
-    private void saveIndexesCompact(Iterator<BaseEntry<byte[]>> iterator, long elementsCount) throws IOException {
-        if (!iterator.hasNext()) {
-            return;
-        }
-        Path newIndexPath = basePath.resolve(FILE_INDEX_NAME + filesCount + FILE_INDEX_EXTENSION);
-        if (!Files.exists(newIndexPath)) {
-            Files.createFile(newIndexPath);
-        }
-        long offset = 0;
-        try (FileOutputStream fos = new FileOutputStream(String.valueOf(newIndexPath));
-             BufferedOutputStream writer = new BufferedOutputStream(fos, BUFFER_SIZE)) {
-            writeFileSizeAndInitialPosition(writer, elementsCount);
-            while (iterator.hasNext()) {
-                BaseEntry<byte[]> current = iterator.next();
-                offset = writeEntryPosition(writer, Map.entry(current.key(), new BaseEntry<>(current.key(), current.value())), offset);
-            }
-        }
-    }
-
-    private void writePair(BufferedOutputStream writer, Map.Entry<byte[], BaseEntry<byte[]>> pair) throws IOException {
+    static void writePair(RandomAccessFile raf, Map.Entry<byte[], BaseEntry<byte[]>> pair) throws IOException {
         ByteBuffer intBuffer = ByteBuffer.allocate(Integer.BYTES);
         intBuffer.putInt(pair.getKey().length);
-        writer.write(intBuffer.array());
+        raf.write(intBuffer.array());
         intBuffer.clear();
-        writer.write(pair.getKey());
+        raf.write(pair.getKey());
         if (pair.getValue().value() == null) {
             intBuffer.putInt(-1);
-            writer.write(intBuffer.array());
+            raf.write(intBuffer.array());
             intBuffer.clear();
         } else {
             intBuffer.putInt(pair.getValue().value().length);
-            writer.write(intBuffer.array());
+            raf.write(intBuffer.array());
             intBuffer.clear();
-            writer.write(pair.getValue().value());
+            raf.write(pair.getValue().value());
         }
     }
 
-    private void writeFileSizeAndInitialPosition(BufferedOutputStream writer, long pairsSize) throws IOException {
+    private void writeFileSizeAndInitialPosition(RandomAccessFile raf, long pairsSize) throws IOException {
         ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
         longBuffer.putLong(pairsSize);
-        writer.write(longBuffer.array());
+        raf.write(longBuffer.array());
         longBuffer.clear();
+
         longBuffer.putLong(0);
-        writer.write(longBuffer.array());
+        raf.write(longBuffer.array());
         longBuffer.clear();
     }
 
-    private long writeEntryPosition(BufferedOutputStream writer, Map.Entry<byte[],
+    static long writeEntryPosition(RandomAccessFile raf, Map.Entry<byte[],
             BaseEntry<byte[]>> pair, long size) throws IOException {
         ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
         if (pair.getValue().value() == null) {
@@ -229,19 +183,15 @@ public class FileOperations {
             size += 2 * Integer.BYTES + pair.getKey().length + pair.getValue().value().length;
         }
         longBuffer.putLong(size);
-        writer.write(longBuffer.array());
+        raf.write(longBuffer.array());
         longBuffer.clear();
         return size;
     }
 
     private long indexSize(Path indexPath) throws IOException {
         long size;
-        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-        try (FileInputStream fis = new FileInputStream(String.valueOf(indexPath));
-             BufferedInputStream reader = new BufferedInputStream(fis, BUFFER_SIZE)) {
-            buffer.put(reader.readNBytes(Long.BYTES));
-            buffer.flip();
-            size = buffer.getLong();
+        try (RandomAccessFile raf = new RandomAccessFile(String.valueOf(indexPath), "r")) {
+            size = raf.readLong();
         }
         return size;
     }
@@ -275,7 +225,16 @@ public class FileOperations {
         return new BaseEntry<>(currentKey.array(), currentValue.array());
     }
 
-    private void deleteAllFiles() throws IOException {
+    void clearFileIterators() throws IOException {
+        for (FileIterator fi : fileIterators) {
+            if (fi != null) {
+                fi.close();
+            }
+        }
+        fileIterators.clear();
+    }
+
+    void deleteAllFiles() throws IOException {
         for (int i = 0; i < filesCount; i++) {
             Files.delete(ssTables.get(i));
             Files.delete(ssIndexes.get(i));
