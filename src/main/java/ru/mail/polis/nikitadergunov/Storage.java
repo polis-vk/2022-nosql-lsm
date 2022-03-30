@@ -145,7 +145,6 @@ final class Storage implements Closeable {
         }
         long recordsCount = MemoryAccess.getLongAtOffset(sstable, 8);
         if (key == null) {
-            // fix_me
             return recordsCount;
         }
 
