@@ -22,7 +22,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.IntConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -66,7 +65,7 @@ public class BaseTest {
 
     public void assertContains(Iterator<? extends Entry<String>> iterator, Entry<String> entry) {
         int count = 0;
-        while(iterator.hasNext()) {
+        while (iterator.hasNext()) {
             checkInterrupted();
             if (iterator.next().equals(entry)) {
                 return;
@@ -95,6 +94,12 @@ public class BaseTest {
 
     public List<Entry<String>> entries(int count) {
         return entries("k", "v", count);
+    }
+
+    public List<Entry<String>> bigValues(int count, int valueSize) {
+        char[] data = new char[valueSize / 2];
+        Arrays.fill(data, 'V');
+        return entries("k", new String(data), count);
     }
 
     public List<Entry<String>> entries(String keyPrefix, String valuePrefix, int count) {
@@ -214,6 +219,23 @@ public class BaseTest {
                 return FileVisitResult.CONTINUE;
             }
         });
+    }
+
+    public long sizePersistentData(Dao<String, Entry<String>> dao) throws IOException {
+        Config config = DaoFactory.Factory.extractConfig(dao);
+        return sizePersistentData(config);
+    }
+
+    public long sizePersistentData(Config config) throws IOException {
+        long[] result = new long[]{0};
+        Files.walkFileTree(config.basePath(), new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                result[0] += Files.size(file);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        return result[0];
     }
 
 }
