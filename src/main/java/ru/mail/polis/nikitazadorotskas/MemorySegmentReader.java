@@ -108,11 +108,11 @@ class MemorySegmentReader {
     private long getByteOffset(long segmentIndex) {
         long byteOffset = MemoryAccess.getLongAtIndex(mappedSegment, segmentIndex + 1);
 
-        if (byteOffset == -1) {
-            byteOffset = MemoryAccess.getLongAtIndex(mappedSegment, segmentIndex);
+        if (byteOffset != -1) {
+            return byteOffset;
         }
 
-        return byteOffset;
+        return MemoryAccess.getLongAtIndex(mappedSegment, segmentIndex);
     }
 
     public PeekIterator getFromDisk(MemorySegment from, MemorySegment to) {
