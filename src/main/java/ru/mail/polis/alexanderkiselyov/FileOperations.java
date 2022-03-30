@@ -9,6 +9,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -17,7 +18,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -33,6 +33,8 @@ public class FileOperations {
     private final List<Path> ssTables;
     private final List<Path> ssIndexes;
     private final Map<Path, Long> tablesSizes;
+    private final List<FileChannel> cTables = new ArrayList<>();
+    private final List<FileChannel> cIndexes = new ArrayList<>();
 
     public FileOperations(Config config) throws IOException {
         basePath = config.basePath();
@@ -72,36 +74,18 @@ public class FileOperations {
     private Iterator<BaseEntry<byte[]>> diskIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to)
             throws IOException {
         long indexSize = tablesSizes.get(ssIndex);
-        long fromPos = from == null ? 0 : getEntryIndex(ssTable, ssIndex, from, indexSize);
-        long toPos = to == null ? indexSize : getEntryIndex(ssTable, ssIndex, to, indexSize);
-        return new Iterator<>() {
-            long pos = fromPos;
-
-            @Override
-            public boolean hasNext() {
-                return pos < toPos;
-            }
-
-            @Override
-            public BaseEntry<byte[]> next() {
-                BaseEntry<byte[]> entry;
-                try {
-                    entry = getCurrent(pos, ssTable, ssIndex);
-                } catch (IOException e) {
-                    throw new NoSuchElementException("There is no next element!", e);
-                }
-                pos++;
-                return entry;
-            }
-        };
+        FileIterator fi = new FileIterator(ssTable, ssIndex, from, to, indexSize);
+        cTables.add(fi.getCTable());
+        cIndexes.add(fi.getCIndex());
+        return fi;
     }
 
-    private long getEntryIndex(Path ssTable, Path ssIndex, byte[] key, long indexSize) throws IOException {
+    static long getEntryIndex(FileChannel cTable, FileChannel cIndex, byte[] key, long indexSize) throws IOException {
         long low = 0;
         long high = indexSize - 1;
         long mid = (low + high) / 2;
         while (low <= high) {
-            BaseEntry<byte[]> current = getCurrent(mid, ssTable, ssIndex);
+            BaseEntry<byte[]> current = getCurrent(mid, cTable, cIndex);
             int compare = Arrays.compare(key, current.key());
             if (compare > 0) {
                 low = mid + 1;
@@ -116,6 +100,16 @@ public class FileOperations {
     }
 
     public void save(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
+        for (FileChannel cTable : cTables) {
+            if (cTable != null) {
+                cTable.close();
+            }
+        }
+        for (FileChannel cIndex : cIndexes) {
+            if (cIndex != null) {
+                cIndex.close();
+            }
+        }
         saveData(pairs);
         saveIndexes(pairs);
         filesCount++;
@@ -188,33 +182,31 @@ public class FileOperations {
         return size;
     }
 
-    private BaseEntry<byte[]> getCurrent(long pos, Path path, Path indexPath) throws IOException {
+    static BaseEntry<byte[]> getCurrent(long pos, FileChannel cTable, FileChannel cIndex) throws IOException {
         long position;
-        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-        try (FileInputStream fis = new FileInputStream(String.valueOf(indexPath))) {
-            fis.skipNBytes((pos + 1) * Long.BYTES);
-            buffer.put(fis.readNBytes(Long.BYTES));
-            buffer.flip();
-            position = buffer.getLong();
+        cIndex.position((pos + 1) * Long.BYTES);
+        ByteBuffer buffLong = ByteBuffer.allocate(Long.BYTES);
+        cIndex.read(buffLong);
+        buffLong.flip();
+        position = buffLong.getLong();
+
+        cTable.position(position);
+        ByteBuffer buffInt = ByteBuffer.allocate(Integer.BYTES);
+        cTable.read(buffInt);
+        buffInt.flip();
+        int keyLength = buffInt.getInt();
+        buffInt.clear();
+        ByteBuffer currentKey = ByteBuffer.allocate(keyLength);
+        cTable.read(currentKey);
+
+        cTable.read(buffInt);
+        buffInt.flip();
+        int valueLength = buffInt.getInt();
+        if (valueLength == -1) {
+            return new BaseEntry<>(currentKey.array(), null);
         }
-        byte[] currentKey;
-        byte[] currentValue;
-        ByteBuffer intBuffer = ByteBuffer.allocate(Integer.BYTES);
-        try (FileInputStream fis = new FileInputStream(String.valueOf(path))) {
-            fis.skipNBytes(position);
-            intBuffer.put(fis.readNBytes(Integer.BYTES));
-            intBuffer.flip();
-            int keyLength = intBuffer.getInt();
-            intBuffer.clear();
-            currentKey = fis.readNBytes(keyLength);
-            intBuffer.put(fis.readNBytes(Integer.BYTES));
-            intBuffer.flip();
-            int valueLength = intBuffer.getInt();
-            if (valueLength == -1) {
-                return new BaseEntry<>(currentKey, null);
-            }
-            currentValue = fis.readNBytes(valueLength);
-        }
-        return new BaseEntry<>(currentKey, currentValue);
+        ByteBuffer currentValue = ByteBuffer.allocate(valueLength);
+        cTable.read(currentValue);
+        return new BaseEntry<>(currentKey.array(), currentValue.array());
     }
 }
