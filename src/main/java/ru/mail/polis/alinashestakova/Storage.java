@@ -18,8 +18,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Stream;
 
-class Storage implements Closeable {
+final class Storage implements Closeable {
 
     private static final long VERSION = 0;
     private static final int INDEX_HEADER_SIZE = Long.BYTES * 2;
@@ -45,8 +46,13 @@ class Storage implements Closeable {
         List<MemorySegment> sstables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
 
+        int filesCount;
+        try (Stream<Path> files = Files.list(basePath)) {
+            filesCount = (int) files.count();
+        }
+
         // FIX-ME check existing files
-        for (int i = 0; ; i++) {
+        for (int i = 0; i < filesCount; i++) {
             Path nextFile = basePath.resolve(FILE_NAME + i + FILE_EXT);
             try {
                 sstables.add(mapForRead(scope, nextFile));

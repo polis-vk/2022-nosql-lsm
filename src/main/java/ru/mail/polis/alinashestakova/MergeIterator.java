@@ -6,7 +6,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.PriorityQueue;
 
-public class MergeIterator<E> implements Iterator<E> {
+public final class MergeIterator<E> implements Iterator<E> {
 
     private final PriorityQueue<IndexedPeekIterator<E>> iterators;
     private final Comparator<E> comparator;

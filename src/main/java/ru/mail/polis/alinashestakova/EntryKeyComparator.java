@@ -5,7 +5,7 @@ import ru.mail.polis.BaseEntry;
 
 import java.util.Comparator;
 
-public class EntryKeyComparator implements Comparator<BaseEntry<MemorySegment>> {
+public final class EntryKeyComparator implements Comparator<BaseEntry<MemorySegment>> {
 
     public static final Comparator<BaseEntry<MemorySegment>> INSTANCE = new EntryKeyComparator();
 
