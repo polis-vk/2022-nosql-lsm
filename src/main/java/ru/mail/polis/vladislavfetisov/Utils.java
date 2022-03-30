@@ -44,10 +44,7 @@ public final class Utils {
                                     MemorySegment mapIndex) {
         long l = 0;
         long rightBound = mapIndex.byteSize() / Long.BYTES;
-        long r = rightBound;
-        if (r == 0) {
-            return -1;
-        }
+        long r = rightBound - 1;
         while (l <= r) {
             long middle = (l + r) >>> 1;
             Entry<MemorySegment> middleEntry = getByIndex(mapFile, mapIndex, middle);
@@ -56,9 +53,6 @@ public final class Utils {
                 return middle;
             } else if (res < 0) {
                 l = middle + 1;
-                if (l == rightBound) {
-                    return rightBound;
-                }
             } else {
                 r = middle - 1;
             }

@@ -90,12 +90,10 @@ public final class SSTable {
     }
 
     public Iterator<Entry<MemorySegment>> range(MemorySegment from, MemorySegment to) {
-        MemorySegment readOnlyFile = mapFile.asReadOnly();
-        MemorySegment readOnlyIndex = mapIndex.asReadOnly();
         long li = 0;
-        long ri = readOnlyIndex.byteSize() / Long.BYTES;
+        long ri = mapIndex.byteSize() / Long.BYTES;
         if (from != null) {
-            li = Utils.binarySearch(from, readOnlyFile, readOnlyIndex);
+            li = Utils.binarySearch(from, mapFile, mapIndex);
             if (li == -1) {
                 li = 0;
             }
@@ -104,7 +102,7 @@ public final class SSTable {
             }
         }
         if (to != null) {
-            ri = Utils.binarySearch(to, readOnlyFile, readOnlyIndex);
+            ri = Utils.binarySearch(to, mapFile, mapIndex);
             if (ri == -1) {
                 return Collections.emptyIterator();
             }
@@ -126,7 +124,7 @@ public final class SSTable {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
                 }
-                Entry<MemorySegment> res = Utils.getByIndex(readOnlyFile, readOnlyIndex, pos);
+                Entry<MemorySegment> res = Utils.getByIndex(mapFile, mapIndex, pos);
                 pos++;
                 return res;
             }
