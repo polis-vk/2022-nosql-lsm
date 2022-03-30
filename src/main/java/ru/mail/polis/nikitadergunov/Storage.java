@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Stream;
 
 final class Storage implements Closeable {
 
@@ -26,7 +27,6 @@ final class Storage implements Closeable {
     private static final int INDEX_HEADER_SIZE = Long.BYTES * 2;
     private static final int INDEX_RECORD_SIZE = Long.BYTES;
 
-    private static final int MAX_COUNT_FILES = 10000;
     private static final String FILE_NAME = "data";
     private static final String FILE_EXT = ".dat";
     private static final String FILE_EXT_TMP = ".tmp";
@@ -40,7 +40,13 @@ final class Storage implements Closeable {
         List<MemorySegment> sstables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
 
-        for (int i = 0; i < MAX_COUNT_FILES; ++i) {
+        long maxCountFiles;
+        try (Stream<Path> listFile = Files.list(basePath)){
+            maxCountFiles = listFile.count();
+            maxCountFiles = maxCountFiles > Integer.MAX_VALUE ? Integer.MAX_VALUE : maxCountFiles;
+        }
+
+        for (int i = 0; i < maxCountFiles; ++i) {
             Path nextFile = basePath.resolve(FILE_NAME + i + FILE_EXT);
             try {
                 sstables.add(mapForRead(scope, nextFile));
