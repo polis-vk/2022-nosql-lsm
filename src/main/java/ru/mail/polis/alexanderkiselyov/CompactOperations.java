@@ -13,8 +13,8 @@ import java.util.Map;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 
 public class CompactOperations {
-    private static Path compactedFile = null;
-    private static Path compactedIndex = null;
+    private Path compactedFile;
+    private Path compactedIndex;
     private static final String FILE_NAME = "myData";
     private static final String FILE_EXTENSION = ".txt";
     private static final String FILE_INDEX_NAME = "myIndex";

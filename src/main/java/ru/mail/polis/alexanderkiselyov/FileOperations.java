@@ -177,15 +177,16 @@ public class FileOperations {
     static long writeEntryPosition(RandomAccessFile raf, Map.Entry<byte[],
             BaseEntry<byte[]>> pair, long size) throws IOException {
         ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
+        long result = size;
         if (pair.getValue().value() == null) {
-            size += 2 * Integer.BYTES + pair.getKey().length;
+            result += 2 * Integer.BYTES + pair.getKey().length;
         } else {
-            size += 2 * Integer.BYTES + pair.getKey().length + pair.getValue().value().length;
+            result += 2 * Integer.BYTES + pair.getKey().length + pair.getValue().value().length;
         }
-        longBuffer.putLong(size);
+        longBuffer.putLong(result);
         raf.write(longBuffer.array());
         longBuffer.clear();
-        return size;
+        return result;
     }
 
     private long indexSize(Path indexPath) throws IOException {

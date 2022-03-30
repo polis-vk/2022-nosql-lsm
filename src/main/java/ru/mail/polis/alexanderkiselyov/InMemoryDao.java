@@ -65,8 +65,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     @Override
     public void flush() throws IOException {
-        if (!isCompacted)
-        {
+        if (!isCompacted) {
             fileOperations.save(pairs);
         }
         isFlushed = true;
