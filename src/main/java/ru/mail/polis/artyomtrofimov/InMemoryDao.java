@@ -6,7 +6,6 @@ import ru.mail.polis.Entry;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -15,7 +14,6 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -200,20 +198,18 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             filesList.clear();
             filesList.add(name);
 
-            CompletableFuture.runAsync(() -> {
-                IOException exception = null;
-                for (String fileToDelete : filesListCopy) {
-                    try {
-                        Files.deleteIfExists(basePath.resolve(fileToDelete + DATA_EXT));
-                        Files.deleteIfExists(basePath.resolve(fileToDelete + INDEX_EXT));
-                    } catch (IOException e) {
-                        exception = e;
-                    }
+            IOException exception = null;
+            for (String fileToDelete : filesListCopy) {
+                try {
+                    Files.deleteIfExists(basePath.resolve(fileToDelete + DATA_EXT));
+                    Files.deleteIfExists(basePath.resolve(fileToDelete + INDEX_EXT));
+                } catch (IOException e) {
+                    exception = e;
                 }
-                if (exception != null) {
-                    throw new UncheckedIOException(exception);
-                }
-            });
+            }
+            if (exception != null) {
+                throw exception;
+            }
             commit = true;
         } finally {
             lock.writeLock().unlock();
