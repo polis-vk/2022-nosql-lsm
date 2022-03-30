@@ -19,7 +19,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
     @Override
     public boolean hasNext() {
         boolean result = false;
-        for(FilePeekIterator filePeekIterator: dequeOfIterators) {
+        for (FilePeekIterator filePeekIterator : dequeOfIterators) {
             result |= filePeekIterator.hasNext();
         }
         return result || currentIterator.hasNext();

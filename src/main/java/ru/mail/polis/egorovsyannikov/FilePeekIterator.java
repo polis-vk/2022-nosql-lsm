@@ -39,18 +39,18 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
             for (int i = 0; i < numberOfEntries; i++) {
                 offsets.add(reader.readInt());
             }
-            if(from != null && to != null) {
+            if (from != null && to != null) {
                 endIndex = fileBinarySearch(numberOfEntries - 1, to);
                 startIndex = fileBinarySearch(numberOfEntries - 1, from);
-            } else if(to != null) {
+            } else if (to != null) {
                 endIndex = fileBinarySearch(numberOfEntries - 1, to);
-            } else if(from != null) {
+            } else if (from != null) {
                 startIndex = fileBinarySearch(numberOfEntries - 1, from);
             }
 
             currentFilePosition = startIndex;
 
-            if(startIndex < 0 || endIndex < 0) {
+            if (startIndex < 0 || endIndex < 0) {
                 currentFilePosition = -1;
             }
         } catch (IOException e) {
@@ -60,7 +60,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
 
     @Override
     public boolean hasNext() {
-        if(delegate == null) {
+        if (delegate == null) {
             return current != null || currentFilePosition < endIndex || currentFilePosition > -1;
         } else {
             return current != null || delegate.hasNext();
@@ -69,7 +69,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
 
     public BaseEntry<String> peek() {
         if (current == null) {
-            if(delegate == null) {
+            if (delegate == null) {
                 current = readNext();
             } else {
                 current = delegate.next();
@@ -115,7 +115,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
     }
 
     public BaseEntry<String> findValueByKey(String key) {
-        if(delegate == null) {
+        if (delegate == null) {
             BaseEntry<String> result = null;
             if (fileBinarySearch(numberOfEntries - 1, key) > -1) {
                 result = next();
@@ -124,7 +124,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
         } else {
             while (delegate.hasNext()) {
                 BaseEntry<String> result = delegate.next();
-                if(result.key().equals(key)) {
+                if (result.key().equals(key)) {
                     return result;
                 }
             }

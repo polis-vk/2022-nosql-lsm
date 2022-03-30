@@ -24,7 +24,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     public InMemoryDao(Config config) throws IOException {
         directoryPath = config.basePath();
         String[] arrayOfFiles = config.basePath().toFile().list();
-        if(arrayOfFiles != null) {
+        if (arrayOfFiles != null) {
             for (int i = arrayOfFiles.length - 1; i >= 0; i--) {
                 listOfFiles.add(config.basePath().resolve(arrayOfFiles[i]));
             }
@@ -65,13 +65,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             stringConcurrentSkipListMapIterator
                     = new FilePeekIterator(getIterator(stringConcurrentSkipListMap.subMap(from, to)));
         }
-        if(stringConcurrentSkipListMapIterator.hasNext()) {
+        if (stringConcurrentSkipListMapIterator.hasNext()) {
             listOfIterators.add(stringConcurrentSkipListMapIterator);
         }
 
         for (Path file : listOfFiles) {
             FilePeekIterator tmp = new FilePeekIterator(file, from, to);
-            if(tmp.hasNext()) {
+            if (tmp.hasNext()) {
                 listOfIterators.add(tmp);
             }
         }
