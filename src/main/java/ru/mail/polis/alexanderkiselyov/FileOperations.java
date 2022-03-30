@@ -33,8 +33,7 @@ public class FileOperations {
     private final List<Path> ssTables;
     private final List<Path> ssIndexes;
     private final Map<Path, Long> tablesSizes;
-    private final List<FileChannel> channelTables = new ArrayList<>();
-    private final List<FileChannel> channelIndexes = new ArrayList<>();
+    private final List<FileIterator> fileIterators = new ArrayList<>();
 
     public FileOperations(Config config) throws IOException {
         basePath = config.basePath();
@@ -75,17 +74,16 @@ public class FileOperations {
             throws IOException {
         long indexSize = tablesSizes.get(ssIndex);
         FileIterator fi = new FileIterator(ssTable, ssIndex, from, to, indexSize);
-        channelTables.add(fi.getChannelTable());
-        channelIndexes.add(fi.getChannelIndex());
+        fileIterators.add(fi);
         return fi;
     }
 
-    static long getEntryIndex(FileChannel cTable, FileChannel cIndex, byte[] key, long indexSize) throws IOException {
+    static long getEntryIndex(FileChannel channelTable, FileChannel channelIndex, byte[] key, long indexSize) throws IOException {
         long low = 0;
         long high = indexSize - 1;
         long mid = (low + high) / 2;
         while (low <= high) {
-            BaseEntry<byte[]> current = getCurrent(mid, cTable, cIndex);
+            BaseEntry<byte[]> current = getCurrent(mid, channelTable, channelIndex);
             int compare = Arrays.compare(key, current.key());
             if (compare > 0) {
                 low = mid + 1;
@@ -100,14 +98,9 @@ public class FileOperations {
     }
 
     public void save(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
-        for (FileChannel channelTable : channelTables) {
-            if (channelTable != null) {
-                channelTable.close();
-            }
-        }
-        for (FileChannel channelIndex : channelIndexes) {
-            if (channelIndex != null) {
-                channelIndex.close();
+        for (FileIterator fi : fileIterators) {
+            if (fi != null) {
+                fi.close();
             }
         }
         saveData(pairs);
@@ -182,31 +175,31 @@ public class FileOperations {
         return size;
     }
 
-    static BaseEntry<byte[]> getCurrent(long pos, FileChannel cTable, FileChannel cIndex) throws IOException {
+    static BaseEntry<byte[]> getCurrent(long pos, FileChannel channelTable, FileChannel channelIndex) throws IOException {
         long position;
-        cIndex.position((pos + 1) * Long.BYTES);
+        channelIndex.position((pos + 1) * Long.BYTES);
         ByteBuffer buffLong = ByteBuffer.allocate(Long.BYTES);
-        cIndex.read(buffLong);
+        channelIndex.read(buffLong);
         buffLong.flip();
         position = buffLong.getLong();
 
-        cTable.position(position);
+        channelTable.position(position);
         ByteBuffer buffInt = ByteBuffer.allocate(Integer.BYTES);
-        cTable.read(buffInt);
+        channelTable.read(buffInt);
         buffInt.flip();
         int keyLength = buffInt.getInt();
         buffInt.clear();
         ByteBuffer currentKey = ByteBuffer.allocate(keyLength);
-        cTable.read(currentKey);
+        channelTable.read(currentKey);
 
-        cTable.read(buffInt);
+        channelTable.read(buffInt);
         buffInt.flip();
         int valueLength = buffInt.getInt();
         if (valueLength == -1) {
             return new BaseEntry<>(currentKey.array(), null);
         }
         ByteBuffer currentValue = ByteBuffer.allocate(valueLength);
-        cTable.read(currentValue);
+        channelTable.read(currentValue);
         return new BaseEntry<>(currentKey.array(), currentValue.array());
     }
 }

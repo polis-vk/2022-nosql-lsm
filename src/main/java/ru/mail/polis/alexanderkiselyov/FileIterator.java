@@ -2,6 +2,7 @@ package ru.mail.polis.alexanderkiselyov;
 
 import ru.mail.polis.BaseEntry;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
@@ -9,16 +10,18 @@ import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
-public class FileIterator implements Iterator<BaseEntry<byte[]>> {
+public class FileIterator implements Iterator<BaseEntry<byte[]>>, Closeable {
 
     private final FileChannel channelTable;
     private final FileChannel channelIndex;
+    private final RandomAccessFile rafTable;
+    private final RandomAccessFile rafIndex;
     private long pos;
     private final long to;
 
     public FileIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to, long indexSize) throws IOException {
-        RandomAccessFile rafTable = new RandomAccessFile(String.valueOf(ssTable), "r");
-        RandomAccessFile rafIndex = new RandomAccessFile(String.valueOf(ssIndex), "r");
+        rafTable = new RandomAccessFile(String.valueOf(ssTable), "r");
+        rafIndex = new RandomAccessFile(String.valueOf(ssIndex), "r");
         channelTable = rafTable.getChannel();
         channelIndex = rafIndex.getChannel();
         pos = from == null ? 0 : FileOperations.getEntryIndex(channelTable, channelIndex, from, indexSize);
@@ -41,12 +44,12 @@ public class FileIterator implements Iterator<BaseEntry<byte[]>> {
         pos++;
         return entry;
     }
-    
-    public FileChannel getChannelTable() {
-        return channelTable;
-    }
 
-    public FileChannel getChannelIndex() {
-        return channelIndex;
+    @Override
+    public void close() throws IOException {
+        channelTable.close();
+        channelIndex.close();
+        rafTable.close();
+        rafIndex.close();
     }
 }
