@@ -40,7 +40,7 @@ final class Storage implements Closeable {
         List<MemorySegment> sstables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
 
-        try (Stream<Path> listFiles = Files.list(basePath)){
+        try (Stream<Path> listFiles = Files.list(basePath)) {
             long maxCountFiles = listFiles.count();
             maxCountFiles = maxCountFiles > Integer.MAX_VALUE ? Integer.MAX_VALUE : maxCountFiles;
             for (int i = 0; i < maxCountFiles; ++i) {
