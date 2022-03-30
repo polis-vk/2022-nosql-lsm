@@ -20,7 +20,7 @@ public class MergeIterator implements Iterator<Entry<String>> {
     });
 
     public MergeIterator(List<PeekingIterator> iterators) {
-        queue.addAll(iterators);
+        queue.addAll(iterators.stream().filter(PeekingIterator::hasNext).toList());
     }
 
     @Override

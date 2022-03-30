@@ -152,10 +152,11 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 Utils.writeEntry(output, value);
             }
             allFilesOut.setLength(0);
-            while (!filesList.isEmpty()) {
-                allFilesOut.writeUTF(filesList.pollLast());
+            for (Iterator<String> filesIterator = filesList.descendingIterator(); filesIterator.hasNext(); ) {
+                allFilesOut.writeUTF(filesIterator.next());
             }
             commit = true;
+            data.clear();
         } finally {
             lock.writeLock().unlock();
         }
@@ -176,18 +177,23 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
              RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
              RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw")
         ) {
-            output.seek(0);
+            output.seek(Integer.BYTES);
             output.writeInt(data.size());
+            int count = 0;
             while (iterator.hasNext()) {
                 Entry<String> entry = iterator.next();
+                count++;
                 if (entry != null) {
                     indexOut.writeLong(output.getFilePointer());
                     Utils.writeEntry(output, entry);
                 }
             }
-            allFilesOut.setLength(0);
+            output.seek(0);
+            output.writeInt(count);
 
+            allFilesOut.setLength(0);
             allFilesOut.writeUTF(name);
+            data.clear();
 
             Deque<String> filesListCopy = new ArrayDeque<>(filesList);
             filesList.clear();
@@ -207,7 +213,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                     throw new UncheckedIOException(exception);
                 }
             });
-
+            commit = true;
         } finally {
             lock.writeLock().unlock();
         }
