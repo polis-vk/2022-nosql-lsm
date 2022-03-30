@@ -11,7 +11,11 @@ import java.util.Comparator;
  * this string comparison likely won't work with collation different from ASCII
  */
 public class MemorySegmentComparator implements Comparator<MemorySegment> {
-    public static final MemorySegmentComparator LEXICOGRAPHICALLY = new MemorySegmentComparator();
+    /**
+     * For any <code>MemorySegment x</code>: <code>compare(MINIMAL, x) <= 0</code> is true
+     */
+    public static final MemorySegment MINIMAL = MemorySegment.ofArray(new byte[]{});
+    public static final MemorySegmentComparator INSTANCE = new MemorySegmentComparator();
 
     @Override
     public int compare(MemorySegment lhs, MemorySegment rhs) {
@@ -29,5 +33,11 @@ public class MemorySegmentComparator implements Comparator<MemorySegment> {
                 MemoryAccess.getByteAtOffset(lhs, offset),
                 MemoryAccess.getByteAtOffset(rhs, offset)
         );
+    }
+
+    /**
+     * Use {@link MemorySegmentComparator#INSTANCE} instead
+     */
+    private MemorySegmentComparator() {
     }
 }

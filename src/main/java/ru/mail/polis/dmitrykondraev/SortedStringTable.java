@@ -11,10 +11,9 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 
-import static ru.mail.polis.dmitrykondraev.MemorySegmentComparator.LEXICOGRAPHICALLY;
+import static ru.mail.polis.dmitrykondraev.MemorySegmentComparator.INSTANCE;
 
 final class SortedStringTable implements Closeable {
     public static final String INDEX_FILENAME = "index";
@@ -67,14 +66,15 @@ final class SortedStringTable implements Closeable {
      * @param first inclusive
      * @param last  exclusive
      * @return first index such that key of entry with that index is equal to key,
-     * if no such index exists, result < 0
+     * if no such index exists, result < 0, in that case use
+     * {@link SortedStringTable#insertionPoint(int)} to recover insertion point
      */
     private int binarySearch(int first, int last, MemorySegment key) {
         int low = first;
         int high = last;
         while (low < high) {
             int mid = low + (high - low) / 2;
-            int compare = LEXICOGRAPHICALLY.compare(mappedEntry(mid).key(), key);
+            int compare = INSTANCE.compare(mappedEntry(mid).key(), key);
             if (compare < 0) {
                 low = mid + 1;
             } else if (compare > 0) {
@@ -83,57 +83,27 @@ final class SortedStringTable implements Closeable {
                 return mid;
             }
         }
-        return -(low + 1);
+        return ~low;
     }
 
-    /**
-     * Get one entry from file.
-     *
-     * @return null if either indexFile or dataFile does not exist,
-     * null if key does not exist in table
-     * @throws IOException if other I/O error occurs
-     */
-    public MemorySegmentEntry get(MemorySegment key) throws IOException {
-        if (indexSegment == null && dataSegment == null) {
-            loadFromFiles(); // throws NoSuchFileException
+    private static int insertionPoint(int index) {
+        if (index < 0) {
+            return ~index;
         }
-        int index = binarySearch(0, entriesMapped(), key);
-        return index < 0 ? null : mappedEntry(index);
+        return index;
     }
 
     public Iterator<MemorySegmentEntry> get(MemorySegment from, MemorySegment to) throws IOException {
         if (indexSegment == null && dataSegment == null) {
-            loadFromFiles(); // throws NoSuchFileException
+            loadFromFiles();
         }
-        MemorySegment start = from == null ? mappedEntry(0).key() : from;
-        if (to != null && LEXICOGRAPHICALLY.compare(start, to) >= 0) {
-            return Collections.emptyIterator();
-        }
+        int tableSize = entriesMapped();
         return new Iterator<>() {
-            private int first;
-            private int last = entriesMapped();
-            private boolean pivoted;
+            private int first = insertionPoint(binarySearch(0, tableSize, from));
+            private final int last = to == null ? tableSize : insertionPoint(binarySearch(first, tableSize, to));
 
             @Override
             public boolean hasNext() {
-                if (pivoted) {
-                    return first < last;
-                }
-                first = binarySearch(first, last, start);
-                if (first < 0) {
-                    first = -(first + 1);
-                }
-                if (first >= last) {
-                    pivoted = true;
-                    return false;
-                }
-                if (to != null) {
-                    last = binarySearch(first, last, to);
-                    if (last < 0) {
-                        last = -(last + 1);
-                    }
-                }
-                pivoted = true;
                 return first < last;
             }
 
@@ -142,6 +112,20 @@ final class SortedStringTable implements Closeable {
                 return mappedEntry(first++);
             }
         };
+    }
+
+    /**
+     * @return null if either indexFile or dataFile does not exist,
+     * null if key does not exist in table
+     * @throws IOException if other I/O error occurs
+     */
+    public MemorySegmentEntry get(MemorySegment key) throws IOException {
+        if (indexSegment == null && dataSegment == null) {
+            loadFromFiles();
+        }
+        int size = entriesMapped();
+        int index = binarySearch(0, size, key);
+        return index < 0 ? null : mappedEntry(index);
     }
 
     @Override

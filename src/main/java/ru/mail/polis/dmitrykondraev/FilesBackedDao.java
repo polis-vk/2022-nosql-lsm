@@ -13,15 +13,13 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.PriorityQueue;
-import java.util.Set;
-import java.util.TreeSet;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-
-import static ru.mail.polis.dmitrykondraev.MemorySegmentComparator.LEXICOGRAPHICALLY;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
 /**
  * Author: Dmitry Kondraev.
@@ -29,102 +27,32 @@ import static ru.mail.polis.dmitrykondraev.MemorySegmentComparator.LEXICOGRAPHIC
 
 public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     private final ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map =
-            new ConcurrentSkipListMap<>(LEXICOGRAPHICALLY);
+            new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
     private final Deque<SortedStringTable> sortedStringTables = new ConcurrentLinkedDeque<>();
     private final Path basePath;
 
     public FilesBackedDao(Config config) throws IOException {
         basePath = config.basePath();
-        Files
-                .list(basePath)
-                .filter(Files::isDirectory)
+        try (Stream<Path> list = Files.list(basePath)) {
+            list.filter(Files::isDirectory)
                 .sorted(Comparator.reverseOrder())
-                .forEachOrdered((Path subDirectory) -> {
-                    if (!Files.isDirectory(subDirectory)) {
-                        return;
-                    }
-                    sortedStringTables.add(SortedStringTable.of(subDirectory));
-                });
-    }
-
-    private static <K, V> Iterator<V> iterator(Map<K, V> map) {
-        return map.values().iterator();
-    }
-
-    private Iterator<MemorySegmentEntry> inMemoryGet(MemorySegment from, MemorySegment to) {
-        if (from == null && to == null) {
-            return iterator(map);
+                .forEachOrdered((Path subDirectory) -> sortedStringTables.add(SortedStringTable.of(subDirectory)));
         }
-        if (from == null) {
-            return iterator(map.headMap(to));
-        }
-        if (to == null) {
-            return iterator(map.tailMap(from));
-        }
-        return iterator(map.subMap(from, to));
     }
 
     @Override
     public Iterator<MemorySegmentEntry> get(MemorySegment from, MemorySegment to) throws IOException {
-        List<Iterator<MemorySegmentEntry>> iterators = new ArrayList<>(1 + sortedStringTables.size());
-        iterators.add(inMemoryGet(from, to));
-        for (SortedStringTable table : sortedStringTables) {
-            iterators.add(table.get(from, to));
+        from = Objects.requireNonNullElse(from, MemorySegmentComparator.MINIMAL);
+        Iterator<MemorySegmentEntry> inMemoryIterator = inMemoryGet(from, to);
+        if (sortedStringTables.isEmpty()) {
+            return compacted(new PeekIterator<>(inMemoryIterator));
         }
-        return new Iterator<>() {
-            private final Set<MemorySegment> keys = new TreeSet<>(LEXICOGRAPHICALLY);
-            private final PriorityQueue<IndexedEntry> entries;
-
-            // IIB
-            {
-                entries = new PriorityQueue<>(iterators.size() + 1);
-                for (int i = 0; i < iterators.size(); i++) {
-                    addFrom(i);
-                }
-            }
-
-            private boolean addFrom(int tableIndex) {
-                Iterator<MemorySegmentEntry> iterator = iterators.get(tableIndex);
-                if (!iterator.hasNext()) {
-                    return false;
-                }
-                MemorySegmentEntry entry = iterator.next();
-                return keys.add(entry.key())
-                        && entry.value() != null
-                        && entries.offer(new IndexedEntry(tableIndex, entry));
-            }
-
-            @Override
-            public boolean hasNext() {
-                if (entries.isEmpty() || iterators.isEmpty()) {
-                    return false;
-                }
-                IndexedEntry next = entries.peek();
-                if (addFrom(next.index)) {
-                    return true;
-                }
-                boolean anyHasNext;
-                do {
-                    anyHasNext = false;
-                    for (int i = 0; i < iterators.size(); i++) {
-                        anyHasNext |= iterators.get(i).hasNext();
-                        if (addFrom(i)) {
-                            return true;
-                        }
-                    }
-                } while (anyHasNext);
-                return true;
-            }
-
-            @Override
-            public MemorySegmentEntry next() {
-                IndexedEntry next = entries.poll();
-                if (next == null) {
-                    throw new NoSuchElementException();
-                }
-                return next.entry();
-            }
-        };
+        List<PeekIterator<MemorySegmentEntry>> iterators = new ArrayList<>(1 + sortedStringTables.size());
+        iterators.add(new PeekIterator<>(inMemoryIterator));
+        for (SortedStringTable table : sortedStringTables) {
+            iterators.add(new PeekIterator<>(table.get(from, to)));
+        }
+        return compacted(new PeekIterator<>(merged(iterators)));
     }
 
     @Override
@@ -171,14 +99,77 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
         flush();
     }
 
-    private record IndexedEntry(int index, MemorySegmentEntry entry) implements Comparable<IndexedEntry> {
-        @Override
-        public int compareTo(IndexedEntry o) {
-            int compare = LEXICOGRAPHICALLY.compare(this.entry.key(), o.entry.key());
-            if (compare != 0) {
-                return compare;
+    private static <K, V> Iterator<V> iterator(Map<K, V> map) {
+        return map.values().iterator();
+    }
+
+    private Iterator<MemorySegmentEntry> inMemoryGet(MemorySegment from, MemorySegment to) {
+        Map<MemorySegment, MemorySegmentEntry> subMap = to != null ? map.subMap(from, to) : map.tailMap(from);
+        return iterator(subMap);
+    }
+
+    private static Iterator<MemorySegmentEntry> merged(List<PeekIterator<MemorySegmentEntry>> iterators) {
+        return new Iterator<>() {
+            private final PriorityQueue<Integer> indexes;
+
+            // IIB
+            {
+                Comparator<Integer> indexComparator = Comparator
+                        .comparing((Integer i) -> iterators.get(i).peek().key(), MemorySegmentComparator.INSTANCE)
+                        .thenComparing(Function.identity());
+                indexes = new PriorityQueue<>(iterators.size(), indexComparator);
+                for (int i = 0; i < iterators.size(); i++) {
+                    if (iterators.get(i).hasNext()) {
+                        indexes.add(i);
+                    }
+                }
             }
-            return Integer.compare(index, o.index);
-        }
+
+            @Override
+            public boolean hasNext() {
+                return !indexes.isEmpty();
+            }
+
+            @Override
+            public MemorySegmentEntry next() {
+                Integer nextIndex = indexes.remove();
+                PeekIterator<MemorySegmentEntry> nextIterator = iterators.get(nextIndex);
+                MemorySegmentEntry next = nextIterator.next();
+                if (nextIterator.hasNext()) {
+                    indexes.offer(nextIndex);
+                }
+                return next;
+            }
+        };
+    }
+
+    private static Iterator<MemorySegmentEntry> compacted(PeekIterator<MemorySegmentEntry> iterator) {
+        return new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                skipDeletionEntries();
+                return iterator.hasNext();
+            }
+
+            @Override
+            public MemorySegmentEntry next() {
+                skipDeletionEntries();
+                return nextUnique();
+            }
+
+            private void skipDeletionEntries() {
+                while (iterator.hasNext() && iterator.peek().value() == null) {
+                    nextUnique();
+                }
+            }
+
+            private MemorySegmentEntry nextUnique() {
+                MemorySegmentEntry next = iterator.next();
+                while (iterator.hasNext() && MemorySegmentComparator.INSTANCE.compare(iterator.peek().key(), next.key()) == 0) {
+                    iterator.next();
+                }
+                return next;
+            }
+        };
     }
 }

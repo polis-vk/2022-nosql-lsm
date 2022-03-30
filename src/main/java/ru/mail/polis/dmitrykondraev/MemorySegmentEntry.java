@@ -51,12 +51,4 @@ public final class MemorySegmentEntry implements Entry<MemorySegment> {
         }
         entrySegment.asSlice(Long.BYTES + (value == null ? 0 : value().byteSize())).copyFrom(key);
     }
-
-    @Override
-    public String toString() {
-        return "MemorySegmentEntry{'%s' -> %s}".formatted(
-                new String(key.toCharArray()),
-                value == null ? "null" : "'" + new String(value.toCharArray()) + "'"
-        );
-    }
 }
