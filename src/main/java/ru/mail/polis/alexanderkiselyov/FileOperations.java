@@ -78,7 +78,8 @@ public class FileOperations {
         return fi;
     }
 
-    static long getEntryIndex(FileChannel channelTable, FileChannel channelIndex, byte[] key, long indexSize) throws IOException {
+    static long getEntryIndex(FileChannel channelTable, FileChannel channelIndex,
+                              byte[] key, long indexSize) throws IOException {
         long low = 0;
         long high = indexSize - 1;
         long mid = (low + high) / 2;
@@ -175,7 +176,8 @@ public class FileOperations {
         return size;
     }
 
-    static BaseEntry<byte[]> getCurrent(long pos, FileChannel channelTable, FileChannel channelIndex) throws IOException {
+    static BaseEntry<byte[]> getCurrent(long pos, FileChannel channelTable,
+                                        FileChannel channelIndex) throws IOException {
         long position;
         channelIndex.position((pos + 1) * Long.BYTES);
         ByteBuffer buffLong = ByteBuffer.allocate(Long.BYTES);
