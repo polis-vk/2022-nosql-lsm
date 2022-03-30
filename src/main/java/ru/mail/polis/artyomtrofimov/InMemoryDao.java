@@ -152,8 +152,10 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 Utils.writeEntry(output, value);
             }
             allFilesOut.setLength(0);
-            for (Iterator<String> filesIterator = filesList.descendingIterator(); filesIterator.hasNext(); ) {
-                allFilesOut.writeUTF(filesIterator.next());
+            loadFilesList();
+            Iterator<String> filesListIterator = filesList.descendingIterator();
+            while (filesListIterator.hasNext()) {
+                allFilesOut.writeUTF(filesListIterator.next());
             }
             commit = true;
             data.clear();
@@ -161,7 +163,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             lock.writeLock().unlock();
         }
     }
-
 
     @Override
     public void compact() throws IOException {
