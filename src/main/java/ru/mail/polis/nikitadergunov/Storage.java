@@ -26,6 +26,7 @@ final class Storage implements Closeable {
     private static final int INDEX_HEADER_SIZE = Long.BYTES * 2;
     private static final int INDEX_RECORD_SIZE = Long.BYTES;
 
+    private static final int MAX_COUNT_SSTABLES = 10000;
     private static final String FILE_NAME = "data";
     private static final String FILE_EXT = ".dat";
     private static final String FILE_EXT_TMP = ".tmp";
@@ -39,7 +40,7 @@ final class Storage implements Closeable {
         List<MemorySegment> sstables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
 
-        for (int i = 0; i < 10000; ++i) {
+        for (int i = 0; i < MAX_COUNT_SSTABLES; ++i) {
             Path nextFile = basePath.resolve(FILE_NAME + i + FILE_EXT);
             try {
                 sstables.add(mapForRead(scope, nextFile));
