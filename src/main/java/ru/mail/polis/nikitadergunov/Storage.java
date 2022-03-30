@@ -39,9 +39,10 @@ final class Storage implements Closeable {
         List<MemorySegment> sstables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
 
+        int i = 0;
         // FIX_ME check existing files
-        for (int i = 0;; i++) {
-            Path nextFile = basePath.resolve(FILE_NAME + i + FILE_EXT);
+        while (true) {
+            Path nextFile = basePath.resolve(FILE_NAME + i++ + FILE_EXT);
             try {
                 sstables.add(mapForRead(scope, nextFile));
             } catch (NoSuchFileException e) {
@@ -142,7 +143,7 @@ final class Storage implements Closeable {
         }
         long recordsCount = MemoryAccess.getLongAtOffset(sstable, 8);
         if (key == null) {
-            // fixme
+            // fix_me
             return recordsCount;
         }
 

@@ -33,11 +33,12 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
+        MemorySegment copyFrom = from;
         if (from == null) {
-            from = VERY_FIRST_KEY;
+            copyFrom = VERY_FIRST_KEY;
         }
-        Iterator<Entry<MemorySegment>> memoryIterator = getMemoryIterator(from, to);
-        Iterator<Entry<MemorySegment>> iterator = storage.iterate(from, to);
+        Iterator<Entry<MemorySegment>> memoryIterator = getMemoryIterator(copyFrom, to);
+        Iterator<Entry<MemorySegment>> iterator = storage.iterate(copyFrom, to);
 
         Iterator<Entry<MemorySegment>> mergeIterator = MergeIterator.of(
                 List.of(
