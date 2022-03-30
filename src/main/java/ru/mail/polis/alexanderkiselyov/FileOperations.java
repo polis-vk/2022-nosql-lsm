@@ -33,8 +33,8 @@ public class FileOperations {
     private final List<Path> ssTables;
     private final List<Path> ssIndexes;
     private final Map<Path, Long> tablesSizes;
-    private final List<FileChannel> cTables = new ArrayList<>();
-    private final List<FileChannel> cIndexes = new ArrayList<>();
+    private final List<FileChannel> channelTables = new ArrayList<>();
+    private final List<FileChannel> channelIndexes = new ArrayList<>();
 
     public FileOperations(Config config) throws IOException {
         basePath = config.basePath();
@@ -75,8 +75,8 @@ public class FileOperations {
             throws IOException {
         long indexSize = tablesSizes.get(ssIndex);
         FileIterator fi = new FileIterator(ssTable, ssIndex, from, to, indexSize);
-        cTables.add(fi.getCTable());
-        cIndexes.add(fi.getCIndex());
+        channelTables.add(fi.getChannelTable());
+        channelIndexes.add(fi.getChannelIndex());
         return fi;
     }
 
@@ -100,14 +100,14 @@ public class FileOperations {
     }
 
     public void save(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
-        for (FileChannel cTable : cTables) {
-            if (cTable != null) {
-                cTable.close();
+        for (FileChannel channelTable : channelTables) {
+            if (channelTable != null) {
+                channelTable.close();
             }
         }
-        for (FileChannel cIndex : cIndexes) {
-            if (cIndex != null) {
-                cIndex.close();
+        for (FileChannel channelIndex : channelIndexes) {
+            if (channelIndex != null) {
+                channelIndex.close();
             }
         }
         saveData(pairs);
