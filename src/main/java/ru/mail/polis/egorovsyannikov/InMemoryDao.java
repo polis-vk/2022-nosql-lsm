@@ -19,17 +19,15 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private static final String FILE_NAME = "cache";
     private static final int NUMBER_OF_BYTES_IN_KEY_VALUE_PAIR_IN_FILE = 4;
     private final Deque<Path> listOfFiles = new ArrayDeque<>();
-    private Iterator<Path> reverseFilesIterator;
     private final Path directoryPath;
 
     public InMemoryDao(Config config) throws IOException {
         directoryPath = config.basePath();
         String[] arrayOfFiles = config.basePath().toFile().list();
         if(arrayOfFiles != null) {
-            for (String fileName : arrayOfFiles) {
-                listOfFiles.add(config.basePath().resolve(fileName));
+            for (int i = arrayOfFiles.length - 1; i >= 0; i--) {
+                listOfFiles.add(config.basePath().resolve(arrayOfFiles[i]));
             }
-            reverseFilesIterator = listOfFiles.descendingIterator();
         }
     }
 
@@ -41,9 +39,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return resultFromMap;
         }
 
-        while(reverseFilesIterator.hasNext()) {
-            BaseEntry<String> tmp = new FilePeekIterator(reverseFilesIterator.next(), null, null).findValueByKey(key);
-            if(tmp != null) {
+        for (Path file : listOfFiles) {
+            BaseEntry<String> tmp = new FilePeekIterator(file, null, null).findValueByKey(key);
+            if (tmp != null) {
                 return tmp;
             }
         }
@@ -54,7 +52,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) {
         FilePeekIterator stringConcurrentSkipListMapIterator;
-        List<FilePeekIterator> listOfIterators = new ArrayList<>();
+        Deque<FilePeekIterator> listOfIterators = new ArrayDeque<>();
         if (from == null && to == null) {
             stringConcurrentSkipListMapIterator = new FilePeekIterator(getIterator(stringConcurrentSkipListMap));
         } else if (from == null) {
@@ -70,13 +68,15 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if(stringConcurrentSkipListMapIterator.hasNext()) {
             listOfIterators.add(stringConcurrentSkipListMapIterator);
         }
-        while (reverseFilesIterator.hasNext()) {
-            FilePeekIterator tmp = new FilePeekIterator(reverseFilesIterator.next(), from, to);
+
+        for (Path file : listOfFiles) {
+            FilePeekIterator tmp = new FilePeekIterator(file, from, to);
             if(tmp.hasNext()) {
                 listOfIterators.add(tmp);
             }
         }
-        return new MergeIterator(listOfIterators);
+
+        return (listOfIterators.isEmpty()) ? Collections.emptyIterator() : new MergeIterator(listOfIterators);
     }
 
     @Override

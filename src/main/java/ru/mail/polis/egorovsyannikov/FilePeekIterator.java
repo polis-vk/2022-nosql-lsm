@@ -40,13 +40,15 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
                 offsets.add(reader.readInt());
             }
             if(from != null && to != null) {
-                endIndex = fileBinarySearch(reader, numberOfEntries - 1, to);
-                startIndex = fileBinarySearch(reader, numberOfEntries - 1, from);
+                endIndex = fileBinarySearch(numberOfEntries - 1, to);
+                startIndex = fileBinarySearch(numberOfEntries - 1, from);
             } else if(to != null) {
-                endIndex = fileBinarySearch(reader, numberOfEntries - 1, to);
+                endIndex = fileBinarySearch(numberOfEntries - 1, to);
             } else if(from != null) {
-                startIndex = fileBinarySearch(reader, numberOfEntries - 1, from);
+                startIndex = fileBinarySearch(numberOfEntries - 1, from);
             }
+
+            currentFilePosition = startIndex;
 
             if(startIndex < 0 || endIndex < 0) {
                 currentFilePosition = -1;
@@ -83,13 +85,12 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
         return peek;
     }
 
-    private long fileBinarySearch(RandomAccessFile reader, int high, String targetKey)
-            throws IOException {
+    private long fileBinarySearch(int high, String targetKey) {
         int low = 0;
-        reader.seek(startIndex);
+        currentFilePosition = startIndex;
         while (low <= high) {
             int mid = low + ((high - low) / 2);
-            reader.seek(offsets.get(mid));
+            currentFilePosition = offsets.get(mid);
             if (peek().key().equals(targetKey)) {
                 return currentFilePosition;
             } else if (peek().key().toLowerCase(Locale.ROOT).compareTo(targetKey.toLowerCase(Locale.ROOT)) > 0) {
@@ -97,6 +98,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
             } else if (peek().key().toLowerCase(Locale.ROOT).compareTo(targetKey.toLowerCase(Locale.ROOT)) < 0) {
                 low = mid + 1;
             }
+            next();
         }
         return -1;
     }
@@ -114,16 +116,11 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
 
     public BaseEntry<String> findValueByKey(String key) {
         if(delegate == null) {
-            try (RandomAccessFile reader = new RandomAccessFile(path.toString(), "r")) {
-                BaseEntry<String> result = null;
-                if (fileBinarySearch(reader, numberOfEntries - 1, key) == 0) {
-                    result = next();
-                }
-                reader.seek(startIndex);
-                return result;
-            } catch (IOException e) {
-                return null;
+            BaseEntry<String> result = null;
+            if (fileBinarySearch(numberOfEntries - 1, key) > -1) {
+                result = next();
             }
+            return result;
         } else {
             while (delegate.hasNext()) {
                 BaseEntry<String> result = delegate.next();

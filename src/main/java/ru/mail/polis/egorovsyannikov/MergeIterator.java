@@ -2,39 +2,41 @@ package ru.mail.polis.egorovsyannikov;
 
 import ru.mail.polis.BaseEntry;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Iterator;
-import java.util.List;
 
 public class MergeIterator implements Iterator<BaseEntry<String>> {
 
-    private final List<FilePeekIterator> listOfIterators;
-    private BaseEntry<String> prev;
+    private Deque<FilePeekIterator> dequeOfIterators;
+    private FilePeekIterator currentIterator;
 
-    public MergeIterator(List<FilePeekIterator> listOfIterators) {
-        this.listOfIterators = listOfIterators;
-        this.prev = listOfIterators.get(0).peek();
+    public MergeIterator(Deque<FilePeekIterator> dequeOfIterators) {
+        this.dequeOfIterators = dequeOfIterators;
+        currentIterator = dequeOfIterators.poll();
     }
 
     @Override
     public boolean hasNext() {
         boolean result = false;
-        for(FilePeekIterator filePeekIterator: listOfIterators) {
+        for(FilePeekIterator filePeekIterator: dequeOfIterators) {
             result |= filePeekIterator.hasNext();
         }
-        return result;
+        return result || currentIterator.hasNext();
     }
 
     @Override
     public BaseEntry<String> next() {
-        for(FilePeekIterator filePeekIterator: listOfIterators) {
-            while (filePeekIterator.hasNext()) {
-                if (prev.key().compareTo(filePeekIterator.peek().key()) < 0) {
-                    prev = filePeekIterator.next();
-                    break;
-                }
-                filePeekIterator.next();
+        Deque<FilePeekIterator> dequeOfIteratorsSecond = new ArrayDeque<>();
+        while (!dequeOfIterators.isEmpty()) {
+            FilePeekIterator tempIterator = dequeOfIterators.poll();
+            if (currentIterator.peek().key().compareTo(tempIterator.peek().key()) < 0) {
+                dequeOfIteratorsSecond.addFirst(currentIterator);
+                currentIterator = dequeOfIterators.poll();
             }
+            dequeOfIteratorsSecond.addLast(tempIterator);
         }
-        return prev;
+        dequeOfIterators = dequeOfIteratorsSecond;
+        return currentIterator.next();
     }
 }
