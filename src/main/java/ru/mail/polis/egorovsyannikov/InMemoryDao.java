@@ -4,12 +4,11 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Iterator;
+import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -17,11 +16,21 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     ConcurrentNavigableMap<String, BaseEntry<String>> stringConcurrentSkipListMap =
             new ConcurrentSkipListMap<>(String::compareTo);
 
-    private final Path path;
     private static final String FILE_NAME = "cache";
+    private static final int NUMBER_OF_BYTES_IN_KEY_VALUE_PAIR_IN_FILE = 4;
+    private final Deque<Path> listOfFiles = new ArrayDeque<>();
+    private Iterator<Path> reverseFilesIterator;
+    private final Path directoryPath;
 
     public InMemoryDao(Config config) throws IOException {
-        path = config.basePath().resolve(FILE_NAME);
+        directoryPath = config.basePath();
+        String[] arrayOfFiles = config.basePath().toFile().list();
+        if(arrayOfFiles != null) {
+            for (String fileName : arrayOfFiles) {
+                listOfFiles.add(config.basePath().resolve(fileName));
+            }
+            reverseFilesIterator = listOfFiles.descendingIterator();
+        }
     }
 
     @Override
@@ -32,34 +41,42 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return resultFromMap;
         }
 
-        if (!Files.exists(path)) {
-            return null;
+        while(reverseFilesIterator.hasNext()) {
+            BaseEntry<String> tmp = new FilePeekIterator(reverseFilesIterator.next(), null, null).findValueByKey(key);
+            if(tmp != null) {
+                return tmp;
+            }
         }
 
-        try (DataInputStream reader = new DataInputStream(Files.newInputStream(path))) {
-            for (; ; ) {
-                BaseEntry<String> entry = new BaseEntry<>(reader.readUTF(), reader.readUTF());
-                if (entry.key().equals(key)) {
-                    return entry;
-                }
-            }
-        } catch (IOException e) {
-            return null;
-        }
+        return null;
     }
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) {
+        FilePeekIterator stringConcurrentSkipListMapIterator;
+        List<FilePeekIterator> listOfIterators = new ArrayList<>();
         if (from == null && to == null) {
-            return getIterator(stringConcurrentSkipListMap);
+            stringConcurrentSkipListMapIterator = new FilePeekIterator(getIterator(stringConcurrentSkipListMap));
+        } else if (from == null) {
+            stringConcurrentSkipListMapIterator
+                    = new FilePeekIterator(getIterator(stringConcurrentSkipListMap.headMap(to)));
+        } else if (to == null) {
+            stringConcurrentSkipListMapIterator
+                    = new FilePeekIterator(getIterator(stringConcurrentSkipListMap.tailMap(from, true)));
+        } else {
+            stringConcurrentSkipListMapIterator
+                    = new FilePeekIterator(getIterator(stringConcurrentSkipListMap.subMap(from, to)));
         }
-        if (from == null) {
-            return getIterator(stringConcurrentSkipListMap.headMap(to));
+        if(stringConcurrentSkipListMapIterator.hasNext()) {
+            listOfIterators.add(stringConcurrentSkipListMapIterator);
         }
-        if (to == null) {
-            return getIterator(stringConcurrentSkipListMap.tailMap(from, true));
+        while (reverseFilesIterator.hasNext()) {
+            FilePeekIterator tmp = new FilePeekIterator(reverseFilesIterator.next(), from, to);
+            if(tmp.hasNext()) {
+                listOfIterators.add(tmp);
+            }
         }
-        return getIterator(stringConcurrentSkipListMap.subMap(from, to));
+        return new MergeIterator(listOfIterators);
     }
 
     @Override
@@ -73,14 +90,22 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void flush() throws IOException {
-        if (!Files.exists(path)) {
-            Files.createFile(path);
-        }
-
-        try (DataOutputStream writer = new DataOutputStream(Files.newOutputStream(path))) {
+        try (DataOutputStream writer
+                     = new DataOutputStream(Files.newOutputStream(directoryPath.resolve(listOfFiles.size() + FILE_NAME)))) {
+            writer.writeInt(stringConcurrentSkipListMap.size());
+            ArrayList<Integer> offsets = new ArrayList<>();
+            int keyValueSize = writer.size();
             for (BaseEntry<String> entry : stringConcurrentSkipListMap.values()) {
+                keyValueSize += entry.key().length() + entry.value().length() + NUMBER_OF_BYTES_IN_KEY_VALUE_PAIR_IN_FILE;
+            }
+            writer.writeInt(keyValueSize + Integer.BYTES);
+            for (BaseEntry<String> entry : stringConcurrentSkipListMap.values()) {
+                offsets.add(writer.size());
                 writer.writeUTF(entry.key());
                 writer.writeUTF(entry.value());
+            }
+            for (int offset : offsets) {
+                writer.writeInt(offset);
             }
         }
     }
