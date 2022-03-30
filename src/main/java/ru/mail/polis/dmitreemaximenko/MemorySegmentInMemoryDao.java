@@ -3,7 +3,6 @@ package ru.mail.polis.dmitreemaximenko;
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
@@ -109,53 +108,13 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) throws IOException {
-        lock.readLock().lock();
-        try {
-            Entry<MemorySegment> entry = data.get(key);
-            if (entry != null) {
-                return entry.value() == null ? null : entry;
-            }
-
-            return checkLogsForKey(key);
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    private Entry<MemorySegment> checkLogsForKey(MemorySegment key) {
-        if (logs == null) {
+        Iterator<Entry<MemorySegment>> iterator = get(key, null);
+        if (!iterator.hasNext()) {
             return null;
         }
-        for (int i = logs.size() - 1; i >= 0; i--) {
-            Entry entry = checkLogForKey(logs.get(i), key);
-            if (entry != null) {
-                return entry.value() == null ? null : entry;
-            }
-        }
-
-        return null;
-    }
-
-    private Entry<MemorySegment> checkLogForKey(MemorySegment log, MemorySegment key) {
-        long offset = 0;
-        while (offset < log.byteSize()) {
-            long keySize = MemoryAccess.getLongAtOffset(log, offset);
-            offset += Long.BYTES;
-            long valueSize = MemoryAccess.getLongAtOffset(log, offset);
-            offset += Long.BYTES;
-
-            if (keySize != key.byteSize()) {
-                offset += keySize;
-                offset = valueSize == NULL_VALUE_SIZE ? offset : offset + valueSize;
-                continue;
-            }
-
-            MemorySegment currentKey = log.asSlice(offset, keySize);
-            if (key.mismatch(currentKey) == -1) {
-                return valueSize == NULL_VALUE_SIZE ? new BaseEntry<>(key, null)
-                        : new BaseEntry<>(key, log.asSlice(offset + keySize, valueSize));
-            }
-            offset += keySize + valueSize;
+        Entry<MemorySegment> next = iterator.next();
+        if (comparator.compare(next.key(), key) == 0) {
+            return next;
         }
         return null;
     }
@@ -170,6 +129,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
         }
     }
 
+    // values_amount index1 index2 ... indexN k1_size k1 v1_size v1 ....
     @Override
     public void close() throws IOException {
         if (!scope.isAlive()) {
@@ -178,16 +138,22 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
 
         scope.close();
         lock.writeLock().lock();
+
         try (ResourceScope writeScope = ResourceScope.newConfinedScope()) {
-            long size = 0;
+            // values amount
+            long size = Long.BYTES;
+
             for (Entry<MemorySegment> value : data.values()) {
                 if (value.value() == null) {
                     size += value.key().byteSize();
                 } else {
                     size += value.value().byteSize() + value.key().byteSize();
                 }
+
+                // index, key size, value size
+                size += 3L * Long.BYTES;
             }
-            size += 2L * data.size() * Long.BYTES;
+
             Path newLogFile = getLogName();
             Files.createFile(newLogFile);
             MemorySegment log =
@@ -197,23 +163,30 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
                             size,
                             FileChannel.MapMode.READ_WRITE,
                             writeScope);
-            long offset = 0;
+
+            MemoryAccess.setLongAtOffset(log, 0, data.size());
+            long indexOffset = Long.BYTES;
+            long dataOffset = Long.BYTES + data.size() * Long.BYTES;
+
             for (Entry<MemorySegment> value : data.values()) {
-                MemoryAccess.setLongAtOffset(log, offset, value.key().byteSize());
-                offset += Long.BYTES;
+                MemoryAccess.setLongAtOffset(log, indexOffset, dataOffset);
+                indexOffset += Long.BYTES;
+
+                MemoryAccess.setLongAtOffset(log, dataOffset, value.key().byteSize());
+                dataOffset += Long.BYTES;
                 if (value.value() == null) {
-                    MemoryAccess.setLongAtOffset(log, offset, NULL_VALUE_SIZE);
+                    MemoryAccess.setLongAtOffset(log, dataOffset, NULL_VALUE_SIZE);
                 } else {
-                    MemoryAccess.setLongAtOffset(log, offset, value.value().byteSize());
+                    MemoryAccess.setLongAtOffset(log, dataOffset, value.value().byteSize());
                 }
 
-                offset += Long.BYTES;
+                dataOffset += Long.BYTES;
 
-                log.asSlice(offset).copyFrom(value.key());
-                offset += value.key().byteSize();
+                log.asSlice(dataOffset).copyFrom(value.key());
+                dataOffset += value.key().byteSize();
                 if (value.value() != null) {
-                    log.asSlice(offset).copyFrom(value.value());
-                    offset += value.value().byteSize();
+                    log.asSlice(dataOffset).copyFrom(value.value());
+                    dataOffset += value.value().byteSize();
                 }
             }
         } finally {

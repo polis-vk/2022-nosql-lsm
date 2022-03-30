@@ -113,38 +113,14 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
         private long offset;
         private final MemorySegment log;
         private final MemorySegment last;
-        private BaseEntry<MemorySegment> next;
+        private Entry<MemorySegment> next;
+        private final long valuesAmount;
 
         private FileEntryIterator(MemorySegment from, MemorySegment last, MemorySegment log) {
-            offset = 0;
+            this.valuesAmount = MemoryAccess.getLongAtOffset(log, 0);
+            offset = Long.BYTES + valuesAmount * Long.BYTES;
             this.log = log;
-            while (offset < log.byteSize()) {
-                long keySize = MemoryAccess.getLongAtOffset(log, offset);
-                offset += Long.BYTES;
-                long valueSize = MemoryAccess.getLongAtOffset(log, offset);
-                offset += Long.BYTES;
-
-                MemorySegment currentKey = log.asSlice(offset, keySize);
-                if (comparator.compare(from, currentKey) > 0) {
-                    if (valueSize == NULL_VALUE_SIZE) {
-                        valueSize = 0;
-                    }
-                    offset += keySize + valueSize;
-                } else {
-                    if (valueSize == NULL_VALUE_SIZE) {
-                        next = new BaseEntry<>(currentKey, null);
-                    } else {
-                        next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
-                    }
-                    if (valueSize == NULL_VALUE_SIZE) {
-                        valueSize = 0;
-                    }
-                    offset += keySize + valueSize;
-                    break;
-                }
-
-            }
-
+            this.next = nextNotLessThan(from);
             this.last = last == null ? null : MemorySegment.ofArray(last.toByteArray());
         }
 
@@ -156,24 +132,37 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
         @Override
         public Entry<MemorySegment> next() {
             Entry<MemorySegment> result = next;
-            next = null;
+            next = nextNotLessThan(null);
 
-            if (offset < log.byteSize()) {
+            return result;
+        }
+
+        private Entry<MemorySegment> nextNotLessThan(MemorySegment other) {
+            Entry<MemorySegment> result = null;
+            while (offset < log.byteSize()) {
                 long keySize = MemoryAccess.getLongAtOffset(log, offset);
                 offset += Long.BYTES;
                 long valueSize = MemoryAccess.getLongAtOffset(log, offset);
                 offset += Long.BYTES;
 
                 MemorySegment currentKey = log.asSlice(offset, keySize);
-                if (valueSize == NULL_VALUE_SIZE) {
-                    next = new BaseEntry<>(currentKey, null);
+                if (other != null && comparator.compare(other, currentKey) > 0) {
+                    if (valueSize == NULL_VALUE_SIZE) {
+                        valueSize = 0;
+                    }
+                    offset += keySize + valueSize;
                 } else {
-                    next = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
+                    if (valueSize == NULL_VALUE_SIZE) {
+                        result = new BaseEntry<>(currentKey, null);
+                    } else {
+                        result = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
+                    }
+                    if (valueSize == NULL_VALUE_SIZE) {
+                        valueSize = 0;
+                    }
+                    offset += keySize + valueSize;
+                    break;
                 }
-                if (valueSize == NULL_VALUE_SIZE) {
-                    valueSize = 0;
-                }
-                offset += keySize + valueSize;
             }
             return result;
         }
