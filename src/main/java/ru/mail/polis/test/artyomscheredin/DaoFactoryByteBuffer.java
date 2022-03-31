@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 2, week = 2)
+@DaoFactory(stage = 3, week = 2)
 public class DaoFactoryByteBuffer implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
@@ -21,10 +21,10 @@ public class DaoFactoryByteBuffer implements DaoFactory.Factory<ByteBuffer, Base
 
     @Override
     public String toString(ByteBuffer data) {
-        if (data == null) {
-            return null;
-        }
-        return new String(data.array(), StandardCharsets.UTF_8);
+        ByteBuffer temp = data.asReadOnlyBuffer();
+        byte[] bytes = new byte[temp.remaining()];
+        temp.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     @Override
