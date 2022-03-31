@@ -1,9 +1,9 @@
-package ru.mail.polis.alinashestakova;
+package ru.mail.polis.nikitadergunov;
 
 import jdk.incubator.foreign.MemorySegment;
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
+import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -14,11 +14,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
+public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
 
-    private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory =
+    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> memory =
             new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
 
     private final Storage storage;
@@ -26,22 +26,21 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Config config;
 
-    public InMemoryDao(Config config) throws IOException {
+    public MemorySegmentDao(Config config) throws IOException {
         this.config = config;
         this.storage = Storage.load(config);
     }
 
     @Override
-    public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
-        MemorySegment keyFrom = from;
-        if (keyFrom == null) {
-            keyFrom = VERY_FIRST_KEY;
+    public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
+        MemorySegment copyFrom = from;
+        if (from == null) {
+            copyFrom = VERY_FIRST_KEY;
         }
+        Iterator<Entry<MemorySegment>> memoryIterator = getMemoryIterator(copyFrom, to);
+        Iterator<Entry<MemorySegment>> iterator = storage.iterate(copyFrom, to);
 
-        Iterator<BaseEntry<MemorySegment>> memoryIterator = getMemoryIterator(keyFrom, to);
-        Iterator<BaseEntry<MemorySegment>> iterator = storage.iterate(keyFrom, to);
-
-        Iterator<BaseEntry<MemorySegment>> mergeIterator = MergeIterator.of(
+        Iterator<Entry<MemorySegment>> mergeIterator = MergeIterator.of(
                 List.of(
                         new IndexedPeekIterator<>(0, memoryIterator),
                         new IndexedPeekIterator<>(1, iterator)
@@ -49,7 +48,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
                 EntryKeyComparator.INSTANCE
         );
 
-        IndexedPeekIterator<BaseEntry<MemorySegment>> delegate = new IndexedPeekIterator<>(0, mergeIterator);
+        IndexedPeekIterator<Entry<MemorySegment>> delegate = new IndexedPeekIterator<>(0, mergeIterator);
 
         return new Iterator<>() {
             @Override
@@ -61,7 +60,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             }
 
             @Override
-            public BaseEntry<MemorySegment> next() {
+            public Entry<MemorySegment> next() {
                 if (!hasNext()) {
                     throw new NoSuchElementException("...");
                 }
@@ -70,7 +69,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         };
     }
 
-    private Iterator<BaseEntry<MemorySegment>> getMemoryIterator(MemorySegment from, MemorySegment to) {
+    private Iterator<Entry<MemorySegment>> getMemoryIterator(MemorySegment from, MemorySegment to) {
         lock.readLock().lock();
         try {
 
@@ -85,12 +84,12 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public BaseEntry<MemorySegment> get(MemorySegment key) {
-        Iterator<BaseEntry<MemorySegment>> iterator = get(key, null);
+    public Entry<MemorySegment> get(MemorySegment key) {
+        Iterator<Entry<MemorySegment>> iterator = get(key, null);
         if (!iterator.hasNext()) {
             return null;
         }
-        BaseEntry<MemorySegment> next = iterator.next();
+        Entry<MemorySegment> next = iterator.next();
         if (MemorySegmentComparator.INSTANCE.compare(key, next.key()) == 0) {
             return next;
         }
@@ -98,7 +97,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public void upsert(BaseEntry<MemorySegment> entry) {
+    public void upsert(Entry<MemorySegment> entry) {
         lock.readLock().lock();
         try {
             memory.put(entry.key(), entry);
