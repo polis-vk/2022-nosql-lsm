@@ -16,7 +16,7 @@ import java.util.TreeMap;
 public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     private static final long NULL_VALUE_SIZE = -1;
     private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
-    private final SortedMap<MemorySegment, Source> sources;
+    private final TreeMap<MemorySegment, Source> sources;
 
     private static class Source {
         Iterator<Entry<MemorySegment>> iterator;
@@ -95,7 +95,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             return null;
         }
 
-        Source minSource = sources.get(sources.firstKey());
+        Source minSource = sources.firstEntry().getValue();
         sources.remove(sources.firstKey());
         return minSource;
     }
@@ -105,7 +105,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             return null;
         }
 
-        return sources.get(sources.firstKey());
+        return sources.firstEntry().getValue();
     }
 
     private void addSource(Source changedSource) {
