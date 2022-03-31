@@ -146,7 +146,7 @@ public class MapsDeserializeStream implements Closeable {
         int size = indexesBuffer.capacity() / Integer.BYTES;
         int first = 0;
         int last = size;
-        int position = (first + last) / 2;
+        int position = first + (last - first) / 2;
 
         ByteBuffer currKey = readNotNullByteBuffer(getInternalIndexByOrder(position, indexesBuffer), mapBuffer);
 
@@ -158,7 +158,7 @@ public class MapsDeserializeStream implements Closeable {
                 first = position + 1;
             }
 
-            position = (first + last) / 2;
+            position = first + (last - first) / 2;
             if (position == size) {
                 break;
             }
