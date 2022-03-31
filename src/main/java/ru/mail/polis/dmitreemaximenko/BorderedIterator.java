@@ -58,6 +58,15 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
 
     @Override
     public Entry<MemorySegment> next() {
+        if (sources.size() == 1) {
+            Entry<MemorySegment> result = sources.firstEntry().getValue().element;
+            if (!moveSource(sources.firstEntry().getValue())) {
+                sources.remove(sources.firstEntry().getKey());
+            }
+            removeNextNullValues();
+            return result;
+        }
+
         Source source = popIterator();
         if (source == null) {
             throw new NoSuchElementException();
