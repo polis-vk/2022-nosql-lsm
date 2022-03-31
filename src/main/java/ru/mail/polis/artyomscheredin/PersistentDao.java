@@ -17,47 +17,25 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private static final String DATA_FILE_NAME = "data";
-    private static final String INDEXES_FILE_NAME = "indexes";
-    private static final String META_INFO_FILE_NAME = "meta";
-    private static final String EXTENSION = ".txt";
-
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> inMemoryData =
             new ConcurrentSkipListMap<>(ByteBuffer::compareTo);
-    private final List<Utils.MappedBuffersPair> mappedDiskData;
-    private final Config config;
+
+    private final Storage storage;
 
     public PersistentDao(Config config) throws IOException {
         if (config == null) {
             throw new IllegalArgumentException();
         }
-        this.config = config;
-        this.mappedDiskData = mapDiskData();
-    }
+        this.storage = new Storage(config);
 
-    private List<Utils.MappedBuffersPair> mapDiskData() throws IOException {
-        int index = readPrevIndex();
-        List<Utils.MappedBuffersPair> list = new LinkedList<>();
-        for (int i = 1; i <= index; i++) {
-            try (FileChannel dataChannel = FileChannel
-                    .open(config.basePath().resolve(DATA_FILE_NAME + i + EXTENSION));
-                 FileChannel indexChannel = FileChannel
-                         .open(config.basePath().resolve(INDEXES_FILE_NAME + i + EXTENSION))) {
-                ByteBuffer indexBuffer = indexChannel
-                        .map(FileChannel.MapMode.READ_ONLY, 0, indexChannel.size());
-                ByteBuffer dataBuffer = dataChannel
-                        .map(FileChannel.MapMode.READ_ONLY, 0, dataChannel.size());
-                list.add(new Utils.MappedBuffersPair(dataBuffer, indexBuffer));
-            }
-        }
-        return list;
     }
 
     @Override
@@ -66,6 +44,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         try {
             List<PeekIterator> iteratorsList = new ArrayList<>();
             int priority = 0;
+            iteratorsList.addAll(storage.getIterators);
             for (Utils.MappedBuffersPair pair : mappedDiskData) {
                 iteratorsList.add(new PeekIterator(new FileIterator(pair.getDataBuffer(),
                         pair.getIndexBuffer(), from, to), priority++));
@@ -163,8 +142,12 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
             ByteBuffer writeDataBuffer = dataChannel.map(FileChannel.MapMode.READ_WRITE, 0, size);
             ByteBuffer writeIndexBuffer = indexChannel.map(FileChannel.MapMode.READ_WRITE, 0,
-                    (long) inMemoryData.size() * Integer.BYTES);
+                    (long) (HEADER_SIZE + inMemoryData.size()) * Integer.BYTES);
 
+
+            //index file: entities_number=n, offset_1...offset_n
+            //data file: key_size, key, value_size, value
+            writeIndexBuffer.putInt(inMemoryData.size());
             for (Entry<ByteBuffer> el : inMemoryData.values()) {
                 writeIndexBuffer.putInt(writeDataBuffer.position());
 
@@ -182,6 +165,64 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         try (RandomAccessFile file = new RandomAccessFile(config.basePath()
                 .resolve(META_INFO_FILE_NAME + EXTENSION).toFile(), "rw")) {
             file.writeInt(index);
+        }
+    }
+
+    @Override
+    public void compact() {
+        writeTemp();
+        deleteOld();
+        renameTemp();
+    }
+
+
+    private static class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
+        private final ByteBuffer dataBuffer;
+        private final ByteBuffer indexBuffer;
+        private final int upperBound;
+        private int cursor;
+
+        public FileIterator(ByteBuffer dataBuffer, ByteBuffer indexBuffer, ByteBuffer from, ByteBuffer to) {
+            this.dataBuffer = dataBuffer;
+            this.indexBuffer = indexBuffer;
+            cursor = (from == null) ? HEADER_SIZE : findOffset(indexBuffer, dataBuffer, from);
+            upperBound = (to == null) ? indexBuffer.limit() : findOffset(indexBuffer, dataBuffer, to);
+        }
+
+        private static int findOffset(ByteBuffer indexBuffer, ByteBuffer dataBuffer, ByteBuffer key) {
+            int low = HEADER_SIZE;
+            int mid = 0;
+            int high = indexBuffer.remaining()/ Integer.BYTES - 1;
+            while (low <= high) {
+                mid = low + ((high - low) / 2);
+                int offset = indexBuffer.getInt(mid * Integer.BYTES);
+                int keySize = dataBuffer.getInt(offset);
+
+                ByteBuffer curKey = dataBuffer.slice(offset + Integer.BYTES, keySize);
+                if (curKey.compareTo(key) < 0) {
+                    low = 1 + mid;
+                } else if (curKey.compareTo(key) > 0) {
+                    high = mid - 1;
+                } else if (curKey.compareTo(key) == 0) {
+                    return mid * Integer.BYTES;
+                }
+            }
+            return low * Integer.BYTES;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return cursor < upperBound;
+        }
+
+        @Override
+        public BaseEntry<ByteBuffer> next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            BaseEntry<ByteBuffer> result = Utils.readEntry(dataBuffer, indexBuffer.getInt(cursor));
+            cursor += Integer.BYTES;
+            return result;
         }
     }
 }
