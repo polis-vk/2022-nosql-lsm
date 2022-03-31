@@ -4,10 +4,11 @@ import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import java.util.Comparator;
 
-public class NaturalOrderComparator implements Comparator<MemorySegment> {
+public final class NaturalOrderComparator implements Comparator<MemorySegment> {
     private static NaturalOrderComparator INSTANCE = new NaturalOrderComparator();
 
-    private NaturalOrderComparator() {}
+    private NaturalOrderComparator() {
+    }
 
     public static Comparator<MemorySegment> getInstance() {
         return INSTANCE;

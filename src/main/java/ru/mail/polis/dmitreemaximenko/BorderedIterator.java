@@ -11,7 +11,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.SortedMap;
-import java.util.TreeMap;;
+import java.util.TreeMap;
 
 public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     private static final long NULL_VALUE_SIZE = -1;
@@ -105,8 +105,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             return null;
         }
 
-        Source minSource = sources.get(sources.firstKey());
-        return minSource;
+        return sources.get(sources.firstKey());
     }
 
     private void addSource(Source changedSource) {
@@ -133,7 +132,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
         private long offset;
         private final MemorySegment log;
         private final MemorySegment last;
-        private Entry<MemorySegment> next = null;
+        private Entry<MemorySegment> next;
         private final long valuesAmount;
 
         private class EntryContainer {
@@ -171,13 +170,9 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
         public Entry<MemorySegment> next() {
             Entry<MemorySegment> result = next;
             EntryContainer nextEntry = getNextEntry();
-            if (nextEntry != null) {
-                offset += nextEntry.entrySize;
-                next = nextEntry.entry;
-            } else {
-                next = null;
-            }
-
+            offset += nextEntry.entrySize;
+            next = nextEntry.entry;
+            
             return result;
         }
 
