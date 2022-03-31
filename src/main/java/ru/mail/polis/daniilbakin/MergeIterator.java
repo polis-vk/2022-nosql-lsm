@@ -34,26 +34,30 @@ public class MergeIterator<E extends Comparable<E>> implements Iterator<BaseEntr
     }
 
     private BaseEntry<E> getNext() {
-        if (minHeap.peek() == null) {
-            return null;
-        }
-        if (!minHeap.peek().hasNext()) {
-            minHeap.poll();
-            return getNext();
-        }
+        PeekIterator<BaseEntry<E>> iterator;
+        BaseEntry<E> current;
+        while (true) {
+            if (minHeap.peek() == null) {
+                return null;
+            }
+            if (!minHeap.peek().hasNext()) {
+                minHeap.poll();
+                continue;
+            }
 
-        PeekIterator<BaseEntry<E>> iterator = minHeap.poll();
-        BaseEntry<E> current = iterator.next();
-        minHeap.add(iterator);
+            iterator = minHeap.poll();
+            current = iterator.next();
+            minHeap.add(iterator);
 
-        if (checkEntryDeleted(current)) {
-            deleted = current;
-            return getNext();
+            if (checkEntryDeleted(current)) {
+                deleted = current;
+                continue;
+            }
+            if (checkNotCorrectEntry(current)) {
+                continue;
+            }
+            return current;
         }
-        if (checkNotCorrectEntry(current)) {
-            return getNext();
-        }
-        return current;
     }
 
     private boolean checkEntryDeleted(BaseEntry<E> current) {

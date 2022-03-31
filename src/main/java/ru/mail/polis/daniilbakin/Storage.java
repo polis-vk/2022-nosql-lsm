@@ -47,6 +47,7 @@ public class Storage implements Closeable {
     }
 
     public void flush(Map<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
+        if (data.isEmpty()) return;
         MapSerializeStream writer = new MapSerializeStream(config, numOfFiles);
         writer.serializeMap(data);
         writer.close();

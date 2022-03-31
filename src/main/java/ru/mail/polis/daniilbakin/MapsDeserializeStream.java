@@ -113,9 +113,6 @@ public class MapsDeserializeStream implements Closeable {
     private PeekIterator<BaseEntry<ByteBuffer>> getIterator(ByteBuffer from, ByteBuffer to, int index) {
         MappedByteBuffer indexesBuffer = indexesData.get(index);
         MappedByteBuffer mapBuffer = mapData.get(index);
-        if (indexesBuffer.capacity() < Integer.BYTES) {
-            return new PeekIterator<>(Collections.emptyIterator(), index);
-        }
         int startIndex = (from == null) ? 0 : binarySearchIndex(from, indexesBuffer, mapBuffer, true);
         int endIndex = (to == null) ? indexesBuffer.capacity() / Integer.BYTES
                 : binarySearchIndex(to, indexesBuffer, mapBuffer, true);
@@ -138,10 +135,6 @@ public class MapsDeserializeStream implements Closeable {
 
     private BaseEntry<ByteBuffer> readByKey(ByteBuffer key, int index) {
         MappedByteBuffer indexesBuffer = indexesData.get(index);
-        if (indexesBuffer.capacity() < Integer.BYTES) {
-            return null;
-        }
-
         MappedByteBuffer mapBuffer = mapData.get(index);
         int keyIndex = binarySearchIndex(key, indexesBuffer, mapBuffer, false);
         if (keyIndex == -1) {
@@ -207,18 +200,11 @@ public class MapsDeserializeStream implements Closeable {
      * Position in bytes.
      */
     private ByteBuffer readByteBuffer(int position, MappedByteBuffer mapBuffer) {
-        int length = readInt(position, mapBuffer);
+        int length = mapBuffer.getInt(position);
         if (length == -1) {
             return null;
         }
         return mapBuffer.slice(position + Integer.BYTES, length);
-    }
-
-    /**
-     * Position in bytes.
-     */
-    private Integer readInt(int position, MappedByteBuffer mapBuffer) {
-        return mapBuffer.getInt(position);
     }
 
     private int getInternalIndexByOrder(int order, MappedByteBuffer indexesBuffer) {
