@@ -129,7 +129,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
         }
     }
 
-    // values_amount index1 index2 ... indexN k1_size k1 v1_size v1 ....
+    // values_amount index1 index2 ... indexN k1_size v1_size k1 v1 ....
     @Override
     public void close() throws IOException {
         if (!scope.isAlive()) {

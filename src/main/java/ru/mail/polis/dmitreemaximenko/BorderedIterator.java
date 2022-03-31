@@ -5,6 +5,8 @@ import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -117,10 +119,26 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
         private final long valuesAmount;
 
         private FileEntryIterator(MemorySegment from, MemorySegment last, MemorySegment log) {
-            this.valuesAmount = MemoryAccess.getLongAtOffset(log, 0);
-            offset = Long.BYTES + valuesAmount * Long.BYTES;
             this.log = log;
-            this.next = nextNotLessThan(from);
+            if (log.byteSize() > 0) {
+                valuesAmount = MemoryAccess.getLongAtOffset(log, 0);
+                if (valuesAmount > 0) {
+                    offset = getOffsetOfEntryNotLessThan(from);
+                    if (offset < 0) {
+                        offset = log.byteSize();
+                        next = null;
+                    } else {
+                        next = getEntryByOffset();
+                    }
+                } else {
+                    next = null;
+                    offset = log.byteSize();
+                }
+            } else {
+                next = null;
+                valuesAmount = 0;
+                offset = log.byteSize();
+            }
             this.last = last == null ? null : MemorySegment.ofArray(last.toByteArray());
         }
 
@@ -165,6 +183,61 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
                 }
             }
             return result;
+        }
+
+        private long getOffsetOfEntryNotLessThan(MemorySegment other) {
+            long low = 0;
+            long high = valuesAmount - 1;
+
+            while (low <= high) {
+                long mid = (low + high) >>> 1;
+                MemorySegment midVal = getKeyByIndex(mid);
+                int cmp = comparator.compare(midVal, other);
+
+                if (cmp < 0)
+                    low = mid + 1;
+                else if (cmp > 0)
+                    high = mid - 1;
+                else
+                    return getEntryOffsetByIndex(mid);
+            }
+
+            if (high == -1) {
+                return getEntryOffsetByIndex(0);
+            }
+            return low == valuesAmount - 1 ? -1 : getEntryOffsetByIndex(high);
+        }
+
+        private MemorySegment getKeyByIndex(long index) {
+            long entryOffset = getEntryOffsetByIndex(index);
+
+            long keySize = MemoryAccess.getLongAtOffset(log, entryOffset);
+            long keyOffset = entryOffset + 2L * Long.BYTES;
+            return log.asSlice(keyOffset, keySize);
+        }
+
+        private Entry<MemorySegment> getEntryByOffset() {
+            long keySize = MemoryAccess.getLongAtOffset(log, offset);
+            long valueSize = MemoryAccess.getLongAtOffset(log, offset + Long.BYTES);
+
+            long keyOffset = offset + 2L * Long.BYTES;
+            MemorySegment key = log.asSlice(keyOffset, keySize);
+
+            long valueOffset = keyOffset + keySize;
+            if (valueSize == NULL_VALUE_SIZE) {
+                offset = valueOffset;
+                return new BaseEntry<>(key, null);
+            }
+
+            MemorySegment value = log.asSlice(valueOffset, valueSize);
+
+            offset = valueOffset + valueSize;
+            return new BaseEntry<>(key, value);
+        }
+
+        private long getEntryOffsetByIndex(long index) {
+            long indexOffset = Long.BYTES + index * Long.BYTES;
+            return MemoryAccess.getLongAtOffset(log, indexOffset);
         }
     }
 }
