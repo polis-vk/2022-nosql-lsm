@@ -8,8 +8,8 @@ import ru.mail.polis.Entry;
 
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.SortedMap;
 import java.util.TreeMap;;
 
@@ -18,7 +18,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
     private final SortedMap<MemorySegment, Source> sources;
 
-    static class Source {
+    private static class Source {
         Iterator<Entry<MemorySegment>> iterator;
         Entry<MemorySegment> element;
         final int id;
@@ -61,7 +61,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     public Entry<MemorySegment> next() {
         Source source = popIterator();
         if (source == null) {
-            return null;
+            throw new NoSuchElementException();
         }
         Entry<MemorySegment> result = source.element;
         if (moveSource(source)) {

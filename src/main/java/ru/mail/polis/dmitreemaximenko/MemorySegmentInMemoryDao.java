@@ -94,16 +94,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
     }
 
     private Path getLogName() {
-        Integer logIndex = 0;
-        while (true) {
-            Path filename = config.basePath().resolve(LOG_NAME + logIndex);
-            if (Files.exists(filename)) {
-                logIndex++;
-            } else {
-                break;
-            }
-        }
-        return config.basePath().resolve(LOG_NAME + logIndex);
+        return config.basePath().resolve(LOG_NAME + logs.size());
     }
 
     @Override
