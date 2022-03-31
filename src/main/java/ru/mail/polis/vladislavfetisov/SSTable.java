@@ -109,7 +109,6 @@ public final class SSTable {
         }
         long finalLi = li;
         long finalRi = ri;
-
         return new Iterator<>() {
             long pos = finalLi;
 
