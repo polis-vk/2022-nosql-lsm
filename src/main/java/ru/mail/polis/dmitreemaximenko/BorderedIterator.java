@@ -1,6 +1,5 @@
 package ru.mail.polis.dmitreemaximenko;
 
-import com.sun.source.tree.Tree;
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
@@ -9,14 +8,14 @@ import ru.mail.polis.Entry;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.NavigableMap;
 import java.util.NoSuchElementException;
-import java.util.SortedMap;
 import java.util.TreeMap;
 
 public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     private static final long NULL_VALUE_SIZE = -1;
     private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
-    private final TreeMap<MemorySegment, Source> sources;
+    private final NavigableMap<MemorySegment, Source> sources;
 
     private static class Source {
         Iterator<Entry<MemorySegment>> iterator;
