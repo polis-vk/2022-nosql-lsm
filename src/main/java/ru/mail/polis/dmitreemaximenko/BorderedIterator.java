@@ -189,23 +189,23 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             long low = 0;
             long high = valuesAmount - 1;
 
+            long result = -1;
             while (low <= high) {
                 long mid = (low + high) >>> 1;
                 MemorySegment midVal = getKeyByIndex(mid);
                 int cmp = comparator.compare(midVal, other);
 
-                if (cmp < 0)
+                if (cmp < 0) {
                     low = mid + 1;
-                else if (cmp > 0)
+                } else if (cmp > 0) {
                     high = mid - 1;
-                else
+                    result = mid;
+                } else {
                     return getEntryOffsetByIndex(mid);
+                }
             }
 
-            if (high == -1) {
-                return getEntryOffsetByIndex(0);
-            }
-            return low == valuesAmount - 1 ? -1 : getEntryOffsetByIndex(high);
+            return result == - 1 ? result : getEntryOffsetByIndex(result);
         }
 
         private MemorySegment getKeyByIndex(long index) {
