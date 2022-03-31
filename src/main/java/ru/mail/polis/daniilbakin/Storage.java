@@ -6,7 +6,7 @@ import ru.mail.polis.Config;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
 public class Storage implements Closeable {
@@ -24,10 +24,8 @@ public class Storage implements Closeable {
         numOfFiles = deserialize.getNumberOfFiles();
     }
 
-    public Iterator<BaseEntry<ByteBuffer>> get(
-            ByteBuffer from, ByteBuffer to, Iterator<BaseEntry<ByteBuffer>> inMemoryIterator
-    ) {
-        return deserialize.getRange(from, to, new PeekIterator<>(inMemoryIterator, -1));
+    public List<PeekIterator<BaseEntry<ByteBuffer>>> getFileIterators(ByteBuffer from, ByteBuffer to) {
+        return deserialize.getIteratorsOfRange(from, to);
     }
 
     public BaseEntry<ByteBuffer> get(ByteBuffer key) {

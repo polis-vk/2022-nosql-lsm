@@ -99,15 +99,12 @@ public class MapsDeserializeStream implements Closeable {
         return null;
     }
 
-    public Iterator<BaseEntry<ByteBuffer>> getRange(
-            ByteBuffer from, ByteBuffer to, PeekIterator<BaseEntry<ByteBuffer>> dataIterator
-    ) {
+    public List<PeekIterator<BaseEntry<ByteBuffer>>> getIteratorsOfRange(ByteBuffer from, ByteBuffer to) {
         List<PeekIterator<BaseEntry<ByteBuffer>>> iterators = new ArrayList<>();
-        iterators.add(dataIterator);
         for (int i = 0; i < numOfFiles; i++) {
             iterators.add(getIterator(from, to, i));
         }
-        return new MergeIterator<>(iterators);
+        return iterators;
     }
 
     private PeekIterator<BaseEntry<ByteBuffer>> getIterator(ByteBuffer from, ByteBuffer to, int index) {

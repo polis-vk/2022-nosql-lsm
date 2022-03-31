@@ -7,6 +7,7 @@ import ru.mail.polis.Dao;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -21,7 +22,9 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
-        return storage.get(from, to, getInMemoryIterator(from,to));
+        List<PeekIterator<BaseEntry<ByteBuffer>>> iterators = storage.getFileIterators(from, to);
+        iterators.add(new PeekIterator<>(getInMemoryIterator(from, to),-1));
+        return new MergeIterator<>(iterators);
     }
 
     @Override
