@@ -5,6 +5,14 @@ import jdk.incubator.foreign.MemorySegment;
 import java.util.Comparator;
 
 public class NaturalOrderComparator implements Comparator<MemorySegment> {
+    private static NaturalOrderComparator INSTANCE = new NaturalOrderComparator();
+
+    private NaturalOrderComparator() {}
+
+    public static Comparator<MemorySegment> getInstance() {
+        return INSTANCE;
+    }
+
     @Override
     public int compare(MemorySegment e1, MemorySegment e2) {
         long firstMismatch = e1.mismatch(e2);

@@ -1,44 +1,50 @@
 package ru.mail.polis.dmitreemaximenko;
 
+import com.sun.source.tree.Tree;
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.SortedMap;
+import java.util.TreeMap;;
 
 public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     private static final long NULL_VALUE_SIZE = -1;
-    private final List<Source> sources;
-    private static final Comparator<MemorySegment> comparator = new NaturalOrderComparator();
+    private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
+    private final SortedMap<MemorySegment, Source> sources;
 
     static class Source {
         Iterator<Entry<MemorySegment>> iterator;
         Entry<MemorySegment> element;
+        final int id;
 
-        public Source(Iterator<Entry<MemorySegment>> iterator, Entry<MemorySegment> element) {
+        public Source(Iterator<Entry<MemorySegment>> iterator, Entry<MemorySegment> element, int id) {
             this.iterator = iterator;
             this.element = element;
+            this.id = id;
         }
     }
 
     public BorderedIterator(MemorySegment from, MemorySegment last, Iterator<Entry<MemorySegment>> iterator,
                              List<MemorySegment> logs) {
-        sources = new LinkedList<>();
+        int sourceId = 0;
+        sources = new TreeMap<>(COMPARATOR);
         if (iterator.hasNext()) {
-            sources.add(new Source(iterator, iterator.next()));
+            addSource(new Source(iterator, iterator.next(), sourceId));
+            sourceId++;
         }
 
         if (logs != null) {
             for (int i = logs.size() - 1; i >= 0; i--) {
                 Iterator<Entry<MemorySegment>> fileIterator = new FileEntryIterator(from, last, logs.get(i));
                 if (fileIterator.hasNext()) {
-                    sources.add(new Source(fileIterator, fileIterator.next()));
+                    addSource(new Source(fileIterator, fileIterator.next(), sourceId));
+                    sourceId++;
                 }
             }
         }
@@ -53,22 +59,45 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
 
     @Override
     public Entry<MemorySegment> next() {
-        Source source = peekIterator();
+        Source source = popIterator();
         if (source == null) {
             return null;
         }
         Entry<MemorySegment> result = source.element;
-        moveAllIteratorsWithSuchKey(result.key());
+        if (moveSource(source)) {
+            addSource(source);
+        }
         removeNextNullValues();
         return result;
+    }
+
+    private boolean moveSource(Source source) {
+        if (source.iterator.hasNext()) {
+            source.element = source.iterator.next();
+            return true;
+        }
+        return false;
     }
 
     private void removeNextNullValues() {
         Source source = peekIterator();
         while (source != null && source.element.value() == null) {
-            moveAllIteratorsWithSuchKey(source.element.key());
+            popIterator();
+            if (moveSource(source)) {
+                addSource(source);
+            }
             source = peekIterator();
         }
+    }
+
+    private Source popIterator() {
+        if (sources.isEmpty()) {
+            return null;
+        }
+
+        Source minSource = sources.get(sources.firstKey());
+        sources.remove(sources.firstKey());
+        return minSource;
     }
 
     private Source peekIterator() {
@@ -76,38 +105,27 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             return null;
         }
 
-        MemorySegment minKey = sources.get(0).element.key();
-        Source minSource = sources.get(0);
-        for (int i = 1; i < sources.size(); i++) {
-            Source source = sources.get(i);
-            if (comparator.compare(source.element.key(), minKey) < 0) {
-                minKey = source.element.key();
-                minSource = source;
-            }
-        }
-
+        Source minSource = sources.get(sources.firstKey());
         return minSource;
     }
 
-    private void moveAllIteratorsWithSuchKey(MemorySegment key) {
-        if (sources.size() == 1) {
-            if (sources.get(0).iterator.hasNext()) {
-                sources.get(0).element = sources.get(0).iterator.next();
-            } else {
-                sources.remove(0);
+    private void addSource(Source changedSource) {
+        Source source = changedSource;
+        while (true) {
+            Source existedSourceWithSameKey = sources.getOrDefault(source.element.key(), null);
+            if (existedSourceWithSameKey == null) {
+                sources.put(source.element.key(), source);
+                break;
             }
-        } else {
-            List<Source> toRemove = new LinkedList<>();
-            for (Source source : sources) {
-                if (comparator.compare(source.element.key(), key) == 0) {
-                    if (source.iterator.hasNext()) {
-                        source.element = source.iterator.next();
-                    } else {
-                        toRemove.add(source);
-                    }
-                }
+
+            if (existedSourceWithSameKey.id > source.id) {
+                sources.put(source.element.key(), source);
+                source = existedSourceWithSameKey;
             }
-            sources.removeAll(toRemove);
+            if (!source.iterator.hasNext()) {
+                break;
+            }
+            source.element = source.iterator.next();
         }
     }
 
@@ -115,8 +133,13 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
         private long offset;
         private final MemorySegment log;
         private final MemorySegment last;
-        private Entry<MemorySegment> next;
+        private Entry<MemorySegment> next = null;
         private final long valuesAmount;
+
+        private class EntryContainer {
+            Entry<MemorySegment> entry;
+            long entrySize;
+        }
 
         private FileEntryIterator(MemorySegment from, MemorySegment last, MemorySegment log) {
             this.log = log;
@@ -126,16 +149,13 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
                     offset = getOffsetOfEntryNotLessThan(from);
                     if (offset < 0) {
                         offset = log.byteSize();
-                        next = null;
                     } else {
                         next = getEntryByOffset();
                     }
                 } else {
-                    next = null;
                     offset = log.byteSize();
                 }
             } else {
-                next = null;
                 valuesAmount = 0;
                 offset = log.byteSize();
             }
@@ -144,44 +164,47 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
 
         @Override
         public boolean hasNext() {
-            return next != null && (last == null || comparator.compare(next.key(), last) < 0);
+            return next != null && (last == null || COMPARATOR.compare(next.key(), last) < 0);
         }
 
         @Override
         public Entry<MemorySegment> next() {
             Entry<MemorySegment> result = next;
-            next = nextNotLessThan(null);
+            EntryContainer nextEntry = getNextEntry();
+            if (nextEntry != null) {
+                offset += nextEntry.entrySize;
+                next = nextEntry.entry;
+            } else {
+                next = null;
+            }
 
             return result;
         }
 
-        private Entry<MemorySegment> nextNotLessThan(MemorySegment other) {
-            Entry<MemorySegment> result = null;
-            while (offset < log.byteSize()) {
-                long keySize = MemoryAccess.getLongAtOffset(log, offset);
-                offset += Long.BYTES;
-                long valueSize = MemoryAccess.getLongAtOffset(log, offset);
-                offset += Long.BYTES;
+        private EntryContainer getNextEntry() {
+            EntryContainer result = new EntryContainer();
+            long entryOffset = offset;
+            if (entryOffset < log.byteSize()) {
+                long keySize = MemoryAccess.getLongAtOffset(log, entryOffset);
+                entryOffset += Long.BYTES;
+                long valueSize = MemoryAccess.getLongAtOffset(log, entryOffset);
+                entryOffset += Long.BYTES;
 
-                MemorySegment currentKey = log.asSlice(offset, keySize);
-                if (other != null && comparator.compare(other, currentKey) > 0) {
-                    if (valueSize == NULL_VALUE_SIZE) {
-                        valueSize = 0;
-                    }
-                    offset += keySize + valueSize;
+                MemorySegment currentKey = log.asSlice(entryOffset, keySize);
+                if (valueSize == NULL_VALUE_SIZE) {
+                    result.entry = new BaseEntry<>(currentKey, null);
                 } else {
-                    if (valueSize == NULL_VALUE_SIZE) {
-                        result = new BaseEntry<>(currentKey, null);
-                    } else {
-                        result = new BaseEntry<>(currentKey, log.asSlice(offset + keySize, valueSize));
-                    }
-                    if (valueSize == NULL_VALUE_SIZE) {
-                        valueSize = 0;
-                    }
-                    offset += keySize + valueSize;
-                    break;
+                    result.entry = new BaseEntry<>(currentKey, log.asSlice(entryOffset + keySize,
+                            valueSize));
                 }
+                if (valueSize == NULL_VALUE_SIZE) {
+                    valueSize = 0;
+                }
+                entryOffset += keySize + valueSize;
+
             }
+
+            result.entrySize = entryOffset - offset;
             return result;
         }
 
@@ -193,7 +216,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             while (low <= high) {
                 long mid = (low + high) >>> 1;
                 MemorySegment midVal = getKeyByIndex(mid);
-                int cmp = comparator.compare(midVal, other);
+                int cmp = COMPARATOR.compare(midVal, other);
 
                 if (cmp < 0) {
                     low = mid + 1;

@@ -22,12 +22,12 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
-    private static final Comparator<MemorySegment> comparator = new NaturalOrderComparator();
-    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
-            new ConcurrentSkipListMap<>(comparator);
+    private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
     private static final String LOG_NAME = "log";
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
     private static final long NULL_VALUE_SIZE = -1;
+    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
+            new ConcurrentSkipListMap<>(COMPARATOR);
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Config config;
     private final List<MemorySegment> logs;
@@ -113,7 +113,7 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
             return null;
         }
         Entry<MemorySegment> next = iterator.next();
-        if (comparator.compare(next.key(), key) == 0) {
+        if (COMPARATOR.compare(next.key(), key) == 0) {
             return next;
         }
         return null;
