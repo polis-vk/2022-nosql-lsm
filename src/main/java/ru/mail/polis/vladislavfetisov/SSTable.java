@@ -107,7 +107,6 @@ public final class SSTable {
                 return Collections.emptyIterator();
             }
         }
-
         long finalLi = li;
         long finalRi = ri;
         return new Iterator<>() {
