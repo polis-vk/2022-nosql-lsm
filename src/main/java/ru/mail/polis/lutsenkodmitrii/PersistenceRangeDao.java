@@ -129,6 +129,9 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void compact() throws IOException {
+        if (currentFileNumber == 0 || (currentFileNumber == 1 && data.isEmpty())) {
+            return;
+        }
         Iterator<BaseEntry<String>> allEntriesIterator = get(null, null);
         lock.writeLock().lock();
         Path compactionFilePath = generateNextFilePath();
