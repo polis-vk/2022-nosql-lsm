@@ -37,13 +37,13 @@ public class FileOperations {
         tablesSizes = new ConcurrentHashMap<>();
         if (Files.exists(basePath)) {
             try (Stream<Path> pathStream = Files.list(basePath)) {
-                ssTables = pathStream
+                ssTables = pathStream.toList().stream()
                         .filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME))
                         .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
                         .collect(Collectors.toList());
             }
             try (Stream<Path> indexPathStream = Files.list(basePath)) {
-                ssIndexes = indexPathStream
+                ssIndexes = indexPathStream.toList().stream()
                         .filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME))
                         .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
                         .collect(Collectors.toList());
