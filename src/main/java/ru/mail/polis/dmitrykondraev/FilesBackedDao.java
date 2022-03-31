@@ -65,20 +65,13 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     public MemorySegmentEntry get(MemorySegment key) throws IOException {
         MemorySegmentEntry result = map.get(key);
         if (result != null) {
-            if (result.value() == null) {
-                return null;
-            }
-            return result;
+            return result.value() == null ? null : result;
         }
         for (SortedStringTable table : sortedStringTables) {
             MemorySegmentEntry entry = table.get(key);
-            if (entry == null) {
-                continue;
+            if (entry != null) {
+                return entry.value() == null ? null : entry;
             }
-            if (entry.value() == null) {
-                return null;
-            }
-            return entry;
         }
         return null;
     }
@@ -104,27 +97,21 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     }
 
     private Iterator<MemorySegmentEntry> inMemoryGet(MemorySegment from, MemorySegment to) {
-        Map<MemorySegment, MemorySegmentEntry> subMap = to != null ? map.subMap(from, to) : map.tailMap(from);
+        Map<MemorySegment, MemorySegmentEntry> subMap = to == null ? map.tailMap(from) : map.subMap(from, to);
         return iterator(subMap);
     }
 
     private static Iterator<MemorySegmentEntry> merged(List<PeekIterator<MemorySegmentEntry>> iterators) {
-        return new Iterator<>() {
-            private final PriorityQueue<Integer> indexes;
-
-            // IIB
-            {
-                Comparator<Integer> indexComparator = Comparator
-                        .comparing((Integer i) -> iterators.get(i).peek().key(), MemorySegmentComparator.INSTANCE)
-                        .thenComparing(Function.identity());
-                indexes = new PriorityQueue<>(iterators.size(), indexComparator);
-                for (int i = 0; i < iterators.size(); i++) {
-                    if (iterators.get(i).hasNext()) {
-                        indexes.add(i);
-                    }
-                }
+        Comparator<Integer> indexComparator = Comparator
+                .comparing((Integer i) -> iterators.get(i).peek().key(), MemorySegmentComparator.INSTANCE)
+                .thenComparing(Function.identity());
+        final PriorityQueue<Integer> indexes = new PriorityQueue<>(iterators.size(), indexComparator);
+        for (int i = 0; i < iterators.size(); i++) {
+            if (iterators.get(i).hasNext()) {
+                indexes.add(i);
             }
-
+        }
+        return new Iterator<>() {
             @Override
             public boolean hasNext() {
                 return !indexes.isEmpty();
@@ -165,7 +152,9 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
 
             private MemorySegmentEntry nextUnique() {
                 MemorySegmentEntry next = iterator.next();
-                while (iterator.hasNext() && MemorySegmentComparator.INSTANCE.compare(iterator.peek().key(), next.key()) == 0) {
+                while (iterator.hasNext()
+                        && MemorySegmentComparator.INSTANCE.compare(iterator.peek().key(), next.key()) == 0
+                ) {
                     iterator.next();
                 }
                 return next;

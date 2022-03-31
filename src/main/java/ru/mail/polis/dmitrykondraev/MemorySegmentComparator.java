@@ -10,9 +10,9 @@ import java.util.Comparator;
  * (https://www.rfc-editor.org/rfc/rfc3629.txt, page 2)
  * this string comparison likely won't work with collation different from ASCII
  */
-public class MemorySegmentComparator implements Comparator<MemorySegment> {
+public final class MemorySegmentComparator implements Comparator<MemorySegment> {
     /**
-     * For any <code>MemorySegment x</code>: <code>compare(MINIMAL, x) <= 0</code> is true
+     * For any <code>MemorySegment x</code>: <code>compare(MINIMAL, x) <= 0</code> is true.
      */
     public static final MemorySegment MINIMAL = MemorySegment.ofArray(new byte[]{});
     public static final MemorySegmentComparator INSTANCE = new MemorySegmentComparator();
@@ -36,7 +36,7 @@ public class MemorySegmentComparator implements Comparator<MemorySegment> {
     }
 
     /**
-     * Use {@link MemorySegmentComparator#INSTANCE} instead
+     * Use {@link MemorySegmentComparator#INSTANCE} instead.
      */
     private MemorySegmentComparator() {
     }

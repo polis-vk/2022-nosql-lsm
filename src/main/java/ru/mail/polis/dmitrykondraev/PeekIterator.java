@@ -12,6 +12,7 @@ public class PeekIterator<E> implements Iterator<E> {
     }
 
     /**
+     * Peek next element.
      * @return element, returned by subsequent call of {@link Iterator#next()}, but without removing it.
      * @throws NoSuchElementException if the iteration has no more elements
      */
