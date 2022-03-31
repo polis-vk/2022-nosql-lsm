@@ -2,23 +2,22 @@ package ru.mail.polis.deniszhidkov;
 
 import ru.mail.polis.BaseEntry;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.Iterator;
+import java.util.Queue;
 
 public class MergeIterator implements Iterator<BaseEntry<String>> {
 
-    private final Deque<PeekIterator> iteratorsQueue = new ArrayDeque<>();
+    private final Queue<PriorityPeekIterator> iteratorsQueue;
     private BaseEntry<String> next;
 
-    public MergeIterator(Deque<PeekIterator> iterators) {
-        this.iteratorsQueue.addAll(iterators);
+    public MergeIterator(Queue<PriorityPeekIterator> iteratorsQueue) {
+        this.iteratorsQueue = iteratorsQueue;
         this.next = getNextEntry();
     }
 
     @Override
     public boolean hasNext() {
-        return next != null;
+        return next != null || !iteratorsQueue.isEmpty();
     }
 
     @Override
@@ -29,53 +28,35 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
     }
 
     private BaseEntry<String> getNextEntry() {
-        BaseEntry<String> result = null;
-        if (!iteratorsQueue.isEmpty()) {
-            PeekIterator startIterator = iteratorsQueue.peek();
-            PeekIterator currentIterator = iteratorsQueue.poll();
-            result = searchForNextEntry(currentIterator);
-            backToStart(startIterator);
-            if (result == null || result.value() == null) {
-                result = getNextEntry();
-            }
-        }
-        return result == null || result.value() == null ? null : result;
-    }
-
-    private void backToStart(PeekIterator startIterator) {
-        for (int i = 0; i < iteratorsQueue.size(); i++) {
-            PeekIterator nextIterator = iteratorsQueue.peek();
-            if (nextIterator.equals(startIterator)) {
+        BaseEntry<String> newNext = getNewNext();
+        while (!iteratorsQueue.isEmpty()) {
+            PriorityPeekIterator nextIterator = iteratorsQueue.poll();
+            if (newNext != null && nextIterator.peek().key().compareTo(newNext.key()) == 0) {
+                nextIterator.next();
+                if (nextIterator.hasNext()) {
+                    iteratorsQueue.add(nextIterator);
+                }
+            } else {
+                iteratorsQueue.add(nextIterator);
+                if (newNext == null || newNext.value() == null) {
+                    newNext = getNewNext();
+                    continue;
+                }
                 break;
             }
-            iteratorsQueue.poll();
-            iteratorsQueue.add(nextIterator);
         }
+        return newNext == null || newNext.value() == null ? null : newNext;
     }
 
-    private BaseEntry<String> searchForNextEntry(PeekIterator currentIterator) {
-        PeekIterator resultIterator = currentIterator;
-        BaseEntry<String> result = currentIterator.peek();
-        iteratorsQueue.add(resultIterator);
-        PeekIterator nextIterator = iteratorsQueue.poll();
-        while (nextIterator != null && !nextIterator.equals(resultIterator)) {
-            if (nextIterator.hasNext()) {
-                BaseEntry<String> newNext = nextIterator.peek();
-                int keyComparison = result == null ? -1 : result.key().compareTo(newNext.key());
-                if (keyComparison > 0) {
-                    result = newNext;
-                    resultIterator = nextIterator;
-                } else if (keyComparison == 0) {
-                    nextIterator.next();
-                }
-                iteratorsQueue.add(nextIterator);
-            }
-            nextIterator = iteratorsQueue.poll();
+    private BaseEntry<String> getNewNext() {
+        if (iteratorsQueue.isEmpty()) {
+            return null;
         }
-        resultIterator.next();
-        if (resultIterator.hasNext()) {
-            iteratorsQueue.addFirst(resultIterator);
+        PriorityPeekIterator currentIterator = iteratorsQueue.poll();
+        BaseEntry<String> res = currentIterator.next();
+        if (currentIterator.hasNext()) {
+            iteratorsQueue.add(currentIterator);
         }
-        return result;
+        return res;
     }
 }
