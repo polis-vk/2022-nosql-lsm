@@ -107,27 +107,14 @@ public class MapsDeserializeStream implements Closeable {
         return iterators;
     }
 
-    private PeekIterator<BaseEntry<ByteBuffer>> getIterator(ByteBuffer from, ByteBuffer to, int index) {
-        MappedByteBuffer indexesBuffer = indexesData.get(index);
-        MappedByteBuffer mapBuffer = mapData.get(index);
+    private PeekIterator<BaseEntry<ByteBuffer>> getIterator(ByteBuffer from, ByteBuffer to, int fileIndex) {
+        MappedByteBuffer indexesBuffer = indexesData.get(fileIndex);
+        MappedByteBuffer mapBuffer = mapData.get(fileIndex);
         int startIndex = (from == null) ? 0 : binarySearchIndex(from, indexesBuffer, mapBuffer, true);
         int endIndex = (to == null) ? indexesBuffer.capacity() / Integer.BYTES
                 : binarySearchIndex(to, indexesBuffer, mapBuffer, true);
 
-        return new PeekIterator<>(new Iterator<>() {
-            private final int size = endIndex;
-            private int next = startIndex;
-
-            @Override
-            public boolean hasNext() {
-                return next < size;
-            }
-
-            @Override
-            public BaseEntry<ByteBuffer> next() {
-                return readEntry(getInternalIndexByOrder(next++, indexesBuffer), mapBuffer);
-            }
-        }, index);
+        return new PeekIterator<>(new FileIterator(startIndex, endIndex, indexesBuffer, mapBuffer), fileIndex);
     }
 
     private BaseEntry<ByteBuffer> readByKey(ByteBuffer key, int index) {
@@ -206,6 +193,31 @@ public class MapsDeserializeStream implements Closeable {
 
     private int getInternalIndexByOrder(int order, MappedByteBuffer indexesBuffer) {
         return indexesBuffer.getInt(order * Integer.BYTES);
+    }
+
+    private class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
+
+        private final MappedByteBuffer indexesBuffer;
+        private final MappedByteBuffer mapBuffer;
+        private final int size;
+        private int next;
+
+        FileIterator(int starIndext, int endIndex, MappedByteBuffer indexesBuffer, MappedByteBuffer mapBuffer) {
+            next = starIndext;
+            size = endIndex;
+            this.indexesBuffer = indexesBuffer;
+            this.mapBuffer = mapBuffer;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return next < size;
+        }
+
+        @Override
+        public BaseEntry<ByteBuffer> next() {
+            return readEntry(getInternalIndexByOrder(next++, indexesBuffer), mapBuffer);
+        }
     }
 
 }
