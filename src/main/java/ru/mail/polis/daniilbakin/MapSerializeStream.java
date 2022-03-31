@@ -53,16 +53,20 @@ public class MapSerializeStream implements Closeable {
         int[] indexes = new int[data.size()];
         int i = 0;
         int indexObjPosition = 0;
+        ByteBuffer localBuffer = ByteBuffer.allocate(512);
         for (Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry : data.entrySet()) {
             indexes[i++] = indexObjPosition;
             int valueCapacity = (entry.getValue().value() == null) ? 0 : entry.getValue().value().capacity();
-            ByteBuffer localBuffer = ByteBuffer.allocate(
-                    entry.getKey().capacity() + valueCapacity + Integer.BYTES * 2
-            );
+            int bufferSize = entry.getKey().capacity() + valueCapacity + Integer.BYTES * 2;
+            if (localBuffer.capacity() < bufferSize) {
+                localBuffer = ByteBuffer.allocate(bufferSize);
+            } else {
+                localBuffer.clear();
+            }
             writeEntry(entry, localBuffer);
             localBuffer.flip();
-            indexObjPosition += localBuffer.capacity();
-            mapChannel.write(localBuffer);
+            indexObjPosition += bufferSize;
+            mapChannel.write(localBuffer.slice(0, bufferSize));
         }
         mapChannel.force(false);
         return indexes;
