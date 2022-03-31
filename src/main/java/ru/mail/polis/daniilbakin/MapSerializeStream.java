@@ -36,26 +36,10 @@ public class MapSerializeStream implements Closeable {
     }
 
     public void serializeMap(Map<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
-        int[] indexes = writeMap(data);
-        ByteBuffer buffer = ByteBuffer.allocate(indexes.length * Integer.BYTES);
-        for (int i : indexes) {
-            buffer.putInt(i);
-        }
-        buffer.flip();
-        indexesChannel.write(buffer);
-        indexesChannel.force(false);
-    }
-
-    /**
-     * Return: array of indexes objects location.
-     */
-    private int[] writeMap(Map<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
-        int[] indexes = new int[data.size()];
-        int i = 0;
         int indexObjPosition = 0;
         ByteBuffer localBuffer = ByteBuffer.allocate(512);
+        ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
         for (Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry : data.entrySet()) {
-            indexes[i++] = indexObjPosition;
             int valueCapacity = (entry.getValue().value() == null) ? 0 : entry.getValue().value().capacity();
             int bufferSize = entry.getKey().capacity() + valueCapacity + Integer.BYTES * 2;
             if (localBuffer.capacity() < bufferSize) {
@@ -65,11 +49,15 @@ public class MapSerializeStream implements Closeable {
             }
             writeEntry(entry, localBuffer);
             localBuffer.flip();
+            indexBuffer.putInt(indexObjPosition);
+            indexBuffer.flip();
             indexObjPosition += bufferSize;
             mapChannel.write(localBuffer.slice(0, bufferSize));
+            indexesChannel.write(indexBuffer);
+            indexBuffer.clear();
         }
         mapChannel.force(false);
-        return indexes;
+        indexesChannel.force(false);
     }
 
     private void writeEntry(Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry, ByteBuffer localBuffer) {
