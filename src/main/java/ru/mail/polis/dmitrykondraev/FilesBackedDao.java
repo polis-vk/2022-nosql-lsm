@@ -13,7 +13,6 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -42,7 +41,9 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
 
     @Override
     public Iterator<MemorySegmentEntry> get(MemorySegment from, MemorySegment to) throws IOException {
-        from = Objects.requireNonNullElse(from, MemorySegmentComparator.MINIMAL);
+        if (from == null) {
+            return get(MemorySegmentComparator.MINIMAL, to);
+        }
         Iterator<MemorySegmentEntry> inMemoryIterator = inMemoryGet(from, to);
         if (sortedStringTables.isEmpty()) {
             return compacted(new PeekIterator<>(inMemoryIterator));
