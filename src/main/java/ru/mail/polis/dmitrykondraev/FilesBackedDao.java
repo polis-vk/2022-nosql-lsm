@@ -13,6 +13,7 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -46,14 +47,14 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
         }
         Iterator<MemorySegmentEntry> inMemoryIterator = inMemoryGet(from, to);
         if (sortedStringTables.isEmpty()) {
-            return compacted(new PeekIterator<>(inMemoryIterator));
+            return withoutTomStones(new PeekIterator<>(inMemoryIterator));
         }
         List<PeekIterator<MemorySegmentEntry>> iterators = new ArrayList<>(1 + sortedStringTables.size());
         iterators.add(new PeekIterator<>(inMemoryIterator));
         for (SortedStringTable table : sortedStringTables) {
             iterators.add(new PeekIterator<>(table.get(from, to)));
         }
-        return compacted(new PeekIterator<>(merged(iterators)));
+        return withoutTomStones(new PeekIterator<>(merged(iterators)));
     }
 
     @Override
@@ -66,12 +67,12 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     public MemorySegmentEntry get(MemorySegment key) throws IOException {
         MemorySegmentEntry result = map.get(key);
         if (result != null) {
-            return result.value() == null ? null : result;
+            return result.isTomStone() ? null : result;
         }
         for (SortedStringTable table : sortedStringTables) {
             MemorySegmentEntry entry = table.get(key);
             if (entry != null) {
-                return entry.value() == null ? null : entry;
+                return entry.isTomStone() ? null : entry;
             }
         }
         return null;
@@ -102,6 +103,13 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
         return iterator(subMap);
     }
 
+    /**
+     * Yields entries from multiple iterators of {@link MemorySegmentEntry}. Entries with same keys are merged,
+     * leaving one entry from iterator with minimal index.
+     * @param iterators which entries are strict ordered by key: key of subsequent entry is strictly greater than
+     *                  key of current entry (using {@link MemorySegmentComparator})
+     * @return iterator which entries are <em>also</em> strict ordered by key.
+     */
     private static Iterator<MemorySegmentEntry> merged(List<PeekIterator<MemorySegmentEntry>> iterators) {
         Comparator<Integer> indexComparator = Comparator
                 .comparing((Integer i) -> iterators.get(i).peek().key(), MemorySegmentComparator.INSTANCE)
@@ -120,45 +128,52 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
 
             @Override
             public MemorySegmentEntry next() {
-                Integer nextIndex = indexes.remove();
-                PeekIterator<MemorySegmentEntry> nextIterator = iterators.get(nextIndex);
-                MemorySegmentEntry next = nextIterator.next();
-                if (nextIterator.hasNext()) {
-                    indexes.offer(nextIndex);
+                Integer index = indexes.remove();
+                PeekIterator<MemorySegmentEntry> iterator = iterators.get(index);
+                MemorySegmentEntry entry = iterator.next();
+                skipEntriesWithSameKey(entry);
+                if (iterator.hasNext()) {
+                    indexes.offer(index);
                 }
-                return next;
+                return entry;
+            }
+
+            private void skipEntriesWithSameKey(MemorySegmentEntry entry) {
+                while (!indexes.isEmpty()) {
+                    Integer nextIndex = indexes.peek();
+                    PeekIterator<MemorySegmentEntry> nextIterator = iterators.get(nextIndex);
+                    if (MemorySegmentComparator.INSTANCE.compare(nextIterator.peek().key(), entry.key()) != 0) {
+                        break;
+                    }
+                    indexes.remove();
+                    nextIterator.next();
+                    if (nextIterator.hasNext()) {
+                        indexes.offer(nextIndex);
+                    }
+                }
             }
         };
     }
 
-    private static Iterator<MemorySegmentEntry> compacted(PeekIterator<MemorySegmentEntry> iterator) {
+    private static Iterator<MemorySegmentEntry> withoutTomStones(PeekIterator<MemorySegmentEntry> iterator) {
         return new Iterator<>() {
             @Override
             public boolean hasNext() {
-                skipDeletionEntries();
-                return iterator.hasNext();
+                while (iterator.hasNext()) {
+                    if (!iterator.peek().isTomStone()) {
+                        return true;
+                    }
+                    iterator.next();
+                }
+                return false;
             }
 
             @Override
             public MemorySegmentEntry next() {
-                skipDeletionEntries();
-                return nextUnique();
-            }
-
-            private void skipDeletionEntries() {
-                while (iterator.hasNext() && iterator.peek().value() == null) {
-                    nextUnique();
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
                 }
-            }
-
-            private MemorySegmentEntry nextUnique() {
-                MemorySegmentEntry next = iterator.next();
-                while (iterator.hasNext()
-                        && MemorySegmentComparator.INSTANCE.compare(iterator.peek().key(), next.key()) == 0
-                ) {
-                    iterator.next();
-                }
-                return next;
+                return iterator.next();
             }
         };
     }
