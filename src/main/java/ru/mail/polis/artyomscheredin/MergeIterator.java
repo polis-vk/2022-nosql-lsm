@@ -35,10 +35,10 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
     @Override
     public BaseEntry<ByteBuffer> next() {
-        if (!hasNext()) {
+        PeekIterator curr = iteratorQueue.poll();
+        if (curr == null) {
             throw new NoSuchElementException();
         }
-        PeekIterator curr = iteratorQueue.poll();
         BaseEntry<ByteBuffer> result = curr.next();
         if (curr.hasNext()) {
             iteratorQueue.add(curr);
@@ -49,19 +49,15 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
     }
 
     private void skipTombStones() {
-        if (iteratorQueue.isEmpty()) {
-            return;
-        }
-        while (iteratorQueue.peek().peek().value() == null) {
+        while (!iteratorQueue.isEmpty() && (iteratorQueue.peek().peek().value() == null)) {
             PeekIterator it = iteratorQueue.poll();
+            if (it == null) {
+                return;
+            }
             ByteBuffer keyToDelete = it.next().key();
             deleteByKey(keyToDelete);
             if (it.hasNext()) {
                 iteratorQueue.add(it);
-            }
-
-            if (iteratorQueue.isEmpty()) {
-                return;
             }
         }
     }
