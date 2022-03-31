@@ -53,10 +53,9 @@ public class MergeIterator<E extends Comparable<E>> implements Iterator<BaseEntr
                 deleted = current;
                 continue;
             }
-            if (checkNotCorrectEntry(current)) {
-                continue;
+            if (checkCorrectEntry(current)) {
+                return current;
             }
-            return current;
         }
     }
 
@@ -64,11 +63,11 @@ public class MergeIterator<E extends Comparable<E>> implements Iterator<BaseEntr
         return current != null && current.value() == null;
     }
 
-    private boolean checkNotCorrectEntry(BaseEntry<E> current) {
+    private boolean checkCorrectEntry(BaseEntry<E> current) {
         if (next != null && current != null && current.key().compareTo(next.key()) == 0) {
-            return true;
+            return false;
         }
-        return deleted != null && current != null && current.key().compareTo(deleted.key()) == 0;
+        return deleted == null || current == null || current.key().compareTo(deleted.key()) != 0;
     }
 
     private int compareIterators(PeekIterator<BaseEntry<E>> first, PeekIterator<BaseEntry<E>> second) {
