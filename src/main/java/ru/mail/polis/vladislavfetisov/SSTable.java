@@ -56,8 +56,10 @@ public final class SSTable {
 
     private static SSTable mapToTable(Path path) {
         try {
+
             Path index = Utils.withSuffix(path, INDEX);
             return new SSTable(path, index);
+
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
