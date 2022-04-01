@@ -10,6 +10,7 @@ import ru.mail.polis.test.DaoFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 @DaoFactory(stage = 3, week = 2)
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
@@ -26,13 +27,18 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
         }
         // decoder is really slow
         byte[] bytes;
-        if (data.isDirect()) {
+        if (data.hasArray()) {
+            int start = data.arrayOffset() + data.position();
+            if (start == 0) {
+                bytes = data.array();
+            } else {
+                bytes = Arrays.copyOfRange(data.array(), start, data.remaining());
+            }
+        } else {
             // concurrency is killing me if i don't make local copy
             ByteBuffer localData = data.duplicate();
             bytes = new byte[localData.capacity()];
             localData.get(bytes);
-        } else {
-            bytes = data.array();
         }
         return new String(bytes, StandardCharsets.UTF_8);
     }
