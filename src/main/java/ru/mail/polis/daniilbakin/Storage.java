@@ -6,8 +6,12 @@ import ru.mail.polis.Config;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 public class Storage implements Closeable {
 
@@ -20,8 +24,9 @@ public class Storage implements Closeable {
 
     protected Storage(Config config) throws IOException {
         this.config = config;
-        deserialize = new MapsDeserializeStream(config);
-        numOfFiles = deserialize.getNumberOfFiles();
+        numOfFiles = calcCountOfIndexFiles();
+        deserialize = new MapsDeserializeStream(config, numOfFiles);
+
     }
 
     public List<PeekIterator<BaseEntry<ByteBuffer>>> getFileIterators(ByteBuffer from, ByteBuffer to) {
@@ -49,6 +54,15 @@ public class Storage implements Closeable {
         MapSerializeStream writer = new MapSerializeStream(config, numOfFiles);
         writer.serializeMap(data);
         writer.close();
+    }
+
+    private int calcCountOfIndexFiles() throws IOException {
+        try (Stream<Path> files = Files.list(config.basePath())
+                .filter(it -> it.getFileName().toString().startsWith(INDEX_FILE_NAME))) {
+            return (int) files.count();
+        } catch (NoSuchFileException e) {
+            return 0;
+        }
     }
 
 }

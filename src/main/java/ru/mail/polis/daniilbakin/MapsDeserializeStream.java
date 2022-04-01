@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static java.nio.file.StandardOpenOption.READ;
 import static ru.mail.polis.daniilbakin.Storage.DATA_FILE_NAME;
@@ -31,34 +32,25 @@ public class MapsDeserializeStream implements Closeable {
     private final Method unmap;
     private final Object fieldValue;
 
-    public MapsDeserializeStream(Config config) throws IOException {
+    public MapsDeserializeStream(Config config, int numOfFiles) throws IOException {
+        this.numOfFiles = numOfFiles;
         mapData = new ArrayList<>();
         indexesData = new ArrayList<>();
 
-        int i = 0;
-        boolean hasFile = true;
-        while (hasFile) {
+        for (int i = 0; i < numOfFiles; i++) {
             Path mapPath = config.basePath().resolve(DATA_FILE_NAME + i);
             Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + i);
 
-            FileChannel mapChannel;
-            FileChannel indexesChannel;
-            try {
-                mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(READ));
-                indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(READ));
+            FileChannel mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(READ));
+            FileChannel indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(READ));
 
-                mapData.add(mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size()));
-                indexesData.add(indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size()));
+            mapData.add(mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size()));
+            indexesData.add(indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size()));
 
-                mapChannel.close();
-                indexesChannel.close();
-                i++;
-            } catch (NoSuchFileException e) {
-                hasFile = false;
-            }
+            mapChannel.close();
+            indexesChannel.close();
         }
 
-        numOfFiles = i;
         Collections.reverse(mapData);
         Collections.reverse(indexesData);
 
@@ -71,10 +63,6 @@ public class MapsDeserializeStream implements Closeable {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
-    }
-
-    public int getNumberOfFiles() {
-        return numOfFiles;
     }
 
     @Override
