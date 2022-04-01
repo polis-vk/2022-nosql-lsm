@@ -12,7 +12,7 @@ import java.util.List;
 public class Stage4IdempotentTest extends BaseTest {
 
     @DaoTest(stage = 4)
-    void closeIdempotentEmpty(Dao<String, Entry<String>> dao) throws IOException {
+    void closeEmpty(Dao<String, Entry<String>> dao) throws IOException {
         for (int i = 0; i < 5000; i++) {
             dao.close();
             dao = DaoFactory.Factory.reopen(dao);
@@ -20,7 +20,7 @@ public class Stage4IdempotentTest extends BaseTest {
     }
 
     @DaoTest(stage = 4)
-    void closeIdempotentSimple(Dao<String, Entry<String>> dao) throws IOException {
+    void closeSimple(Dao<String, Entry<String>> dao) throws IOException {
         dao.upsert(entryAt(1));
         dao.upsert(entryAt(10));
         for (int i = 0; i < 5000; i++) {
@@ -31,7 +31,7 @@ public class Stage4IdempotentTest extends BaseTest {
     }
 
     @DaoTest(stage = 4)
-    void closeIdempotent(Dao<String, Entry<String>> dao) throws IOException {
+    void close(Dao<String, Entry<String>> dao) throws IOException {
         List<Entry<String>> entries = entries(103);
         int splitIndex = 60;
         for (Entry<String> entry : entries.subList(0, splitIndex)) {
@@ -63,7 +63,7 @@ public class Stage4IdempotentTest extends BaseTest {
     }
 
     @DaoTest(stage = 4)
-    void compactIdempotentEmpty(Dao<String, Entry<String>> dao) throws IOException {
+    void compactEmpty(Dao<String, Entry<String>> dao) throws IOException {
         for (int i = 0; i < 5000; i++) {
             dao.compact();
             dao.close();
@@ -72,7 +72,7 @@ public class Stage4IdempotentTest extends BaseTest {
     }
 
     @DaoTest(stage = 4)
-    void compactIdempotentSimple(Dao<String, Entry<String>> dao) throws IOException {
+    void compactSimple(Dao<String, Entry<String>> dao) throws IOException {
         dao.upsert(entryAt(1));
         dao.upsert(entryAt(10));
         for (int i = 0; i < 5000; i++) {
@@ -84,7 +84,7 @@ public class Stage4IdempotentTest extends BaseTest {
     }
 
     @DaoTest(stage = 4)
-    void compactNothingToFlushIdempotent(Dao<String, Entry<String>> dao) throws IOException {
+    void compactNothingToFlush(Dao<String, Entry<String>> dao) throws IOException {
         for (int i = 0; i < 100; i++) {
             dao.upsert(entryAt(1));
             dao.upsert(entryAt(10));
@@ -98,7 +98,7 @@ public class Stage4IdempotentTest extends BaseTest {
     }
 
     @DaoTest(stage = 4)
-    void compactIdempotent(Dao<String, Entry<String>> dao) throws IOException {
+    void compact(Dao<String, Entry<String>> dao) throws IOException {
         List<Entry<String>> entries = entries(103);
         int splitIndex = 60;
         for (Entry<String> entry : entries.subList(0, splitIndex)) {
