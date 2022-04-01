@@ -23,7 +23,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
         List<PeekIterator<BaseEntry<ByteBuffer>>> iterators = storage.getFileIterators(from, to);
-        iterators.add(new PeekIterator<>(getInMemoryIterator(from, to),-1));
+        iterators.add(new PeekIterator<>(getInMemoryIterator(from, to), -1));
         return new MergeIterator<>(iterators);
     }
 
@@ -39,6 +39,12 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     @Override
     public void upsert(BaseEntry<ByteBuffer> entry) {
         data.put(entry.key(), entry);
+    }
+
+    @Override
+    public void compact() throws IOException {
+        storage.compact(new PeekIterator<>(getInMemoryIterator(null, null), -1));
+        data.clear();
     }
 
     @Override

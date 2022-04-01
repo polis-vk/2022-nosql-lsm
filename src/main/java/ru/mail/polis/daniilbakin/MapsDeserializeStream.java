@@ -30,12 +30,12 @@ public class MapsDeserializeStream implements Closeable {
     private final Method unmap;
     private final Object fieldValue;
 
-    public MapsDeserializeStream(Config config, int numOfFiles) throws IOException {
+    public MapsDeserializeStream(Config config, int numOfFiles, int startIndexOfFile) throws IOException {
         this.numOfFiles = numOfFiles;
         mapData = new ArrayList<>();
         indexesData = new ArrayList<>();
 
-        for (int i = 0; i < numOfFiles; i++) {
+        for (int i = startIndexOfFile; i < numOfFiles + startIndexOfFile; i++) {
             Path mapPath = config.basePath().resolve(DATA_FILE_NAME + i);
             Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + i);
 
@@ -73,6 +73,8 @@ public class MapsDeserializeStream implements Closeable {
         } catch (ReflectiveOperationException e) {
             throw new IOException(e);
         }
+        mapData.clear();
+        indexesData.clear();
     }
 
     public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) {
