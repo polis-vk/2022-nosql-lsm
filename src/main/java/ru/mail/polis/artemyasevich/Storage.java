@@ -36,10 +36,10 @@ public class Storage {
     Storage(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
         File[] files = pathToDirectory.toFile().listFiles();
-        int daoFiles = files == null ? 0 : files.length / 2;
-        resolveCompactionIfNeeded(daoFiles);
-        this.daoFiles = new ArrayList<>(daoFiles);
-        this.bufferSize = initFiles(daoFiles);
+        int daoFilesCount = files == null ? 0 : files.length / 2;
+        resolveCompactionIfNeeded(daoFilesCount);
+        this.daoFiles = new ArrayList<>(daoFilesCount);
+        this.bufferSize = initFiles(daoFilesCount);
         this.entryReadWriter = Collections.synchronizedMap(new WeakHashMap<>());
     }
 
@@ -94,7 +94,8 @@ public class Storage {
         }
     }
 
-    private void savaData(Iterator<BaseEntry<String>> dataIterator, Path pathToData, Path pathToMeta) throws IOException {
+    private void savaData(Iterator<BaseEntry<String>> dataIterator,
+                          Path pathToData, Path pathToMeta) throws IOException {
         try (DataOutputStream dataStream = new DataOutputStream(new BufferedOutputStream(
                 Files.newOutputStream(pathToData, writeOptions)));
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
@@ -149,25 +150,25 @@ public class Storage {
         return entryReadWriter.computeIfAbsent(Thread.currentThread(), thread -> new EntryReadWriter(bufferSize));
     }
 
-    private int initFiles(int daoFiles) throws IOException {
+    private int initFiles(int daoFilesCount) throws IOException {
         int maxSize = 0;
-        for (int i = 0; i < daoFiles; i++) {
+        for (int i = 0; i < daoFilesCount; i++) {
             DaoFile daoFile = new DaoFile(pathToData(i), pathToMeta(i));
             if (daoFile.maxEntrySize() > maxSize) {
                 maxSize = daoFile.maxEntrySize();
             }
-            this.daoFiles.add(daoFile);
+            daoFiles.add(daoFile);
         }
         return maxSize;
     }
 
-    private void resolveCompactionIfNeeded(int daoFiles) throws IOException {
+    private void resolveCompactionIfNeeded(int daoFilesCount) throws IOException {
         boolean incorrectDataFileExists = Files.exists(pathToData(COMPACTED_INDEX));
         boolean incorrectMetaFileExists = Files.exists(pathToMeta(COMPACTED_INDEX));
         if (!incorrectDataFileExists && !incorrectMetaFileExists) {
             return;
         }
-        retainOnlyCompactedFile(daoFiles - 1);
+        retainOnlyCompactedFile(daoFilesCount - 1);
         if (incorrectDataFileExists) {
             Files.move(pathToData(COMPACTED_INDEX), pathToData(0));
         }
@@ -176,8 +177,8 @@ public class Storage {
         }
     }
 
-    private void retainOnlyCompactedFile(int daoFiles) throws IOException {
-        for (int i = 0; i < daoFiles; i++) {
+    private void retainOnlyCompactedFile(int daoFilesCount) throws IOException {
+        for (int i = 0; i < daoFilesCount; i++) {
             Files.delete(pathToData(i));
             Files.delete(pathToMeta(i));
         }
