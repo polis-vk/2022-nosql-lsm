@@ -117,7 +117,7 @@ public class Storage implements Closeable {
                 int index2 =
                         Integer.parseInt(o2.getFileName().toString().replaceFirst(INDEX_FILE_NAME, ""));
                 return Integer.compare(index1, index2);
-            }).get().getFileName();
+            }).orElseThrow().getFileName();
             return Integer.parseInt(minFile.toString().replaceFirst(INDEX_FILE_NAME, ""));
         } catch (NoSuchElementException e) {
             return -1;
