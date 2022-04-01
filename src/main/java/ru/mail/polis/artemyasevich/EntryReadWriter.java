@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.channels.FileChannel;
 
+//Solving allocations issue in process
 public class EntryReadWriter {
     private final ByteBuffer buffer;
     private final CharBuffer searchedKeyBuffer;
@@ -61,11 +62,11 @@ public class EntryReadWriter {
     }
 
     CharBuffer fillAndGetKeyBuffer(String key) {
-        CharBuffer buffer = searchedKeyBuffer;
-        buffer.clear();
-        buffer.put(key);
-        buffer.flip();
-        return buffer;
+        CharBuffer searchedKeyBuffer = this.searchedKeyBuffer;
+        searchedKeyBuffer.clear();
+        searchedKeyBuffer.put(key);
+        searchedKeyBuffer.flip();
+        return searchedKeyBuffer;
     }
 
     int maxKeyLength() {
