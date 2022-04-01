@@ -3,10 +3,8 @@ package ru.mail.polis.artyomscheredin;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
-import ru.mail.polis.Entry;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -24,18 +22,41 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
+    private static final String DATA_FILE_NAME = "data";
+    private static final String INDEXES_FILE_NAME = "indexes";
+    private static final String TEMP_FILE_SUFFIX = "indexes";
+    private static final String EXTENSION = ".txt";
+    private static final int HEADER_SIZE = 1;
+
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> inMemoryData =
             new ConcurrentSkipListMap<>(ByteBuffer::compareTo);
-
-    private final Storage storage;
+    private final List<Utils.Pair<ByteBuffer>> mappedDiskData;
+    private final Config config;
 
     public PersistentDao(Config config) throws IOException {
         if (config == null) {
             throw new IllegalArgumentException();
         }
-        this.storage = new Storage(config);
+        this.config = config;
 
+
+        List<Utils.Pair<ByteBuffer>> list = new LinkedList<>();
+        for (int i = 1; ; i++) {
+            try (FileChannel dataChannel = FileChannel
+                    .open(config.basePath().resolve(DATA_FILE_NAME + i + EXTENSION));
+                 FileChannel indexChannel = FileChannel
+                         .open(config.basePath().resolve(INDEXES_FILE_NAME + i + EXTENSION))) {
+                ByteBuffer indexBuffer = indexChannel
+                        .map(FileChannel.MapMode.READ_ONLY, 0, indexChannel.size());
+                ByteBuffer dataBuffer = dataChannel
+                        .map(FileChannel.MapMode.READ_ONLY, 0, dataChannel.size());
+                list.add(new Utils.Pair<>(dataBuffer, indexBuffer));
+            } catch (NoSuchFileException e) {
+                break;
+            }
+        }
+        this.mappedDiskData = list;
     }
 
     @Override
@@ -44,10 +65,9 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         try {
             List<PeekIterator> iteratorsList = new ArrayList<>();
             int priority = 0;
-            iteratorsList.addAll(storage.getIterators);
-            for (Utils.MappedBuffersPair pair : mappedDiskData) {
-                iteratorsList.add(new PeekIterator(new FileIterator(pair.getDataBuffer(),
-                        pair.getIndexBuffer(), from, to), priority++));
+            for (Utils.Pair<ByteBuffer> pair : mappedDiskData) {
+                iteratorsList.add(new PeekIterator(new FileIterator(pair.first(),
+                        pair.second(), from, to), priority++));
             }
             if (!inMemoryData.isEmpty()) {
                 iteratorsList.add(new PeekIterator(getInMemoryIterator(from, to), priority));
@@ -92,33 +112,43 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public void close() throws IOException {
         lock.writeLock().lock();
         try {
-            store(inMemoryData);
+            int index = mappedDiskData.size() + 1;
+            Utils.Pair<Integer> dataAndIndexBufferSize = getDataAndIndexBufferSize(inMemoryData.values().iterator());
+            store(inMemoryData.values().iterator(), config.basePath().resolve(DATA_FILE_NAME + index + EXTENSION),
+                    config.basePath().resolve(INDEXES_FILE_NAME + index + EXTENSION),
+                    dataAndIndexBufferSize.first(),
+                    dataAndIndexBufferSize.second());
+
             inMemoryData.clear();
         } finally {
             lock.writeLock().unlock();
         }
     }
 
-    private int readPrevIndex() throws IOException {
-        Path pathToReadMetaInfo = config.basePath().resolve(META_INFO_FILE_NAME + EXTENSION);
-        try {
-            ByteBuffer temp = ByteBuffer.wrap(Files.readAllBytes(pathToReadMetaInfo));
-            temp.rewind();
-            return temp.getInt();
-        } catch (NoSuchFileException e) {
-            return 0;
+    private Utils.Pair<Integer> getDataAndIndexBufferSize(Iterator<BaseEntry<ByteBuffer>> it) {
+        int size = 0;
+        int count = 0;
+        while (it.hasNext()) {
+            BaseEntry<ByteBuffer> el = it.next();
+            count++;
+            if (el.value() == null) {
+                size += el.key().remaining();
+            } else {
+                size += el.key().remaining() + el.value().remaining();
+            }
         }
+        size += 2 * count * Integer.BYTES;
+        return new Utils.Pair<>(size, (HEADER_SIZE + count) * Integer.BYTES);
     }
 
-    private void store(SortedMap<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
-        if (data == null) {
-            return;
+    private Utils.Pair<ByteBuffer> store(Iterator<BaseEntry<ByteBuffer>> entryIterator,
+                             Path pathToWriteData,
+                             Path pathToWriteIndexes, int dataFileSize, int indexesFileSize) throws IOException {
+        if (!entryIterator.hasNext()) {
+            return null;
         }
-        int index = mappedDiskData.size() + 1;
-
-        Path pathToWriteData = config.basePath().resolve(DATA_FILE_NAME + index + EXTENSION);
-        Path pathToWriteIndexes = config.basePath().resolve(INDEXES_FILE_NAME + index + EXTENSION);
-
+        ByteBuffer writeDataBuffer;
+        ByteBuffer writeIndexBuffer;
         try (FileChannel dataChannel = FileChannel.open(pathToWriteData,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.READ,
@@ -129,26 +159,14 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                      StandardOpenOption.READ,
                      StandardOpenOption.WRITE,
                      StandardOpenOption.TRUNCATE_EXISTING)) {
-
-            int size = 0;
-            for (Entry<ByteBuffer> el : inMemoryData.values()) {
-                if (el.value() == null) {
-                    size += el.key().remaining();
-                } else {
-                    size += el.key().remaining() + el.value().remaining();
-                }
-            }
-            size += 2 * inMemoryData.size() * Integer.BYTES;
-
-            ByteBuffer writeDataBuffer = dataChannel.map(FileChannel.MapMode.READ_WRITE, 0, size);
-            ByteBuffer writeIndexBuffer = indexChannel.map(FileChannel.MapMode.READ_WRITE, 0,
-                    (long) (HEADER_SIZE + inMemoryData.size()) * Integer.BYTES);
-
+            writeDataBuffer = dataChannel.map(FileChannel.MapMode.READ_WRITE, 0, dataFileSize);
+            writeIndexBuffer = indexChannel.map(FileChannel.MapMode.READ_WRITE, 0, indexesFileSize);
 
             //index file: entities_number=n, offset_1...offset_n
             //data file: key_size, key, value_size, value
-            writeIndexBuffer.putInt(inMemoryData.size());
-            for (Entry<ByteBuffer> el : inMemoryData.values()) {
+            writeIndexBuffer.putInt(indexesFileSize / Integer.BYTES - 1);
+            while (entryIterator.hasNext()) {
+                BaseEntry<ByteBuffer> el = entryIterator.next();
                 writeIndexBuffer.putInt(writeDataBuffer.position());
 
                 writeDataBuffer.putInt(el.key().remaining());
@@ -161,20 +179,37 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 }
             }
         }
-
-        try (RandomAccessFile file = new RandomAccessFile(config.basePath()
-                .resolve(META_INFO_FILE_NAME + EXTENSION).toFile(), "rw")) {
-            file.writeInt(index);
-        }
+        return new Utils.Pair<>(writeDataBuffer, writeIndexBuffer);
     }
 
     @Override
-    public void compact() {
-        writeTemp();
-        deleteOld();
-        renameTemp();
-    }
+    public void compact() throws IOException {
+        Path tempDataPath = config.basePath().resolve(DATA_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
+        Path tempIndexPath = config.basePath().resolve(INDEXES_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
+        Utils.Pair<Integer> dataAndIndexBufferSize = getDataAndIndexBufferSize(get(null, null));
+        Utils.Pair<ByteBuffer> temp = store(get(null, null), tempDataPath, tempIndexPath,
+                dataAndIndexBufferSize.first(), dataAndIndexBufferSize.second());
+        inMemoryData.clear();
+        mappedDiskData.clear();
 
+        for (int i = 1; ; i++) {
+            Path curIndexFilePath = config.basePath().resolve(INDEXES_FILE_NAME + i + EXTENSION);
+            Path curDataFilePath = config.basePath().resolve(DATA_FILE_NAME + i + EXTENSION);
+            if (!Files.deleteIfExists(curIndexFilePath) || !Files.deleteIfExists(curDataFilePath)) {
+                break;
+            }
+        }
+
+        try {
+            Files.move(tempDataPath, config.basePath().resolve(DATA_FILE_NAME + 1 + EXTENSION));
+            Files.move(tempIndexPath, config.basePath().resolve(INDEXES_FILE_NAME + 1 + EXTENSION));
+            if (temp != null) {
+                mappedDiskData.add(temp);
+            }
+        } catch (NoSuchFileException e) {
+            //Dao was empty, temp file hasn't created
+        }
+    }
 
     private static class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
         private final ByteBuffer dataBuffer;
@@ -185,14 +220,14 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         public FileIterator(ByteBuffer dataBuffer, ByteBuffer indexBuffer, ByteBuffer from, ByteBuffer to) {
             this.dataBuffer = dataBuffer;
             this.indexBuffer = indexBuffer;
-            cursor = (from == null) ? HEADER_SIZE : findOffset(indexBuffer, dataBuffer, from);
+            cursor = (from == null) ? HEADER_SIZE * Integer.BYTES : findOffset(indexBuffer, dataBuffer, from);
             upperBound = (to == null) ? indexBuffer.limit() : findOffset(indexBuffer, dataBuffer, to);
         }
 
         private static int findOffset(ByteBuffer indexBuffer, ByteBuffer dataBuffer, ByteBuffer key) {
             int low = HEADER_SIZE;
-            int mid = 0;
-            int high = indexBuffer.remaining()/ Integer.BYTES - 1;
+            int mid;
+            int high = indexBuffer.remaining() / Integer.BYTES - 1;
             while (low <= high) {
                 mid = low + ((high - low) / 2);
                 int offset = indexBuffer.getInt(mid * Integer.BYTES);

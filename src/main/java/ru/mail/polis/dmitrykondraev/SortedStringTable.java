@@ -47,7 +47,7 @@ final class SortedStringTable implements Closeable {
 
     /**
      * Write key-value pairs in format:
-     * ┌─────────────────────┬─────────────────────────┐
+     * ┌─────────────────────┬─────────────────────────┐i
      * │key: byte[keySize(i)]│value: byte[valueSize(i)]│ entriesMapped() times.
      * └─────────────────────┴─────────────────────────┘
      */
