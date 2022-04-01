@@ -11,6 +11,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 public final class Utils {
 
@@ -112,5 +113,12 @@ public final class Utils {
 
     public static boolean isTombstone(Entry<MemorySegment> entry) {
         return entry.value() == null;
+    }
+
+    public static void deleteTables(List<SSTable> tableList) throws IOException {
+        for (SSTable table : tableList) {
+            Files.deleteIfExists(table.getTableName());
+            Files.deleteIfExists(table.getIndexName());
+        }
     }
 }

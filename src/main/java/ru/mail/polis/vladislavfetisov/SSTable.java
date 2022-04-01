@@ -9,6 +9,7 @@ import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -22,10 +23,22 @@ public final class SSTable {
     public static final String INDEX = "_i";
     private final MemorySegment mapFile;
     private final MemorySegment mapIndex;
+    private final Path tableName;
+    private final Path indexName;
+
+    public Path getTableName() {
+        return tableName;
+    }
+
+    public Path getIndexName() {
+        return indexName;
+    }
 
     private SSTable(Path tableName, Path indexName) throws IOException {
         mapFile = Utils.map(tableName, Files.size(tableName), FileChannel.MapMode.READ_ONLY);
+        this.tableName = tableName;
         mapIndex = Utils.map(indexName, Files.size(indexName), FileChannel.MapMode.READ_ONLY);
+        this.indexName = indexName;
     }
 
     public static List<SSTable> getAllTables(Path dir) {
@@ -62,8 +75,9 @@ public final class SSTable {
         }
         long indexSize = (long) values.size() * Long.BYTES;
 
-        Files.createFile(tableTemp);
-        Files.createFile(indexTemp);
+        newFile(tableTemp);
+        newFile(indexTemp);
+
         MemorySegment fileMap = Utils.map(tableTemp, tableSize, FileChannel.MapMode.READ_WRITE);
         MemorySegment indexMap = Utils.map(indexTemp, indexSize, FileChannel.MapMode.READ_WRITE);
 
@@ -83,10 +97,17 @@ public final class SSTable {
             }
             fileOffset += Utils.writeSegment(entry.value(), fileMap, fileOffset);
         }
-        Utils.rename(tableTemp, table);
         Utils.rename(indexTemp, index);
+        Utils.rename(tableTemp, table);
 
         return new SSTable(table, index);
+    }
+
+    private static void newFile(Path tableTemp) throws IOException {
+        Files.newByteChannel(tableTemp,
+                StandardOpenOption.CREATE_NEW,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     public Iterator<Entry<MemorySegment>> range(MemorySegment from, MemorySegment to) {
