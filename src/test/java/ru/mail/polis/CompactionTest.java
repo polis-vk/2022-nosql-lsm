@@ -16,7 +16,6 @@
 
 package ru.mail.polis;
 
-import org.junit.jupiter.api.Test;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
@@ -24,7 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.LongSummaryStatistics;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -33,6 +31,39 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author Vadim Tsesko
  */
 class CompactionTest extends BaseTest {
+    @DaoTest(stage = 4)
+    void empty(Dao<String, Entry<String>> dao) throws IOException {
+        // Compact
+        dao.compact();
+        dao.close();
+
+        // Check the contents
+        dao = DaoFactory.Factory.reopen(dao);
+        assertSame(dao.all(), new int[0]);
+    }
+
+    @DaoTest(stage = 4)
+    void nothingToFlush(Dao<String, Entry<String>> dao) throws IOException {
+        final Entry<String> entry = entryAt(42);
+        dao.upsert(entry);
+
+        // Compact and flush
+        dao.compact();
+        dao.close();
+
+        // Check the contents
+        dao = DaoFactory.Factory.reopen(dao);
+        assertSame(dao.all(), entry);
+
+        // Compact and flush
+        dao.compact();
+        dao.close();
+
+        // Check the contents
+        dao = DaoFactory.Factory.reopen(dao);
+        assertSame(dao.all(), entry);
+    }
+
     @DaoTest(stage = 4)
     void overwrite(Dao<String, Entry<String>> dao) throws IOException {
         // Reference value
