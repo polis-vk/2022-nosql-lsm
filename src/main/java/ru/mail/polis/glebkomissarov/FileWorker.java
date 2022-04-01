@@ -18,7 +18,7 @@ import java.util.stream.Stream;
 public class FileWorker {
     private static final long WRONG_SIZE = -1;
 
-    private List<BaseEntry<MemorySegment>> files = new ArrayList<>();
+    private final List<BaseEntry<MemorySegment>> files = new ArrayList<>();
     private Path[] paths;
 
     public void load(Path basePath) {
@@ -34,7 +34,7 @@ public class FileWorker {
                 files.add(new BaseEntry<>(offsets, entries));
             }
         } catch (IOException e) {
-            files = null;
+            e.printStackTrace();
         }
     }
 
@@ -49,9 +49,9 @@ public class FileWorker {
             fileSize += Long.BYTES;
         }
 
-        long millis = createFiles(basePath);
-        Path pathToEntries = basePath.resolve(FileName.SAVED_DATA.getName() + millis);
-        Path pathToOffsets = basePath.resolve(FileName.OFFSETS.getName() + millis);
+        long nanos = createFiles(basePath);
+        Path pathToEntries = basePath.resolve(FileName.SAVED_DATA.getName() + nanos);
+        Path pathToOffsets = basePath.resolve(FileName.OFFSETS.getName() + nanos);
 
         try (ResourceScope scopeEntries = ResourceScope.newConfinedScope();
              ResourceScope scopeOffsets = ResourceScope.newConfinedScope()) {
@@ -141,7 +141,6 @@ public class FileWorker {
             long end = to == null ? boarder : Math.abs(binarySearch(to, offsets, entries, boarder)) - 1;
 
             if (start > end) {
-                iterator.add(new PeekIterator(Collections.emptyIterator(), i));
                 continue;
             }
 
