@@ -8,13 +8,15 @@ import java.nio.file.Path;
 public class DaoFile {
     private final long[] offsets;
     private final RandomAccessFile reader;
-    private int size;
-    private int entries;
+    private final long size;
+    private final int entries;
     private int maxEntrySize;
 
     public DaoFile(Path pathToFile, Path pathToMeta) throws IOException {
         this.reader = new RandomAccessFile(pathToFile.toFile(), "r");
         this.offsets = processMetaAndGetOffsets(pathToMeta);
+        this.size = offsets[offsets.length - 1];
+        this.entries = offsets.length - 1;
     }
 
     public FileChannel getChannel() {
@@ -51,13 +53,12 @@ public class DaoFile {
         try (RandomAccessFile metaReader = new RandomAccessFile(pathToMeta.toFile(), "r")) {
             long metaFileSize = metaReader.length();
             metaReader.seek(metaFileSize - Integer.BYTES);
-            this.entries = metaReader.readInt();
-            fileOffsets = new long[entries + 1];
+            int entriesTotal = metaReader.readInt();
+            fileOffsets = new long[entriesTotal + 1];
             fileOffsets[0] = 0;
             metaReader.seek(0);
             int i = 1;
             int maxEntry = 0;
-            int fileSize = 0;
             long currentOffset = 0;
             while (metaReader.getFilePointer() != metaFileSize - Integer.BYTES) {
                 int numberOfEntries = metaReader.readInt();
@@ -69,11 +70,9 @@ public class DaoFile {
                     currentOffset += entryBytesSize;
                     fileOffsets[i] = currentOffset;
                     i++;
-                    fileSize += entryBytesSize;
                 }
             }
             this.maxEntrySize = maxEntry;
-            this.size = fileSize;
         }
         return fileOffsets;
     }

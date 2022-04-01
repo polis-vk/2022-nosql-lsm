@@ -12,6 +12,7 @@ import java.nio.CharBuffer;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,6 +25,7 @@ public class Storage {
     private static final String DATA_FILE = "data";
     private static final String META_FILE = "meta";
     private static final String FILE_EXTENSION = ".txt";
+    private static final int COMPACTED_INDEX = -1;
     private static final OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
 
     private final Map<Thread, EntryReadWriter> entryReadWriter;
@@ -34,9 +36,10 @@ public class Storage {
     Storage(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
         File[] files = pathToDirectory.toFile().listFiles();
-        int numberOfFiles = files == null ? 0 : files.length / 2;
-        this.daoFiles = new ArrayList<>(numberOfFiles);
-        this.bufferSize = initFiles(numberOfFiles);
+        int daoFiles = files == null ? 0 : files.length / 2;
+        resolveCompactionIfNeeded(daoFiles);
+        this.daoFiles = new ArrayList<>(daoFiles);
+        this.bufferSize = initFiles(daoFiles);
         this.entryReadWriter = Collections.synchronizedMap(new WeakHashMap<>());
     }
 
@@ -45,8 +48,8 @@ public class Storage {
         if (key.length() > entryReader.maxKeyLength()) {
             return null;
         }
-        for (int fileNumber = daoFiles.size() - 1; fileNumber >= 0; fileNumber--) {
-            DaoFile daoFile = daoFiles.get(fileNumber);
+        for (int i = daoFiles.size() - 1; i >= 0; i--) {
+            DaoFile daoFile = daoFiles.get(i);
             int entryIndex = getEntryIndex(key, daoFile);
             if (entryIndex > daoFile.getLastIndex()) {
                 continue;
@@ -61,42 +64,41 @@ public class Storage {
 
     Iterator<BaseEntry<String>> iterate(String from, String to) throws IOException {
         List<PeekIterator> iterators = new ArrayList<>(daoFiles.size());
-        for (int fileNumber = 0; fileNumber < daoFiles.size(); fileNumber++) {
-            int sourceNumber = daoFiles.size() - fileNumber;
-            iterators.add(new PeekIterator(new FileIterator(from, to, daoFiles.get(fileNumber)), sourceNumber));
+        for (int i = 0; i < daoFiles.size(); i++) {
+            int sourceNumber = daoFiles.size() - i;
+            iterators.add(new PeekIterator(new FileIterator(from, to, daoFiles.get(i)), sourceNumber));
         }
         return new MergeIterator(iterators);
     }
 
-    void retainOnlyCompactedFile() throws IOException {
-        close();
+    void compact(Iterator<BaseEntry<String>> mergeIterator) throws IOException {
+        savaData(mergeIterator, pathToData(COMPACTED_INDEX), pathToMeta(COMPACTED_INDEX));
+        closeFiles();
         int filesBefore = daoFiles.size();
         daoFiles.clear();
-        for (int i = 0; i < filesBefore; i++) {
-            Files.delete(pathToFile(i, DATA_FILE));
-            Files.delete(pathToFile(i, META_FILE));
-        }
-        Files.move(pathToFile(filesBefore, DATA_FILE), pathToFile(0, DATA_FILE));
-        Files.move(pathToFile(filesBefore, META_FILE), pathToFile(0, META_FILE));
+        retainOnlyCompactedFile(filesBefore);
+        Files.move(pathToData(COMPACTED_INDEX), pathToData(0), StandardCopyOption.ATOMIC_MOVE);
+        Files.move(pathToMeta(COMPACTED_INDEX), pathToMeta(0), StandardCopyOption.ATOMIC_MOVE);
     }
 
     void flush(Iterator<BaseEntry<String>> dataIterator) throws IOException {
-        savaData(dataIterator);
-        int filesBefore = daoFiles.size();
-        daoFiles.add(new DaoFile(pathToFile(filesBefore, DATA_FILE), pathToFile(filesBefore, META_FILE)));
+        Path pathToData = pathToData(daoFiles.size());
+        Path pathToMeta = pathToMeta(daoFiles.size());
+        savaData(dataIterator, pathToData, pathToMeta);
+        daoFiles.add(new DaoFile(pathToData, pathToMeta));
     }
 
-    void close() throws IOException {
+    void closeFiles() throws IOException {
         for (DaoFile daoFile : daoFiles) {
             daoFile.close();
         }
     }
 
-    void savaData(Iterator<BaseEntry<String>> dataIterator) throws IOException {
+    private void savaData(Iterator<BaseEntry<String>> dataIterator, Path pathToData, Path pathToMeta) throws IOException {
         try (DataOutputStream dataStream = new DataOutputStream(new BufferedOutputStream(
-                Files.newOutputStream(pathToFile(daoFiles.size(), DATA_FILE), writeOptions)));
+                Files.newOutputStream(pathToData, writeOptions)));
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
-                     Files.newOutputStream(pathToFile(daoFiles.size(), META_FILE), writeOptions)
+                     Files.newOutputStream(pathToMeta, writeOptions)
              ))) {
             EntryReadWriter entryWriter = getEntryReadWriter();
             BaseEntry<String> entry = dataIterator.next();
@@ -147,20 +149,46 @@ public class Storage {
         return entryReadWriter.computeIfAbsent(Thread.currentThread(), thread -> new EntryReadWriter(bufferSize));
     }
 
-    private Path pathToFile(int fileNumber, String fileName) {
-        return pathToDirectory.resolve(fileName + fileNumber + FILE_EXTENSION);
-    }
-
-    private int initFiles(int files) throws IOException {
+    private int initFiles(int daoFiles) throws IOException {
         int maxSize = 0;
-        for (int i = 0; i < files; i++) {
-            DaoFile daoFile = new DaoFile(pathToFile(i, DATA_FILE), pathToFile(i, META_FILE));
+        for (int i = 0; i < daoFiles; i++) {
+            DaoFile daoFile = new DaoFile(pathToData(i), pathToMeta(i));
             if (daoFile.maxEntrySize() > maxSize) {
                 maxSize = daoFile.maxEntrySize();
             }
-            daoFiles.add(daoFile);
+            this.daoFiles.add(daoFile);
         }
         return maxSize;
+    }
+
+    private void resolveCompactionIfNeeded(int daoFiles) throws IOException {
+        boolean incorrectDataFileExists = Files.exists(pathToData(COMPACTED_INDEX));
+        boolean incorrectMetaFileExists = Files.exists(pathToMeta(COMPACTED_INDEX));
+        if (!incorrectDataFileExists && !incorrectMetaFileExists) {
+            return;
+        }
+        retainOnlyCompactedFile(daoFiles - 1);
+        if (incorrectDataFileExists) {
+            Files.move(pathToData(COMPACTED_INDEX), pathToData(0));
+        }
+        if (incorrectMetaFileExists) {
+            Files.move(pathToMeta(COMPACTED_INDEX), pathToMeta(0));
+        }
+    }
+
+    private void retainOnlyCompactedFile(int daoFiles) throws IOException {
+        for (int i = 0; i < daoFiles; i++) {
+            Files.delete(pathToData(i));
+            Files.delete(pathToMeta(i));
+        }
+    }
+
+    private Path pathToMeta(int fileNumber) {
+        return pathToDirectory.resolve(META_FILE + fileNumber + FILE_EXTENSION);
+    }
+
+    private Path pathToData(int fileNumber) {
+        return pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
     }
 
     private class FileIterator implements Iterator<BaseEntry<String>> {

@@ -64,8 +64,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         if (!mergeIterator.hasNext()) {
             return;
         }
-        storage.savaData(mergeIterator);
-        storage.retainOnlyCompactedFile();
+        storage.compact(mergeIterator);
         dataMap.clear();
     }
 
@@ -84,10 +83,10 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             return;
         }
         if (!dataMap.isEmpty()) {
-            storage.savaData(dataMap.values().iterator());
+            storage.flush(dataMap.values().iterator());
             dataMap.clear();
         }
-        storage.close();
+        storage.closeFiles();
     }
 
     private Iterator<BaseEntry<String>> getDataMapIterator(String from, String to) {
