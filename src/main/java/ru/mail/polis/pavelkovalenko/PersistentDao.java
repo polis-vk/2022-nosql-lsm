@@ -20,7 +20,7 @@ import ru.mail.polis.pavelkovalenko.utils.Utils;
 public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    private final NavigableMap<Integer /*priority */, FilePair> sstablesPaths = new TreeMap<>();
+    private final NavigableMap<Integer /*priority*/, FilePair> sstablesPaths = new TreeMap<>();
     private final Config config;
 
     public PersistentDao(Config config) throws IOException {
