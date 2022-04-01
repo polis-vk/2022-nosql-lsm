@@ -26,7 +26,7 @@ public class MapsDeserializeStream implements Closeable {
 
     private final List<MappedByteBuffer> mapData;
     private final List<MappedByteBuffer> indexesData;
-    private final int numOfFiles;
+    private int numOfFiles;
     private final Method unmap;
     private final Object fieldValue;
 
@@ -36,17 +36,7 @@ public class MapsDeserializeStream implements Closeable {
         indexesData = new ArrayList<>();
 
         for (int i = startIndexOfFile; i < numOfFiles + startIndexOfFile; i++) {
-            Path mapPath = config.basePath().resolve(DATA_FILE_NAME + i);
-            Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + i);
-
-            FileChannel mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(READ));
-            FileChannel indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(READ));
-
-            mapData.add(mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size()));
-            indexesData.add(indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size()));
-
-            mapChannel.close();
-            indexesChannel.close();
+            addMappedFile(i, config.basePath());
         }
 
         Collections.reverse(mapData);
@@ -61,6 +51,24 @@ public class MapsDeserializeStream implements Closeable {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    public void addMappedFile(int index, Path basePath) throws IOException {
+        Path mapPath = basePath.resolve(DATA_FILE_NAME + index);
+        Path indexesPath = basePath.resolve(INDEX_FILE_NAME + index);
+
+        FileChannel mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(READ));
+        FileChannel indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(READ));
+
+        mapData.add(mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size()));
+        indexesData.add(indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size()));
+
+        mapChannel.close();
+        indexesChannel.close();
+    }
+
+    public void updateNumOfFiles(int newNum) {
+        numOfFiles = newNum;
     }
 
     @Override

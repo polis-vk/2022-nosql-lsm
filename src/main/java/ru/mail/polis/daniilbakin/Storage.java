@@ -94,6 +94,9 @@ public class Storage implements Closeable {
         MapSerializeStream writer = new MapSerializeStream(config, numOfFiles, startIndexFile);
         writer.serializeData(data.values().iterator());
         writer.close();
+        int newFileIndex = (startIndexFile == -1) ? 0 : startIndexFile + numOfFiles;
+        deserialize.addMappedFile(newFileIndex, config.basePath());
+        deserialize.updateNumOfFiles(++numOfFiles);
     }
 
     private int calcCountOfIndexFiles() throws IOException {

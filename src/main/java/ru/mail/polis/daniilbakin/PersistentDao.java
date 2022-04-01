@@ -49,13 +49,14 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void close() throws IOException {
-        storage.close();
         flush();
+        storage.close();
     }
 
     @Override
     public void flush() throws IOException {
         storage.flush(data);
+        data.clear();
     }
 
     private Iterator<BaseEntry<ByteBuffer>> getInMemoryIterator(ByteBuffer from, ByteBuffer to) {
