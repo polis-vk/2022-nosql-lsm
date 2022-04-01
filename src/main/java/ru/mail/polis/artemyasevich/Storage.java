@@ -8,7 +8,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
@@ -27,8 +26,7 @@ public class Storage {
     private static final String FILE_EXTENSION = ".txt";
     private static final OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
 
-    private final Map<Thread, ByteBuffer> entryBuffer;
-    private final Map<Thread, CharBuffer> searchedKeyBuffer;
+    private final Map<Thread, EntryReadWriter> entryReadWriter;
     private final Path pathToDirectory;
     private final List<DaoFile> daoFiles;
     private final int bufferSize;
@@ -39,12 +37,12 @@ public class Storage {
         int numberOfFiles = files == null ? 0 : files.length / 2;
         this.daoFiles = new ArrayList<>(numberOfFiles);
         this.bufferSize = initFiles(numberOfFiles);
-        this.entryBuffer = Collections.synchronizedMap(new WeakHashMap<>());
-        this.searchedKeyBuffer = Collections.synchronizedMap(new WeakHashMap<>());
+        this.entryReadWriter = Collections.synchronizedMap(new WeakHashMap<>());
     }
 
     BaseEntry<String> get(String key) throws IOException {
-        if (key.length() > maxKeyLength()) {
+        EntryReadWriter entryReader = getEntryReadWriter();
+        if (key.length() > entryReader.maxKeyLength()) {
             return null;
         }
         for (int fileNumber = daoFiles.size() - 1; fileNumber >= 0; fileNumber--) {
@@ -53,7 +51,7 @@ public class Storage {
             if (entryIndex > daoFile.getLastIndex()) {
                 continue;
             }
-            BaseEntry<String> entry = readEntry(daoFile, entryIndex);
+            BaseEntry<String> entry = entryReader.readEntryFromChannel(daoFile, entryIndex);
             if (entry.key().equals(key)) {
                 return entry.value() == null ? null : entry;
             }
@@ -87,6 +85,7 @@ public class Storage {
         int filesBefore = daoFiles.size();
         daoFiles.add(new DaoFile(pathToFile(filesBefore, DATA_FILE), pathToFile(filesBefore, META_FILE)));
     }
+
     void close() throws IOException {
         for (DaoFile daoFile : daoFiles) {
             daoFile.close();
@@ -99,15 +98,16 @@ public class Storage {
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
                      Files.newOutputStream(pathToFile(daoFiles.size(), META_FILE), writeOptions)
              ))) {
+            EntryReadWriter entryWriter = getEntryReadWriter();
             BaseEntry<String> entry = dataIterator.next();
             int entriesCount = 1;
             int currentRepeats = 1;
-            int currentBytes = writeEntryInStream(dataStream, entry);
+            int currentBytes = entryWriter.writeEntryInStream(dataStream, entry);
 
             while (dataIterator.hasNext()) {
                 entry = dataIterator.next();
                 entriesCount++;
-                int bytesWritten = writeEntryInStream(dataStream, entry);
+                int bytesWritten = entryWriter.writeEntryInStream(dataStream, entry);
                 if (bytesWritten == currentBytes) {
                     currentRepeats++;
                     continue;
@@ -124,13 +124,13 @@ public class Storage {
     }
 
     private int getEntryIndex(String key, DaoFile daoFile) throws IOException {
+        EntryReadWriter entryReader = getEntryReadWriter();
         int left = 0;
         int right = daoFile.getLastIndex();
         while (left <= right) {
             int middle = (right - left) / 2 + left;
-            fillBufferWithEntry(daoFile, middle);
-            CharBuffer middleKey = bufferAsKeyOnly();
-            CharBuffer keyToFind = fillAndGetKeyBuffer(key);
+            CharBuffer middleKey = entryReader.bufferAsKeyOnly(daoFile, middle);
+            CharBuffer keyToFind = entryReader.fillAndGetKeyBuffer(key);
             int comparison = keyToFind.compareTo(middleKey);
             if (comparison < 0) {
                 right = middle - 1;
@@ -143,67 +143,8 @@ public class Storage {
         return left;
     }
 
-    //keySize|key|valueSize|value or key|keySize if value == null
-    private int writeEntryInStream(DataOutputStream dataStream, BaseEntry<String> entry) throws IOException {
-        int keySize = entry.key().length() * 2;
-        int valueBlockSize = 0;
-        dataStream.writeShort(keySize);
-        dataStream.writeChars(entry.key());
-        if (entry.value() != null) {
-            int valueSize = entry.value().length() * 2;
-            valueBlockSize = valueSize + Short.BYTES;
-            dataStream.writeShort(valueSize);
-            dataStream.writeChars(entry.value());
-        }
-        return keySize + Short.BYTES + valueBlockSize;
-    }
-
-    private BaseEntry<String> readEntry(DaoFile daoFile, int entryIndex) throws IOException {
-        ByteBuffer buffer = getEntryBuffer();
-        fillBufferWithEntry(daoFile, entryIndex);
-        String key = bufferAsKeyOnly().toString();
-        buffer.limit(daoFile.entrySize(entryIndex));
-        String value = null;
-        if (buffer.hasRemaining()) {
-            short valueSize = buffer.getShort();
-            value = valueSize == 0 ? "" : buffer.asCharBuffer().toString();
-        }
-        return new BaseEntry<>(key, value);
-    }
-
-    private CharBuffer bufferAsKeyOnly() {
-        ByteBuffer buffer = getEntryBuffer();
-        short keySize = buffer.getShort();
-        buffer.limit(keySize + Short.BYTES);
-        CharBuffer key = buffer.asCharBuffer();
-        buffer.position(Short.BYTES + keySize);
-        return key;
-    }
-
-    private void fillBufferWithEntry(DaoFile daoFile, int entryIndex) throws IOException {
-        ByteBuffer buffer = getEntryBuffer();
-        buffer.clear();
-        buffer.limit(daoFile.entrySize(entryIndex));
-        daoFile.getChannel().read(buffer, daoFile.getOffset(entryIndex));
-        buffer.flip();
-    }
-
-    private ByteBuffer getEntryBuffer() {
-        return entryBuffer.computeIfAbsent(Thread.currentThread(), k -> ByteBuffer.allocate(bufferSize));
-    }
-
-    private CharBuffer fillAndGetKeyBuffer(String key) {
-        CharBuffer buffer = searchedKeyBuffer.computeIfAbsent(Thread.currentThread(),
-                k -> CharBuffer.allocate(maxKeyLength()));
-        buffer.clear();
-        buffer.put(key);
-        buffer.flip();
-        return buffer;
-    }
-
-    private int maxKeyLength() {
-        //The length of the longest entry with null value
-        return bufferSize / 2 - Short.BYTES / 2;
+    private EntryReadWriter getEntryReadWriter() {
+        return entryReadWriter.computeIfAbsent(Thread.currentThread(), thread -> new EntryReadWriter(bufferSize));
     }
 
     private Path pathToFile(int fileNumber, String fileName) {
@@ -223,6 +164,7 @@ public class Storage {
     }
 
     private class FileIterator implements Iterator<BaseEntry<String>> {
+        private final EntryReadWriter entryReader;
         private final DaoFile daoFile;
         private final String to;
         private int entryToRead;
@@ -232,6 +174,7 @@ public class Storage {
             this.daoFile = daoFile;
             this.to = to;
             this.entryToRead = from == null ? 0 : getEntryIndex(from, daoFile);
+            this.entryReader = getEntryReadWriter();
             this.next = getNext();
         }
 
@@ -255,7 +198,7 @@ public class Storage {
             if (daoFile.getOffset(entryToRead) == daoFile.sizeOfFile()) {
                 return null;
             }
-            BaseEntry<String> entry = readEntry(daoFile, entryToRead);
+            BaseEntry<String> entry = entryReader.readEntryFromChannel(daoFile, entryToRead);
             if (to != null && entry.key().compareTo(to) >= 0) {
                 return null;
             }
@@ -263,4 +206,5 @@ public class Storage {
             return entry;
         }
     }
+
 }
