@@ -57,42 +57,37 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void compact() throws IOException {
-        flush(get(null, null));
-        closeFiles();
-        int filesBefore = daoFiles.size();
-        daoFiles.clear();
-        for (int i = 0; i < filesBefore; i++) {
-            Files.delete(pathToFile(i, DATA_FILE));
-            Files.delete(pathToFile(i, META_FILE));
+        if (storage == null) {
+            return;
         }
-        Files.move(pathToFile(filesBefore, DATA_FILE), pathToFile(0, DATA_FILE));
-        Files.move(pathToFile(filesBefore, META_FILE), pathToFile(0, META_FILE));
+        Iterator<BaseEntry<String>> mergeIterator = get(null, null);
+        if (!mergeIterator.hasNext()) {
+            return;
+        }
+        storage.savaData(mergeIterator);
+        storage.retainOnlyCompactedFile();
+        dataMap.clear();
     }
 
     @Override
     public void flush() throws IOException {
-        flush(dataMap.values().iterator());
-        int fileToAdd = daoFiles.size();
-        daoFiles.add(new DaoFile(pathToFile(fileToAdd, DATA_FILE), pathToFile(fileToAdd, META_FILE)));
-        if (storage != null) {
-            storage.savaData(dataMap);
+        if (storage == null || dataMap.isEmpty()) {
+            return;
         }
+        storage.flush(dataMap.values().iterator());
         dataMap.clear();
     }
 
     @Override
     public void close() throws IOException {
-        flush(dataMap.values().iterator());
-        closeFiles();
-    }
-
-    private void flush(Iterator<BaseEntry<String>> iterator) throws IOException {
-        savaData(iterator);
-        dataMap.clear();
-        flush();
-        if (storage != null) {
-            storage.close();
+        if (storage == null) {
+            return;
         }
+        if (!dataMap.isEmpty()) {
+            storage.savaData(dataMap.values().iterator());
+            dataMap.clear();
+        }
+        storage.close();
     }
 
     private Iterator<BaseEntry<String>> getDataMapIterator(String from, String to) {

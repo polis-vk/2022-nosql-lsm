@@ -70,29 +70,43 @@ public class Storage {
         return new MergeIterator(iterators);
     }
 
+    void retainOnlyCompactedFile() throws IOException {
+        close();
+        int filesBefore = daoFiles.size();
+        daoFiles.clear();
+        for (int i = 0; i < filesBefore; i++) {
+            Files.delete(pathToFile(i, DATA_FILE));
+            Files.delete(pathToFile(i, META_FILE));
+        }
+        Files.move(pathToFile(filesBefore, DATA_FILE), pathToFile(0, DATA_FILE));
+        Files.move(pathToFile(filesBefore, META_FILE), pathToFile(0, META_FILE));
+    }
+
+    void flush(Iterator<BaseEntry<String>> dataIterator) throws IOException {
+        savaData(dataIterator);
+        int filesBefore = daoFiles.size();
+        daoFiles.add(new DaoFile(pathToFile(filesBefore, DATA_FILE), pathToFile(filesBefore, META_FILE)));
+    }
     void close() throws IOException {
         for (DaoFile daoFile : daoFiles) {
             daoFile.close();
         }
     }
 
-    void savaData(Map<String, BaseEntry<String>> dataMap) throws IOException {
-        if (dataMap.isEmpty()) {
-            return;
-        }
+    void savaData(Iterator<BaseEntry<String>> dataIterator) throws IOException {
         try (DataOutputStream dataStream = new DataOutputStream(new BufferedOutputStream(
                 Files.newOutputStream(pathToFile(daoFiles.size(), DATA_FILE), writeOptions)));
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
                      Files.newOutputStream(pathToFile(daoFiles.size(), META_FILE), writeOptions)
              ))) {
-            metaStream.writeInt(dataMap.size());
-            Iterator<BaseEntry<String>> dataIterator = dataMap.values().iterator();
             BaseEntry<String> entry = dataIterator.next();
+            int entriesCount = 1;
             int currentRepeats = 1;
             int currentBytes = writeEntryInStream(dataStream, entry);
 
             while (dataIterator.hasNext()) {
                 entry = dataIterator.next();
+                entriesCount++;
                 int bytesWritten = writeEntryInStream(dataStream, entry);
                 if (bytesWritten == currentBytes) {
                     currentRepeats++;
@@ -105,6 +119,7 @@ public class Storage {
             }
             metaStream.writeInt(currentRepeats);
             metaStream.writeInt(currentBytes);
+            metaStream.writeInt(entriesCount);
         }
     }
 
