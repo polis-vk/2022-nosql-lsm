@@ -62,7 +62,6 @@ public class EntryReadWriter {
     }
 
     CharBuffer fillAndGetKeyBuffer(String key) {
-        CharBuffer searchedKeyBuffer = this.searchedKeyBuffer;
         searchedKeyBuffer.clear();
         searchedKeyBuffer.put(key);
         searchedKeyBuffer.flip();
