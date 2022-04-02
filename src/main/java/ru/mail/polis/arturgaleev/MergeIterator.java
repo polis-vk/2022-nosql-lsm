@@ -1,23 +1,22 @@
-package ru.mail.polis.test.arturgaleev;
+package ru.mail.polis.arturgaleev;
 
-import ru.mail.polis.BaseEntry;
+import jdk.incubator.foreign.MemorySegment;
+import ru.mail.polis.Entry;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.PriorityBlockingQueue;
 
-public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
-    private final PriorityBlockingQueue<PriorityPeekingIterator<BaseEntry<ByteBuffer>>> iteratorsQueue;
-    private BaseEntry<ByteBuffer> currentEntry;
+public class MergeIterator implements Iterator<Entry<MemorySegment>> {
+    private final PriorityBlockingQueue<PriorityPeekingIterator<Entry<MemorySegment>>> iteratorsQueue;
+    private Entry<MemorySegment> currentEntry;
 
     // Low priority = old value
     // High priority = new value
-    public MergeIterator(PriorityPeekingIterator<BaseEntry<ByteBuffer>> iterator1,
-                         PriorityPeekingIterator<BaseEntry<ByteBuffer>> iterator2
+    public MergeIterator(PriorityPeekingIterator<Entry<MemorySegment>> iterator1,
+                         PriorityPeekingIterator<Entry<MemorySegment>> iterator2
     ) {
         iteratorsQueue = new PriorityBlockingQueue<>(2, getComparator());
 
@@ -29,25 +28,26 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         }
     }
 
-    public MergeIterator(List<PriorityPeekingIterator<BaseEntry<ByteBuffer>>> iterators) {
+    public MergeIterator(List<PriorityPeekingIterator<Entry<MemorySegment>>> iterators) {
         int iterSize = iterators.isEmpty() ? 1 : iterators.size();
         iteratorsQueue = new PriorityBlockingQueue<>(iterSize, getComparator());
 
-        for (PriorityPeekingIterator<BaseEntry<ByteBuffer>> inFilesIterator : iterators) {
+        for (PriorityPeekingIterator<Entry<MemorySegment>> inFilesIterator : iterators) {
             if (inFilesIterator.hasNext()) {
                 iteratorsQueue.put(inFilesIterator);
             }
         }
     }
 
-    private static Comparator<PriorityPeekingIterator<BaseEntry<ByteBuffer>>> getComparator() {
-        return (PriorityPeekingIterator<BaseEntry<ByteBuffer>> it1,
-                PriorityPeekingIterator<BaseEntry<ByteBuffer>> it2
+    private static Comparator<PriorityPeekingIterator<Entry<MemorySegment>>> getComparator() {
+        return (PriorityPeekingIterator<Entry<MemorySegment>> it1,
+                PriorityPeekingIterator<Entry<MemorySegment>> it2
         ) -> {
-            if (it1.peek().key().compareTo(it2.peek().key()) < 0) {
+            if (MemorySegmentComparator.INSTANCE.compare(it1.peek().key(), it2.peek().key()) < 0) {
                 return -1;
-            } else if (it1.peek().key().compareTo(it2.peek().key()) == 0) {
-                return -Integer.compare(it1.getPriority(), it2.getPriority());
+            } else if (MemorySegmentComparator.INSTANCE.compare(it1.peek().key(), it2.peek().key()) == 0) {
+                // reverse compare
+                return Long.compare(it2.getPriority(), it1.getPriority());
             } else {
                 return 1;
             }
@@ -64,8 +64,8 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public BaseEntry<ByteBuffer> next() {
-        BaseEntry<ByteBuffer> entry = nullableNext();
+    public Entry<MemorySegment> next() {
+        Entry<MemorySegment> entry = nullableNext();
         if (entry == null) {
             throw new NoSuchElementException();
         } else {
@@ -73,9 +73,9 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         }
     }
 
-    public BaseEntry<ByteBuffer> nullableNext() {
+    public Entry<MemorySegment> nullableNext() {
         if (currentEntry != null) {
-            BaseEntry<ByteBuffer> prev = currentEntry;
+            Entry<MemorySegment> prev = currentEntry;
             currentEntry = null;
             return prev;
         }
@@ -86,16 +86,9 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         return getNotDeletedElement();
     }
 
-    public String toString(ByteBuffer in) {
-        ByteBuffer data = in.asReadOnlyBuffer();
-        byte[] bytes = new byte[data.remaining()];
-        data.get(bytes);
-        return new String(bytes, StandardCharsets.UTF_8);
-    }
-
-    private BaseEntry<ByteBuffer> getNotDeletedElement() {
-        PriorityPeekingIterator<BaseEntry<ByteBuffer>> iterator = iteratorsQueue.poll();
-        BaseEntry<ByteBuffer> entry = iterator.next();
+    private Entry<MemorySegment> getNotDeletedElement() {
+        PriorityPeekingIterator<Entry<MemorySegment>> iterator = iteratorsQueue.poll();
+        Entry<MemorySegment> entry = iterator.next();
         if (iterator.hasNext()) {
             iteratorsQueue.put(iterator);
         }
@@ -116,9 +109,9 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         return entry;
     }
 
-    private void removeElementsWithKey(ByteBuffer lastKey) {
-        while (!iteratorsQueue.isEmpty() && lastKey.equals(iteratorsQueue.peek().peek().key())) {
-            PriorityPeekingIterator<BaseEntry<ByteBuffer>> poll = iteratorsQueue.poll();
+    private void removeElementsWithKey(MemorySegment lastKey) {
+        while (!iteratorsQueue.isEmpty() && MemorySegmentComparator.INSTANCE.compare(lastKey, iteratorsQueue.peek().peek().key()) == 0) {
+            PriorityPeekingIterator<Entry<MemorySegment>> poll = iteratorsQueue.poll();
             if (poll.hasNext()) {
                 poll.next();
                 if (poll.hasNext()) {
@@ -128,14 +121,14 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         }
     }
 
-    public BaseEntry<ByteBuffer> peek() {
+    public Entry<MemorySegment> peek() {
         if (nullablePeek() == null) {
             throw new NoSuchElementException();
         }
         return currentEntry;
     }
 
-    public BaseEntry<ByteBuffer> nullablePeek() {
+    public Entry<MemorySegment> nullablePeek() {
         if (currentEntry == null) {
             currentEntry = nullableNext();
         }

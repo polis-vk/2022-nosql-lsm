@@ -1,9 +1,9 @@
-package ru.mail.polis.test.arturgaleev;
+package ru.mail.polis.arturgaleev;
 
-import ru.mail.polis.BaseEntry;
+import jdk.incubator.foreign.MemorySegment;
+import ru.mail.polis.Entry;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
@@ -41,8 +41,8 @@ public class DBReader implements AutoCloseable {
         return fileDBReaderList;
     }
 
-    public MergeIterator get(ByteBuffer from, ByteBuffer to) {
-        List<PriorityPeekingIterator<BaseEntry<ByteBuffer>>> iterators = new ArrayList<>(fileReaders.size());
+    public MergeIterator get(MemorySegment from, MemorySegment to) {
+        List<PriorityPeekingIterator<Entry<MemorySegment>>> iterators = new ArrayList<>(fileReaders.size());
         for (FileDBReader reader : fileReaders) {
             FileDBReader.FileIterator fromToIterator = reader.getFromToIterator(from, to);
             if (fromToIterator.hasNext()) {
@@ -52,9 +52,9 @@ public class DBReader implements AutoCloseable {
         return new MergeIterator(iterators);
     }
 
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) {
+    public Entry<MemorySegment> get(MemorySegment key) {
         for (int i = fileReaders.size() - 1; i >= 0; i--) {
-            BaseEntry<ByteBuffer> entryByKey = fileReaders.get(i).getEntryByKey(key);
+            Entry<MemorySegment> entryByKey = fileReaders.get(i).getEntryByKey(key);
             if (entryByKey != null) {
                 if (entryByKey.value() == null) {
                     return null;
