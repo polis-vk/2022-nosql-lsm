@@ -104,8 +104,25 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void flush() {
-        throw new UnsupportedOperationException("Not supported");
+    public void flush() throws IOException {
+        int index = mappedDiskData.size() + 1;
+        Utils.Pair<Integer> dataAndIndexBufferSize = getDataAndIndexBufferSize(inMemoryData.values().iterator());
+        store(inMemoryData.values().iterator(), config.basePath().resolve(DATA_FILE_NAME + index + EXTENSION),
+                config.basePath().resolve(INDEXES_FILE_NAME + index + EXTENSION),
+                dataAndIndexBufferSize.first(),
+                dataAndIndexBufferSize.second());
+        try (FileChannel dataChannel = FileChannel
+                .open(config.basePath().resolve(DATA_FILE_NAME + index + EXTENSION));
+             FileChannel indexChannel = FileChannel
+                     .open(config.basePath().resolve(INDEXES_FILE_NAME + index + EXTENSION))) {
+            ByteBuffer indexBuffer = indexChannel
+                    .map(FileChannel.MapMode.READ_ONLY, 0, indexChannel.size());
+            ByteBuffer dataBuffer = dataChannel
+                    .map(FileChannel.MapMode.READ_ONLY, 0, dataChannel.size());
+            mappedDiskData.add(new Utils.Pair<>(dataBuffer, indexBuffer));
+        }
+
+        inMemoryData.clear();
     }
 
     @Override
