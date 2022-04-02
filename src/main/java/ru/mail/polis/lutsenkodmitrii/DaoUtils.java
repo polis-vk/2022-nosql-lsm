@@ -11,20 +11,20 @@ import java.nio.file.Path;
 public final class DaoUtils {
 
     public static final int CHARS_IN_INT = Integer.SIZE / Character.SIZE + 1;
-    public static final int overflowLimit = Integer.MAX_VALUE - '0';
+    public static final int OVERFLOW_LIMIT = Integer.MAX_VALUE - '0';
 
     private DaoUtils() {
     }
 
     public static void writeUnsignedInt(int k, BufferedWriter bufferedWriter) throws IOException {
-        if (k < overflowLimit) {
+        if (k < OVERFLOW_LIMIT) {
             bufferedWriter.write((k + '0') >>> 16);
             bufferedWriter.write(k + '0');
             bufferedWriter.write('0');
         } else {
-            bufferedWriter.write((overflowLimit + '0') >>> 16);
-            bufferedWriter.write(overflowLimit + '0');
-            bufferedWriter.write((k - overflowLimit) + '0');
+            bufferedWriter.write((OVERFLOW_LIMIT + '0') >>> 16);
+            bufferedWriter.write(OVERFLOW_LIMIT + '0');
+            bufferedWriter.write((k - OVERFLOW_LIMIT) + '0');
         }
     }
 
@@ -38,7 +38,7 @@ public final class DaoUtils {
         if (ch1 == -1) {
             return -1;
         }
-        return (ch1 << 16) + ch2 - '0' + (ch3 -'0');
+        return (ch1 << 16) + ch2 - '0' + (ch3 - '0');
     }
 
     public static String readKey(BufferedReader bufferedReader) throws IOException {

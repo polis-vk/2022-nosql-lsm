@@ -63,7 +63,9 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     private volatile boolean isClosed;
     private final Config config;
     private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
-    private final NavigableMap<Path, FileInputStream> filesMap = new TreeMap<>(Comparator.comparingInt(this::getFileNumber));
+    private final NavigableMap<Path, FileInputStream> filesMap = new TreeMap<>(
+            Comparator.comparingInt(this::getFileNumber)
+    );
     private int currentFileNumber;
 
     public PersistenceRangeDao(Config config) throws IOException {
@@ -230,7 +232,6 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     public Config getConfig() {
         return config;
     }
-
 
     public Map<Path, FileInputStream> getFilesMap() {
         lock.readLock().lock();
