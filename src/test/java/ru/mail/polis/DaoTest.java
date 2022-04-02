@@ -36,7 +36,7 @@ import java.util.stream.Stream;
 @ParameterizedTest
 @ArgumentsSource(DaoTest.DaoList.class)
 @ExtendWith(DaoTest.DaoList.class)
-@Timeout(2115)
+@Timeout(5)
 public @interface DaoTest {
 
     int stage();

@@ -8,7 +8,6 @@ import ru.mail.polis.test.arturgaleev.FileDBWriter;
 import ru.mail.polis.test.arturgaleev.MergeIterator;
 import ru.mail.polis.test.arturgaleev.PriorityPeekingIterator;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -23,7 +22,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> dataBase = new ConcurrentSkipListMap<>();
     private final Config config;
-    private int newFileNumber;
     private final DBReader reader;
 
     public InMemoryDao(Config config) throws IOException {
@@ -32,12 +30,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             Files.createDirectories(config.basePath());
         }
         reader = new DBReader(config.basePath());
-        String[] temp = new File(String.valueOf(config.basePath())).list();
-        if (temp == null) {
-            newFileNumber = 0;
-        } else {
-            newFileNumber = temp.length;
-        }
     }
 
     @Override
@@ -55,8 +47,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 dataBaseIterator = dataBase.subMap(from, to).values().iterator();
             }
             return new MergeIterator(
-                    new PriorityPeekingIterator<>(1, dataBaseIterator),
-                    new PriorityPeekingIterator<>(0, reader.get(from, to))
+                    new PriorityPeekingIterator<>(0, reader.get(from, to)),
+                    new PriorityPeekingIterator<>(1, dataBaseIterator)
             );
         } finally {
             lock.readLock().unlock();
@@ -92,11 +84,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public void flush() throws IOException {
         lock.writeLock().lock();
         try {
-            try (FileDBWriter writer = new FileDBWriter(config.basePath().resolve(newFileNumber + ".txt"))) {
+            try (FileDBWriter writer = new FileDBWriter(config.basePath().resolve(reader.getNumberOfFiles() + ".txt"))) {
                 writer.writeMap(dataBase);
             }
         } finally {
-            newFileNumber++;
             lock.writeLock().unlock();
         }
     }

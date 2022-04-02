@@ -35,30 +35,45 @@ public class FileDBReader implements AutoCloseable {
         return fileID;
     }
 
-    protected BaseEntry<ByteBuffer> readEntry(int pos) {
-        int currentPos = pos;
-        int keyLength = pageData.getInt(currentPos);
-        currentPos += Integer.BYTES;
-        int valueLength = pageData.getInt(currentPos);
-        currentPos += Integer.BYTES;
-        return new BaseEntry<>(pageData.slice(currentPos, keyLength),
-                ((valueLength == -1) ? null : pageData.slice(currentPos + keyLength, valueLength)));
+    protected BaseEntry<ByteBuffer> readEntryByLink(int linkPos) {
+        int currentLinkPos = linkPos;
+        int keyLength = pageData.getInt(currentLinkPos);
+        currentLinkPos += Integer.BYTES;
+        int valueLength = pageData.getInt(currentLinkPos);
+        currentLinkPos += Integer.BYTES;
+        return new BaseEntry<>(pageData.slice(currentLinkPos, keyLength),
+                ((valueLength == -1) ? null : pageData.slice(currentLinkPos + keyLength, valueLength)));
     }
 
-    public BaseEntry<ByteBuffer> getEntryByPos(int pos) {
+    public BaseEntry<ByteBuffer> readEntryByPos(int pos) {
         if (pos < 0 || pos >= size) {
             return null;
         }
-        return readEntry(pageLinks.slice(pos * Integer.BYTES, Integer.BYTES).getInt());
+        return readEntryByLink(pageLinks.slice(pos * Integer.BYTES, Integer.BYTES).getInt());
+    }
+
+    protected ByteBuffer readKeyByLink(int linkPos) {
+        int currentLinkPos = linkPos;
+        int keyLength = pageData.getInt(currentLinkPos);
+        currentLinkPos += 2 * Integer.BYTES;
+        return pageData.slice(currentLinkPos, keyLength);
+    }
+
+    public ByteBuffer readKeyByPos(int pos) {
+        if (pos < 0 || pos >= size) {
+            return null;
+        }
+        return readKeyByLink(pageLinks.slice(pos * Integer.BYTES, Integer.BYTES).getInt());
     }
 
     private int getPosByKey(ByteBuffer key) {
         int low = 0;
         int high = size - 1;
         int mid;
+        int result;
         while (low <= high) {
             mid = low + ((high - low) / 2);
-            int result = getEntryByPos(mid).key().compareTo(key);
+            result = readKeyByPos(mid).compareTo(key);
             if (result < 0) {
                 low = mid + 1;
             } else if (result > 0) {
@@ -71,7 +86,7 @@ public class FileDBReader implements AutoCloseable {
     }
 
     public BaseEntry<ByteBuffer> getEntryByKey(ByteBuffer key) {
-        BaseEntry<ByteBuffer> entry = getEntryByPos(getPosByKey(key));
+        BaseEntry<ByteBuffer> entry = readEntryByPos(getPosByKey(key));
         if (entry == null) {
             return null;
         }
@@ -139,7 +154,7 @@ public class FileDBReader implements AutoCloseable {
 
         @Override
         public BaseEntry<ByteBuffer> next() {
-            return getEntryByPos(currentPos++);
+            return readEntryByPos(currentPos++);
         }
     }
 }

@@ -1,8 +1,6 @@
 package ru.mail.polis;
 
-import java.io.Serializable;
-
-public interface Entry<D> extends Serializable {
+public interface Entry<D> {
     D key();
 
     D value();

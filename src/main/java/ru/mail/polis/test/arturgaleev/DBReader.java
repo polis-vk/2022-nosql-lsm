@@ -23,6 +23,10 @@ public class DBReader implements AutoCloseable {
         fileReaders = getFileDBReaders(dbDirectoryPath);
     }
 
+    public int getNumberOfFiles() {
+        return fileReaders.size();
+    }
+
     private List<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
         List<FileDBReader> fileDBReaderList = new ArrayList<>();
         try (Stream<Path> files = Files.list(dbDirectoryPath)) {
