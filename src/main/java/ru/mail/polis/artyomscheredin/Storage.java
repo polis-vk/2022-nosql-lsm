@@ -35,18 +35,16 @@ public class Storage {
             cleanDiskExceptTempFile(basePath);
             renameTempFile(basePath);
         }
-        while (true) {
-            Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + mappedDiskData.size() + 1 + EXTENSION);
-            Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + mappedDiskData.size() + 1 + EXTENSION);
-            Utils.Pair<ByteBuffer> mappedUnit;
-            mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
-            if (mappedUnit == null) {
-                break;
-            }
+        Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
+        Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
+        Utils.Pair<ByteBuffer> mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
+        while (mappedUnit != null) {
             mappedDiskData.add(mappedUnit);
+            nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
+            nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
+            mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
         }
         mappedDiskData.forEach(e ->
-
         {
             if (isDamaged(e.index())) {
                 throw new RuntimeException("Dao disk storage is damaged");
