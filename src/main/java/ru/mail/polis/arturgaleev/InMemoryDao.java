@@ -84,7 +84,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public void flush() throws IOException {
         lock.writeLock().lock();
         try {
-            try (FileDBWriter writer = new FileDBWriter(config.basePath().resolve(reader.getNumberOfFiles() + ".txt"))) {
+            try (FileDBWriter writer =
+                         new FileDBWriter(config.basePath().resolve(reader.getNumberOfFiles() + ".txt"))) {
                 writer.writeMap(dataBase);
             }
         } finally {
