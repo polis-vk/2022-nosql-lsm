@@ -44,8 +44,7 @@ public class Storage {
             nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
             mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
         }
-        mappedDiskData.forEach(e ->
-        {
+        mappedDiskData.forEach(e -> {
             if (isDamaged(e.index())) {
                 throw new RuntimeException("Dao disk storage is damaged");
             }
