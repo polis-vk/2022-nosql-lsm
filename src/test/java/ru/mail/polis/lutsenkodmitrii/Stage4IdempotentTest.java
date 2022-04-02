@@ -84,7 +84,7 @@ public class Stage4IdempotentTest extends BaseTest {
     }
 
     @DaoTest(stage = 4)
-    void compactNothingToFlush(Dao<String, Entry<String>> dao) throws IOException {
+    void compactManyTimes(Dao<String, Entry<String>> dao) throws IOException {
         for (int i = 0; i < 100; i++) {
             dao.upsert(entryAt(1));
             dao.upsert(entryAt(10));
