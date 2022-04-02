@@ -36,8 +36,8 @@ public class Storage {
             renameTempFile(basePath);
         }
         while (true) {
-            Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
-            Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
+            Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + mappedDiskData.size() + 1 + EXTENSION);
+            Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + mappedDiskData.size() + 1 + EXTENSION);
             Utils.Pair<ByteBuffer> mappedUnit;
             mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
             if (mappedUnit == null) {
@@ -45,7 +45,9 @@ public class Storage {
             }
             mappedDiskData.add(mappedUnit);
         }
-        mappedDiskData.forEach(e -> {
+        mappedDiskData.forEach(e ->
+
+        {
             if (isDamaged(e.index())) {
                 throw new RuntimeException("Dao disk storage is damaged");
             }
@@ -79,6 +81,9 @@ public class Storage {
     private static Utils.Pair<ByteBuffer> mapOnDiskStorageUnit(Path dataPath, Path indexPath) throws IOException {
         try (FileChannel dataChannel = FileChannel.open(dataPath);
              FileChannel indexChannel = FileChannel.open(indexPath)) {
+            if ((dataChannel.size() == 0) || (indexChannel.size() == 0)) {
+                return null;
+            }
             ByteBuffer indexBuffer = indexChannel.map(FileChannel.MapMode.READ_ONLY,
                     0, indexChannel.size());
             ByteBuffer dataBuffer = dataChannel.map(FileChannel.MapMode.READ_ONLY,
