@@ -1,15 +1,11 @@
 package ru.mail.polis.arturgaleev;
 
-import ru.mail.polis.BaseEntry;
+import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
-import ru.mail.polis.test.arturgaleev.DBReader;
-import ru.mail.polis.test.arturgaleev.FileDBWriter;
-import ru.mail.polis.test.arturgaleev.MergeIterator;
-import ru.mail.polis.test.arturgaleev.PriorityPeekingIterator;
+import ru.mail.polis.Entry;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -17,14 +13,14 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
+public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> dataBase = new ConcurrentSkipListMap<>();
+    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> dataBase = new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
     private final Config config;
     private final DBReader reader;
 
-    public InMemoryDao(Config config) throws IOException {
+    public MemorySegmentDao(Config config) throws IOException {
         this.config = config;
         if (!Files.isDirectory(config.basePath())) {
             Files.createDirectories(config.basePath());
@@ -33,10 +29,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
+    public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         lock.readLock().lock();
         try {
-            Iterator<BaseEntry<ByteBuffer>> dataBaseIterator;
+            Iterator<Entry<MemorySegment>> dataBaseIterator;
             if (from == null && to == null) {
                 dataBaseIterator = dataBase.values().iterator();
             } else if (from != null && to == null) {
@@ -56,10 +52,10 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) {
+    public Entry<MemorySegment> get(MemorySegment key) {
         lock.readLock().lock();
         try {
-            BaseEntry<ByteBuffer> entry = dataBase.get(key);
+            Entry<MemorySegment> entry = dataBase.get(key);
             if (entry != null) {
                 return entry.value() == null ? null : entry;
             }
@@ -70,7 +66,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void upsert(BaseEntry<ByteBuffer> entry) {
+    public void upsert(Entry<MemorySegment> entry) {
         lock.readLock().lock();
         try {
             dataBase.put(entry.key(), entry);
