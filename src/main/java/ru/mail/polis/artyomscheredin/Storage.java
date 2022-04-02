@@ -39,9 +39,8 @@ public class Storage {
             Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
             Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
             Utils.Pair<ByteBuffer> mappedUnit;
-            try {
-                mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
-            } catch (NoSuchFileException e) {
+            mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
+            if (mappedUnit == null) {
                 break;
             }
             mappedDiskData.add(mappedUnit);
@@ -68,21 +67,16 @@ public class Storage {
         return size != ((indexBuffer.remaining() / Integer.BYTES) - INDEX_HEADER_SIZE);
     }
 
-    public boolean mapNextStorageUnit() throws IOException {
+    public void mapNextStorageUnit() throws IOException {
         Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
         Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
-        Utils.Pair<ByteBuffer> mappedUnit;
-        try {
-            mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
-        } catch (NoSuchFileException e) {
-            return false;
+        Utils.Pair<ByteBuffer> mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
+        if (mappedUnit != null) {
+            mappedDiskData.add(mappedUnit);
         }
-        mappedDiskData.add(mappedUnit);
-        return true;
     }
 
-    private static Utils.Pair<ByteBuffer> mapOnDiskStorageUnit(Path dataPath,
-                                                        Path indexPath) throws IOException {
+    private static Utils.Pair<ByteBuffer> mapOnDiskStorageUnit(Path dataPath, Path indexPath) throws IOException {
         try (FileChannel dataChannel = FileChannel.open(dataPath);
              FileChannel indexChannel = FileChannel.open(indexPath)) {
             ByteBuffer indexBuffer = indexChannel.map(FileChannel.MapMode.READ_ONLY,
@@ -90,6 +84,8 @@ public class Storage {
             ByteBuffer dataBuffer = dataChannel.map(FileChannel.MapMode.READ_ONLY,
                     0, dataChannel.size());
             return new Utils.Pair<>(dataBuffer, indexBuffer);
+        } catch (NoSuchFileException e) {
+            return null;
         }
     }
 
