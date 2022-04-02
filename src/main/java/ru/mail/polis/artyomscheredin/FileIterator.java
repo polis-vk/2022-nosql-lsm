@@ -15,7 +15,8 @@ class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
     public FileIterator(ByteBuffer dataBuffer, ByteBuffer indexBuffer, ByteBuffer from, ByteBuffer to) {
         this.dataBuffer = dataBuffer;
         this.indexBuffer = indexBuffer;
-        cursor = (from == null) ? Storage.getIndexHeaderSize() * Integer.BYTES : findOffset(indexBuffer, dataBuffer, from);
+        cursor = (from == null) ?
+                (Storage.getIndexHeaderSize() * Integer.BYTES) : findOffset(indexBuffer, dataBuffer, from);
         upperBound = (to == null) ? indexBuffer.limit() : findOffset(indexBuffer, dataBuffer, to);
     }
 

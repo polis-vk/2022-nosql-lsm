@@ -19,28 +19,24 @@ public class Storage {
     private static final String TEMP_FILE_SUFFIX = "indexes";
     private static final String EXTENSION = ".txt";
     /**
-     * header size in the beginning of index file in bytes
+     * Header size in the beginning of index file in bytes.
      */
     private static final int INDEX_HEADER_SIZE = 1;
 
     private final Path basePath;
     private final List<Utils.Pair<ByteBuffer>> mappedDiskData;
 
+    @SuppressWarnings("StatementWithEmptyBody")
     public Storage(Path storagePath) throws IOException {
         this.basePath = storagePath;
         this.mappedDiskData = new ArrayList<>();
 
         ByteBuffer tempBuffer = mapTempFileIfExists();
         if ((tempBuffer != null) && !isDamaged(tempBuffer)) {
-            cleanDiskExceptTempFile();
-            renameTempFile();
+            cleanDiskExceptTempFile(basePath);
+            renameTempFile(basePath);
         }
-        while (true) {
-            try {
-                mapNextStorageUnit();
-            } catch (NoSuchFileException e) {
-                break;
-            }
+        while (mapNextStorageUnit()) {
         }
         mappedDiskData.forEach(e -> {
             if (isDamaged(e.index())) {
@@ -64,12 +60,17 @@ public class Storage {
         return size != ((indexBuffer.remaining() / Integer.BYTES) - INDEX_HEADER_SIZE);
     }
 
-    @SuppressWarnings("DuplicateThrows")
-    public void mapNextStorageUnit() throws IOException, NoSuchFileException {
+    public boolean mapNextStorageUnit() throws IOException {
         Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
         Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
-        Utils.Pair<ByteBuffer> mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
+        Utils.Pair<ByteBuffer> mappedUnit;
+        try {
+            mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
+        } catch (NoSuchFileException e) {
+            return false;
+        }
         mappedDiskData.add(mappedUnit);
+        return true;
     }
 
     private Utils.Pair<ByteBuffer> mapOnDiskStorageUnit(Path dataPath,
@@ -162,7 +163,7 @@ public class Storage {
         return iterators;
     }
 
-    public void cleanDiskExceptTempFile() throws IOException {
+    public static void cleanDiskExceptTempFile(Path basePath) throws IOException {
         for (int i = 1; ; i++) {
             Path curIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + i + EXTENSION);
             Path curDataFilePath = basePath.resolve(DATA_FILE_NAME + i + EXTENSION);
@@ -170,16 +171,15 @@ public class Storage {
                 break;
             }
         }
-        mappedDiskData.clear();
     }
 
-    public void renameTempFile() throws IOException {
+    @SuppressWarnings("EmptyCatchBlock")
+    public static void renameTempFile(Path basePath) throws IOException {
         try {
             Path tempDataPath = basePath.resolve(DATA_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
             Path tempIndexPath = basePath.resolve(INDEXES_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
             Files.move(tempDataPath, basePath.resolve(DATA_FILE_NAME + 1 + EXTENSION));
             Files.move(tempIndexPath, basePath.resolve(INDEXES_FILE_NAME + 1 + EXTENSION));
-            mapNextStorageUnit();
         } catch (NoSuchFileException e) {
             //Dao was empty, temp file hasn't created
         }
@@ -187,5 +187,13 @@ public class Storage {
 
     public static int getIndexHeaderSize() {
         return INDEX_HEADER_SIZE;
+    }
+
+    public Path getBasePath() {
+        return basePath;
+    }
+
+    public void cleanMappedData() {
+        mappedDiskData.clear();
     }
 }
