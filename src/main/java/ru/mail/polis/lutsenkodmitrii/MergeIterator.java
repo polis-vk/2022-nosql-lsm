@@ -3,8 +3,9 @@ package ru.mail.polis.lutsenkodmitrii;
 import ru.mail.polis.BaseEntry;
 
 import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.file.Files;
+import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,11 +13,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.Set;
 import java.util.TreeMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable {
+public class MergeIterator implements Iterator<BaseEntry<String>> {
 
     private final NavigableMap<String, BaseEntry<String>> tempData = new TreeMap<>();
     private final Map<String, Integer> tempDataPriorities = new HashMap<>();
@@ -34,20 +36,21 @@ public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable
         this.to = to;
         this.isFromNull = from == null;
         this.isToNull = to == null;
-        for (int i = 0; i < dao.getCurrentFileNumber(); i++) {
-            Path path = dao.getConfig().basePath().resolve(
-                    PersistenceRangeDao.DATA_FILE_NAME + i + PersistenceRangeDao.DATA_FILE_EXTENSION
-            );
-            BufferedReader bufferedReader = Files.newBufferedReader(path, UTF_8);
+        int priority = 1;
+        Set<Map.Entry<Path, FileInputStream>> filesMapEntries = dao.getFilesMap().entrySet();
+        for (Map.Entry<Path, FileInputStream> filesMapEntry : filesMapEntries) {
+            filesMapEntry.getValue().getChannel().position(0);
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(filesMapEntry.getValue(), UTF_8));
             BaseEntry<String> firstEntry = isFromNull
                     ? DaoUtils.readEntry(bufferedReader)
-                    : DaoUtils.ceilKey(path, bufferedReader, from, 0);
+                    : DaoUtils.ceilKey(filesMapEntry.getKey(), bufferedReader, from);
             if (firstEntry != null && (isToNull || firstEntry.key().compareTo(to) < 0)) {
                 tempData.put(firstEntry.key(), firstEntry);
-                tempDataPriorities.put(firstEntry.key(), i);
+                tempDataPriorities.put(firstEntry.key(), priority);
                 lastElementWithFilesMap
                         .computeIfAbsent(firstEntry.key(), files -> new ArrayList<>())
-                        .add(new FileInfo(i, bufferedReader));
+                        .add(new FileInfo(priority, bufferedReader));
+                priority++;
             }
         }
         inMemoryIterator = dao.getInMemoryDataIterator(from, to);
@@ -92,20 +95,6 @@ public class MergeIterator implements Iterator<BaseEntry<String>>, AutoCloseable
             return polledEntry;
         }
         return null;
-    }
-
-    @Override
-    public void close() throws Exception {
-        tempData.clear();
-        for (List<FileInfo> value : lastElementWithFilesMap.values()) {
-            for (FileInfo fileInfo : value) {
-                fileInfo.bufferedReader.close();
-            }
-        }
-    }
-
-    public BaseEntry<String> getPolledEntry() {
-        return polledEntry;
     }
 
     private void readNextFromMemory() {

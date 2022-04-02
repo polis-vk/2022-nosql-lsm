@@ -5,13 +5,19 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.BufferedWriter;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Comparator;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -51,18 +57,26 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     public static final int EXISTING_MARK = 1;
     public static final String DATA_FILE_NAME = "daoData";
     public static final String DATA_FILE_EXTENSION = ".txt";
+    public static final String COMPACTION_FILE_NAME = "compaction";
+    public static final String TEMP_FILE_EXTENSION = ".tmp";
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private volatile boolean isClosed;
-    private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
     private final Config config;
-    private long currentFileNumber;
+    private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
+    private final NavigableMap<Path, FileInputStream> filesMap = new TreeMap<>(Comparator.comparingInt(this::getFileNumber));
+    private int currentFileNumber;
 
     public PersistenceRangeDao(Config config) throws IOException {
         this.config = config;
         try (Stream<Path> stream = Files.find(config.basePath(), 1,
                 (p, a) -> a.isRegularFile() && p.getFileName().toString().endsWith(DATA_FILE_EXTENSION))) {
-            currentFileNumber = stream.count();
+            List<Path> paths = stream.toList();
+            for (Path path : paths) {
+                filesMap.put(path, new FileInputStream(path.toString()));
+            }
+            currentFileNumber = filesMap.isEmpty() ? 0 : getFileNumber(filesMap.lastKey()) + 1;
         } catch (NoSuchFileException e) {
+            filesMap.clear();
             currentFileNumber = 0;
         }
     }
@@ -121,6 +135,9 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         lock.writeLock().lock();
         try {
             flush();
+            for (FileInputStream inputStream : filesMap.values()) {
+                inputStream.close();
+            }
             isClosed = true;
         } finally {
             lock.writeLock().unlock();
@@ -129,13 +146,24 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void compact() throws IOException {
-        if (currentFileNumber == 0 || (currentFileNumber == 1 && data.isEmpty())) {
+        if (filesMap.isEmpty() || (filesMap.size() == 1 && data.isEmpty())) {
             return;
         }
+        // Ставим writeLock
+        // Начинаем писать compact во временный файл,
+        // после переименовываем его в обычный самый приоритетный файл
+        // Если что-то пошло не так при создании/записи/переименовании - снимаем lock и прокидываем IOException
+        // Состояние валидно - остальные файлы не тронуты, временный не учитывается при чтении/записи
+        // Начинаем удалять старые файлы: все кроме только что созданного. После переименовываем compact-файл в первый
+        // При ошибке выше чтение будет из корректного compact-файла, который останется самым приоритетным файлом
+        // Независимо от успеха/ошибок в действиях выше, файлы записанные после переоткрытия dao будут приоритетнее
+        // Если compact-файл успешно создан, то независимо от успеха удаления старых файлов данные в памяти очищаются
+        // так как они уже содержаться в compact-файле и flush в последующем close для них будет лишний
         Iterator<BaseEntry<String>> allEntriesIterator = get(null, null);
+        Path tempCompactionFilePath = config.basePath().resolve(COMPACTION_FILE_NAME + TEMP_FILE_EXTENSION);
+        Path lastFilePath = generateNextFilePath();
         lock.writeLock().lock();
-        Path compactionFilePath = generateNextFilePath();
-        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(compactionFilePath, UTF_8, writeOptions)) {
+        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(tempCompactionFilePath, UTF_8, writeOptions)) {
             DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
             while (allEntriesIterator.hasNext()) {
                 BaseEntry<String> baseEntry = allEntriesIterator.next();
@@ -147,16 +175,24 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                         + key.length() + value.length() + 1, bufferedFileWriter); // +1 из-за EXISTING_MARK
             }
             bufferedFileWriter.flush();
+            Files.move(tempCompactionFilePath, lastFilePath);
+        } catch (IOException e) {
+            lock.writeLock().unlock();
+            throw new IOException(e);
+        }
+
+        try {
+            for (Map.Entry<Path, FileInputStream> filesMapEntry : filesMap.entrySet()) {
+                filesMapEntry.getValue().close();
+                Files.delete(filesMapEntry.getKey());
+            }
+            filesMap.clear();
+            currentFileNumber = 0;
+            Files.move(lastFilePath, generateNextFilePath());
         } finally {
+            data.clear();
             lock.writeLock().unlock();
         }
-        for (int i = 0; i < currentFileNumber; i++) {
-            Path oldFile = config.basePath().resolve(DATA_FILE_NAME + i + DATA_FILE_EXTENSION);
-            Files.delete(oldFile);
-        }
-        data.clear();
-        currentFileNumber = 0;
-        Files.move(compactionFilePath, generateNextFilePath());
     }
 
     public Iterator<BaseEntry<String>> getInMemoryDataIterator(String from, String to) {
@@ -195,7 +231,20 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         return config;
     }
 
-    public long getCurrentFileNumber() {
-        return currentFileNumber;
+
+    public Map<Path, FileInputStream> getFilesMap() {
+        lock.readLock().lock();
+        try {
+            return filesMap;
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private int getFileNumber(Path path) {
+        String filename = path.getFileName().toString();
+        return Integer.parseInt(filename.substring(
+                DATA_FILE_NAME.length(),
+                filename.length() - DATA_FILE_EXTENSION.length()));
     }
 }
