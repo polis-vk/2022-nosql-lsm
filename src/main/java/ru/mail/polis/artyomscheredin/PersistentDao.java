@@ -94,7 +94,8 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
         Storage.cleanDiskExceptTempFile(storage.getBasePath());
         storage.cleanMappedData();
-        Storage.renameTempFile(storage.getBasePath());
-        storage.mapNextStorageUnit();
+        if (Storage.renameTempFile(storage.getBasePath())) {
+            storage.mapNextStorageUnit();
+        }
     }
 }

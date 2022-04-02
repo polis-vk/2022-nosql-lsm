@@ -37,6 +37,7 @@ public class Storage {
             renameTempFile(basePath);
         }
         while (mapNextStorageUnit()) {
+            //Mapping next table
         }
         mappedDiskData.forEach(e -> {
             if (isDamaged(e.index())) {
@@ -60,7 +61,7 @@ public class Storage {
         return size != ((indexBuffer.remaining() / Integer.BYTES) - INDEX_HEADER_SIZE);
     }
 
-    public boolean mapNextStorageUnit() throws IOException {
+    public final boolean mapNextStorageUnit() throws IOException {
         Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
         Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
         Utils.Pair<ByteBuffer> mappedUnit;
@@ -73,7 +74,7 @@ public class Storage {
         return true;
     }
 
-    private Utils.Pair<ByteBuffer> mapOnDiskStorageUnit(Path dataPath,
+    private static Utils.Pair<ByteBuffer> mapOnDiskStorageUnit(Path dataPath,
                                                         Path indexPath) throws IOException {
         try (FileChannel dataChannel = FileChannel.open(dataPath);
              FileChannel indexChannel = FileChannel.open(indexPath)) {
@@ -174,7 +175,7 @@ public class Storage {
     }
 
     @SuppressWarnings("EmptyCatchBlock")
-    public static void renameTempFile(Path basePath) throws IOException {
+    public static boolean renameTempFile(Path basePath) throws IOException {
         try {
             Path tempDataPath = basePath.resolve(DATA_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
             Path tempIndexPath = basePath.resolve(INDEXES_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
@@ -182,7 +183,9 @@ public class Storage {
             Files.move(tempIndexPath, basePath.resolve(INDEXES_FILE_NAME + 1 + EXTENSION));
         } catch (NoSuchFileException e) {
             //Dao was empty, temp file hasn't created
+            return false;
         }
+        return true;
     }
 
     public static int getIndexHeaderSize() {
