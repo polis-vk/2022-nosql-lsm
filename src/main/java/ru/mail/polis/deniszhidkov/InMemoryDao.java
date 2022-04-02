@@ -4,11 +4,15 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
+import java.io.File;
 import java.io.IOException;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.util.Collection;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
+import java.util.List;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -16,55 +20,67 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
-    private static final String FILE_NAME = "storage.txt";
-    private boolean hasFile = true;
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
-
+    private static final String DATA_FILE_NAME = "storage";
+    private static final String OFFSETS_FILE_NAME = "offsets";
+    private static final String FILE_EXTENSION = ".txt";
     private final ConcurrentNavigableMap<String, BaseEntry<String>> storage = new ConcurrentSkipListMap<>();
-    private final DaoReader reader;
     private final DaoWriter writer;
+    private final List<DaoReader> readers;
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final int filesCounter;
 
     public InMemoryDao(Config config) throws IOException {
-        Path pathToFile = config.basePath().resolve(FILE_NAME);
-        this.reader = new DaoReader(pathToFile);
-        this.writer = new DaoWriter(pathToFile);
+        File[] filesInDirectory = new File(String.valueOf(config.basePath())).listFiles();
+        this.filesCounter = filesInDirectory == null ? 0 : filesInDirectory.length / 2;
+        this.readers = initDaoReaders(config);
+        this.writer = new DaoWriter(
+                config.basePath().resolve(DATA_FILE_NAME + filesCounter + FILE_EXTENSION),
+                config.basePath().resolve(OFFSETS_FILE_NAME + filesCounter + FILE_EXTENSION)
+        );
     }
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
-        Collection<BaseEntry<String>> values;
-        if (from == null && to == null) {
-            values = storage.values();
-        } else if (from == null) {
-            values = storage.headMap(to).values();
-        } else if (to == null) {
-            values = storage.tailMap(from).values();
-        } else {
-            values = storage.subMap(from, to).values();
+        Queue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
+                Comparator.comparing((PriorityPeekIterator o) ->
+                        o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
+        );
+        PriorityPeekIterator storageIterator = findCurrentStorageIteratorByRange(from, to);
+        if (storageIterator.hasNext()) {
+            iteratorsQueue.add(storageIterator);
         }
-        return values.iterator();
-    }
-
-    @Override
-    public BaseEntry<String> get(String key) throws IOException {
-        if (!hasFile) {
-            return null;
-        }
-        BaseEntry<String> value = storage.get(key);
         lock.readLock().lock();
         try {
-            if (value == null) {
-                try {
-                    value = reader.findEntryByKey(key);
-                } catch (NoSuchFileException e) {
-                    hasFile = false;
-                    return null;
+            for (int i = 0; i < filesCounter; i++) {
+                FileIterator fileIterator = new FileIterator(from, to, readers.get(i));
+                if (fileIterator.hasNext()) {
+                    iteratorsQueue.add(new PriorityPeekIterator(fileIterator, i + 1));
                 }
             }
         } finally {
             lock.readLock().unlock();
         }
-        return value;
+        return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new MergeIterator(iteratorsQueue);
+    }
+
+    @Override
+    public BaseEntry<String> get(String key) throws IOException {
+        BaseEntry<String> value = storage.get(key);
+        if (value == null) {
+            lock.readLock().lock();
+            try {
+                for (int i = 0; i < filesCounter; i++) {
+                    value = readers.get(i).findByKey(key);
+                    if (value != null) {
+                        return value.value() == null ? null : value;
+                    }
+                }
+                value = new BaseEntry<>(null, null);
+            } finally {
+                lock.readLock().unlock();
+            }
+        }
+        return value.value() == null ? null : value;
     }
 
     @Override
@@ -73,6 +89,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         try {
             writer.writeDAO(storage);
             storage.clear();
+            for (DaoReader reader : readers) {
+                reader.close();
+            }
         } finally {
             lock.writeLock().unlock();
         }
@@ -85,6 +104,29 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             storage.put(entry.key(), entry);
         } finally {
             lock.readLock().unlock();
+        }
+    }
+
+    private List<DaoReader> initDaoReaders(Config config) throws IOException {
+        List<DaoReader> resultList = new ArrayList<>();
+        for (int i = filesCounter - 1; i >= 0; i--) {
+            resultList.add(new DaoReader(
+                    config.basePath().resolve(DATA_FILE_NAME + i + FILE_EXTENSION),
+                    config.basePath().resolve(OFFSETS_FILE_NAME + i + FILE_EXTENSION)
+            ));
+        }
+        return resultList;
+    }
+
+    private PriorityPeekIterator findCurrentStorageIteratorByRange(String from, String to) {
+        if (from == null && to == null) {
+            return new PriorityPeekIterator(storage.values().iterator(), 0);
+        } else if (from == null) {
+            return new PriorityPeekIterator(storage.headMap(to).values().iterator(), 0);
+        } else if (to == null) {
+            return new PriorityPeekIterator(storage.tailMap(from).values().iterator(), 0);
+        } else {
+            return new PriorityPeekIterator(storage.subMap(from, to).values().iterator(), 0);
         }
     }
 }
