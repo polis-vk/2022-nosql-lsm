@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -25,9 +26,13 @@ public class FileOperations {
     private static final String FILE_EXTENSION = ".txt";
     private static final String FILE_INDEX_NAME = "myIndex";
     private static final String FILE_INDEX_EXTENSION = ".txt";
+    private static final String FILE_TMP_NAME = "tmp";
+    private static final String FILE_TMP_EXTENSION = ".txt";
+    private static final String FILE_INDEX_TMP_NAME = "tmpIndex";
+    private static final String FILE_INDEX_TMP_EXTENSION = ".txt";
     private final Path basePath;
-    private final List<Path> ssTables;
-    private final List<Path> ssIndexes;
+    private List<Path> ssTables;
+    private List<Path> ssIndexes;
     private final Map<Path, Long> tablesSizes;
     private final List<FileIterator> fileIterators = new ArrayList<>();
     private final CompactOperations compactOperations;
@@ -35,28 +40,40 @@ public class FileOperations {
     public FileOperations(Config config) throws IOException {
         basePath = config.basePath();
         tablesSizes = new ConcurrentHashMap<>();
-        if (Files.exists(basePath)) {
-            try (Stream<Path> pathStream = Files.list(basePath)) {
-                ssTables = pathStream.toList().stream()
-                        .filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME))
-                        .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
-                        .collect(Collectors.toList());
-            }
-            try (Stream<Path> indexPathStream = Files.list(basePath)) {
-                ssIndexes = indexPathStream.toList().stream()
-                        .filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME))
-                        .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
-                        .collect(Collectors.toList());
-            }
-        } else {
-            ssTables = new ArrayList<>();
-            ssIndexes = new ArrayList<>();
+        Map<String, String> fileNames = new HashMap<>();
+        fileNames.put("fileName", FILE_NAME);
+        fileNames.put("fileExtension", FILE_EXTENSION);
+        fileNames.put("fileIndexName", FILE_INDEX_NAME);
+        fileNames.put("fileIndexExtension", FILE_INDEX_EXTENSION);
+        fileNames.put("fileTmpName", FILE_TMP_NAME);
+        fileNames.put("fileTmpExtension", FILE_TMP_EXTENSION);
+        fileNames.put("fileIndexTmpName", FILE_INDEX_TMP_NAME);
+        fileNames.put("fileIndexTmpExtension", FILE_INDEX_TMP_EXTENSION);
+        getDataInfo();
+        compactOperations = new CompactOperations(fileNames);
+        if (Files.exists(basePath.resolve(FILE_TMP_NAME + FILE_TMP_EXTENSION))) {
+            compact(new SkipNullValuesIterator(new IndexedPeekIterator(0, diskIterator(null, null))));
+            getDataInfo();
+        }
+    }
+
+    private void getDataInfo() throws IOException {
+        try (Stream<Path> pathStream = Files.list(basePath)) {
+            ssTables = pathStream.toList().stream()
+                    .filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME))
+                    .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
+                    .collect(Collectors.toList());
+        }
+        try (Stream<Path> indexPathStream = Files.list(basePath)) {
+            ssIndexes = indexPathStream.toList().stream()
+                    .filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME))
+                    .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
+                    .collect(Collectors.toList());
         }
         filesCount = ssTables.size();
         for (int i = 0; i < filesCount; i++) {
             tablesSizes.put(ssIndexes.get(i), indexSize(ssIndexes.get(i)));
         }
-        compactOperations = new CompactOperations(basePath, filesCount);
     }
 
     Iterator<BaseEntry<byte[]>> diskIterator(byte[] from, byte[] to) throws IOException {
@@ -97,17 +114,18 @@ public class FileOperations {
     }
 
     void compact(Iterator<BaseEntry<byte[]>> iterator) throws IOException {
+        compactOperations.createCompactedFiles(basePath);
         compactOperations.saveDataAndIndexesCompact(iterator);
-        clearFileIterators();
-        deleteAllFiles();
-        compactOperations.renameCompactedFile();
+        compactOperations.clearFileIterators(fileIterators);
+        compactOperations.deleteAllFiles(ssTables, ssIndexes, filesCount);
+        compactOperations.renameCompactedFile(basePath);
         ssTables.clear();
         ssIndexes.clear();
         tablesSizes.clear();
         filesCount = 1;
     }
 
-    void save(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
+    void flush(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
         saveData(pairs);
         saveIndexes(pairs);
         filesCount++;
@@ -168,7 +186,6 @@ public class FileOperations {
         longBuffer.putLong(pairsSize);
         raf.write(longBuffer.array());
         longBuffer.clear();
-
         longBuffer.putLong(0);
         raf.write(longBuffer.array());
         longBuffer.clear();
@@ -205,7 +222,6 @@ public class FileOperations {
         channelIndex.read(buffLong);
         buffLong.flip();
         position = buffLong.getLong();
-
         channelTable.position(position);
         ByteBuffer buffInt = ByteBuffer.allocate(Integer.BYTES);
         channelTable.read(buffInt);
@@ -214,7 +230,6 @@ public class FileOperations {
         buffInt.clear();
         ByteBuffer currentKey = ByteBuffer.allocate(keyLength);
         channelTable.read(currentKey);
-
         channelTable.read(buffInt);
         buffInt.flip();
         int valueLength = buffInt.getInt();
@@ -226,19 +241,7 @@ public class FileOperations {
         return new BaseEntry<>(currentKey.array(), currentValue.array());
     }
 
-    void clearFileIterators() throws IOException {
-        for (FileIterator fi : fileIterators) {
-            if (fi != null) {
-                fi.close();
-            }
-        }
-        fileIterators.clear();
-    }
-
-    void deleteAllFiles() throws IOException {
-        for (int i = 0; i < filesCount; i++) {
-            Files.delete(ssTables.get(i));
-            Files.delete(ssIndexes.get(i));
-        }
+    public void clearFileIterators() throws IOException {
+        compactOperations.clearFileIterators(fileIterators);
     }
 }
