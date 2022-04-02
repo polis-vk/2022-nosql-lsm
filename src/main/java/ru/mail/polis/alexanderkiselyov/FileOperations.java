@@ -23,13 +23,13 @@ import java.util.stream.Stream;
 public class FileOperations {
     private long filesCount;
     private static final String FILE_NAME = "myData";
-    private static final String FILE_EXTENSION = ".txt";
+    private static final String FILE_EXTENSION = ".dat";
     private static final String FILE_INDEX_NAME = "myIndex";
-    private static final String FILE_INDEX_EXTENSION = ".txt";
+    private static final String FILE_INDEX_EXTENSION = ".idx";
     private static final String FILE_TMP_NAME = "tmp";
-    private static final String FILE_TMP_EXTENSION = ".txt";
+    private static final String FILE_TMP_EXTENSION = ".dat";
     private static final String FILE_INDEX_TMP_NAME = "tmpIndex";
-    private static final String FILE_INDEX_TMP_EXTENSION = ".txt";
+    private static final String FILE_INDEX_TMP_EXTENSION = ".idx";
     private final Path basePath;
     private List<Path> ssTables;
     private List<Path> ssIndexes;

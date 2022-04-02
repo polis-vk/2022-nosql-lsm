@@ -16,24 +16,24 @@ import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 public class CompactOperations {
     private Path compactedFile;
     private Path compactedIndex;
-    private final String FILE_NAME;
-    private final String FILE_EXTENSION;
-    private final String FILE_INDEX_NAME;
-    private final String FILE_INDEX_EXTENSION;
-    private final String FILE_TMP_NAME;
-    private final String FILE_TMP_EXTENSION;
-    private final String FILE_INDEX_TMP_NAME;
-    private final String FILE_INDEX_TMP_EXTENSION;
+    private final String fileName;
+    private final String fileExtension;
+    private final String fileIndexName;
+    private final String fileIndexExtension;
+    private final String fileTmpName;
+    private final String fileTmpExtension;
+    private final String fileIndexTmpName;
+    private final String fileIndexTmpExtension;
 
     public CompactOperations(Map<String, String> fileNames) {
-        FILE_NAME = fileNames.get("fileName");
-        FILE_EXTENSION = fileNames.get("fileExtension");
-        FILE_INDEX_NAME = fileNames.get("fileIndexName");
-        FILE_INDEX_EXTENSION = fileNames.get("fileIndexExtension");
-        FILE_TMP_NAME = fileNames.get("fileTmpName");
-        FILE_TMP_EXTENSION = fileNames.get("fileTmpExtension");
-        FILE_INDEX_TMP_NAME = fileNames.get("fileIndexTmpName");
-        FILE_INDEX_TMP_EXTENSION = fileNames.get("fileIndexTmpExtension");
+        fileName = fileNames.get("fileName");
+        fileExtension = fileNames.get("fileExtension");
+        fileIndexName = fileNames.get("fileIndexName");
+        fileIndexExtension = fileNames.get("fileIndexExtension");
+        fileTmpName = fileNames.get("fileTmpName");
+        fileTmpExtension = fileNames.get("fileTmpExtension");
+        fileIndexTmpName = fileNames.get("fileIndexTmpName");
+        fileIndexTmpExtension = fileNames.get("fileIndexTmpExtension");
     }
 
     void saveDataAndIndexesCompact(Iterator<BaseEntry<byte[]>> iterator) throws IOException {
@@ -72,8 +72,8 @@ public class CompactOperations {
     }
 
     void createCompactedFiles(Path basePath) throws IOException {
-        compactedFile = basePath.resolve(FILE_TMP_NAME + FILE_TMP_EXTENSION);
-        compactedIndex = basePath.resolve(FILE_INDEX_TMP_NAME + FILE_INDEX_TMP_EXTENSION);
+        compactedFile = basePath.resolve(fileTmpName + fileTmpExtension);
+        compactedIndex = basePath.resolve(fileIndexTmpName + fileIndexTmpExtension);
         if (!Files.exists(compactedFile)) {
             Files.createFile(compactedFile);
         }
@@ -84,10 +84,10 @@ public class CompactOperations {
 
     void renameCompactedFile(Path basePath) throws IOException {
         if (compactedFile != null) {
-            Files.move(compactedFile, basePath.resolve(FILE_NAME + "0" + FILE_EXTENSION), ATOMIC_MOVE);
+            Files.move(compactedFile, basePath.resolve(fileName + "0" + fileExtension), ATOMIC_MOVE);
         }
         if (compactedIndex != null) {
-            Files.move(compactedIndex, basePath.resolve(FILE_INDEX_NAME + "0" + FILE_INDEX_EXTENSION), ATOMIC_MOVE);
+            Files.move(compactedIndex, basePath.resolve(fileIndexName + "0" + fileIndexExtension), ATOMIC_MOVE);
         }
     }
 
