@@ -63,7 +63,6 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             if (entry != null) {
                 return entry.value() == null ? null : entry;
             }
-
             return reader.get(key);
         } finally {
             lock.readLock().unlock();
