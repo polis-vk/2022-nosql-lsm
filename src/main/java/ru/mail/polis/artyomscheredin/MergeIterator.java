@@ -16,7 +16,7 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
     private final Queue<PeekIterator> iteratorQueue;
 
     /**
-     * create Mergeiterator from PeekIterators.
+     * create Merge iterator from PeekIterators.
      *
      * @param iterators - list ordered by ascending iterators priority
      */

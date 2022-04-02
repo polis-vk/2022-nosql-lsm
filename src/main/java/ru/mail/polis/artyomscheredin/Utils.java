@@ -9,7 +9,7 @@ public final class Utils {
     private Utils() {
     }
 
-    public record Pair<T>(T first, T second) {}
+    public record Pair<T>(T data, T index) {}
 
     public static BaseEntry<ByteBuffer> readEntry(ByteBuffer dataBuffer, int sourceOffset) {
         int offset = sourceOffset;

@@ -5,7 +5,6 @@ import ru.mail.polis.BaseEntry;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
-/*
 
 class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
     private final ByteBuffer dataBuffer;
@@ -16,14 +15,14 @@ class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
     public FileIterator(ByteBuffer dataBuffer, ByteBuffer indexBuffer, ByteBuffer from, ByteBuffer to) {
         this.dataBuffer = dataBuffer;
         this.indexBuffer = indexBuffer;
-        cursor = (from == null) ? 0 : findOffset(indexBuffer, dataBuffer, from);
+        cursor = (from == null) ? Storage.getIndexHeaderSize() * Integer.BYTES : findOffset(indexBuffer, dataBuffer, from);
         upperBound = (to == null) ? indexBuffer.limit() : findOffset(indexBuffer, dataBuffer, to);
     }
 
     private static int findOffset(ByteBuffer indexBuffer, ByteBuffer dataBuffer, ByteBuffer key) {
-        int low = 0;
-        int mid = 0;
-        int high = (indexBuffer.remaining() - Integer.BYTES)/ Integer.BYTES - 1;
+        int low = Storage.getIndexHeaderSize();
+        int mid;
+        int high = indexBuffer.remaining() / Integer.BYTES - 1;
         while (low <= high) {
             mid = low + ((high - low) / 2);
             int offset = indexBuffer.getInt(mid * Integer.BYTES);
@@ -56,4 +55,3 @@ class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
         return result;
     }
 }
-*/

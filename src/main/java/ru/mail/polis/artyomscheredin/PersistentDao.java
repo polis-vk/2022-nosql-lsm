@@ -69,7 +69,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        storage.save(inMemoryData.values().iterator(),
+        storage.store(inMemoryData.values().iterator(),
                 Storage.getDataAndIndexBufferSize(inMemoryData.values().iterator()), false);
         storage.mapNextStorageUnit();
         inMemoryData.clear();
@@ -79,7 +79,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public void close() throws IOException {
         lock.writeLock().lock();
         try {
-            storage.save(inMemoryData.values().iterator(),
+            storage.store(inMemoryData.values().iterator(),
                     Storage.getDataAndIndexBufferSize(inMemoryData.values().iterator()), false);
             inMemoryData.clear();
         } finally {
@@ -89,7 +89,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void compact() throws IOException {
-        storage.save(get(null, null), Storage.getDataAndIndexBufferSize(get(null, null)), true);
+        storage.store(get(null, null), Storage.getDataAndIndexBufferSize(get(null, null)), true);
         inMemoryData.clear();
 
         storage.cleanDiskExceptTempFile();
