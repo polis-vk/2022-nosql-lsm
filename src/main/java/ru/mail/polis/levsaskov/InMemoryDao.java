@@ -1,8 +1,8 @@
 package ru.mail.polis.levsaskov;
 
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
+import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -10,25 +10,21 @@ import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> entrys = new ConcurrentSkipListMap<>();
-    private StorageSystem storageSystem;
+public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
+    private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> entrys = new ConcurrentSkipListMap<>();
+    private final StorageSystem storageSystem;
 
     public InMemoryDao() {
         storageSystem = null;
     }
 
     public InMemoryDao(Config config) throws IOException {
-        storageSystem = new StorageSystem();
-
-        if (!storageSystem.init(config.basePath())) {
-            storageSystem = null;
-        }
+        storageSystem = StorageSystem.load(config.basePath());
     }
 
     @Override
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> ans = entrys.get(key);
+    public Entry<ByteBuffer> get(ByteBuffer key) throws IOException {
+        Entry<ByteBuffer> ans = entrys.get(key);
         if (storageSystem != null && ans == null) {
             ans = storageSystem.findEntry(key);
         }
@@ -40,8 +36,8 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> local;
+    public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
+        ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> local;
 
         if (from == null && to == null) {
             local = entrys;
@@ -58,7 +54,7 @@ public class InMemoryDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public void upsert(BaseEntry<ByteBuffer> entry) {
+    public void upsert(Entry<ByteBuffer> entry) {
         entrys.put(entry.key(), entry);
     }
 
