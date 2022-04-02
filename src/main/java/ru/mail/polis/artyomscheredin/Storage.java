@@ -26,7 +26,6 @@ public class Storage {
     private final Path basePath;
     private final List<Utils.Pair<ByteBuffer>> mappedDiskData;
 
-    @SuppressWarnings("StatementWithEmptyBody")
     public Storage(Path storagePath) throws IOException {
         this.basePath = storagePath;
         this.mappedDiskData = new ArrayList<>();
@@ -36,8 +35,16 @@ public class Storage {
             cleanDiskExceptTempFile(basePath);
             renameTempFile(basePath);
         }
-        while (mapNextStorageUnit()) {
-            //Mapping next table
+        while (true) {
+            Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
+            Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
+            Utils.Pair<ByteBuffer> mappedUnit;
+            try {
+                mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
+            } catch (NoSuchFileException e) {
+                break;
+            }
+            mappedDiskData.add(mappedUnit);
         }
         mappedDiskData.forEach(e -> {
             if (isDamaged(e.index())) {
@@ -61,7 +68,7 @@ public class Storage {
         return size != ((indexBuffer.remaining() / Integer.BYTES) - INDEX_HEADER_SIZE);
     }
 
-    public final boolean mapNextStorageUnit() throws IOException {
+    public boolean mapNextStorageUnit() throws IOException {
         Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
         Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
         Utils.Pair<ByteBuffer> mappedUnit;
