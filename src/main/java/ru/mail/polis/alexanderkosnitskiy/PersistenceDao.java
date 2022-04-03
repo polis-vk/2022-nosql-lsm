@@ -42,20 +42,16 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 List<Path> paths = files.toList();
                 numberOfFiles = paths.size();
                 for (Path path : paths) {
-                    if(path.toString().endsWith(IN_PROGRESS_EXTENSION)) {
+                    if (path.toString().endsWith(IN_PROGRESS_EXTENSION)) {
                         --numberOfFiles;
                         Files.deleteIfExists(path);
-                    }
-                    else if(path.toString().endsWith(INDEX + COMPOSITE_EXTENSION)) {
+                    } else if (path.toString().endsWith(INDEX + COMPOSITE_EXTENSION)) {
                         deleteFiles();
-                        Path source = config.basePath().resolve(FILE + COMPOSITE_EXTENSION);
-                        Files.move(source, source.resolveSibling(FILE + 0 + SAFE_EXTENSION));
-                        source = config.basePath().resolve(INDEX + COMPOSITE_EXTENSION);
-                        Files.move(source, source.resolveSibling(INDEX + 0 + SAFE_EXTENSION));
+                        renameFile(FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
+                        renameFile(INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
                         numberOfFiles = 1;
                         break;
-                    }
-                    else if (!path.toString().endsWith(SAFE_EXTENSION)) {
+                    } else if (!path.toString().endsWith(SAFE_EXTENSION)) {
                         --numberOfFiles;
                     }
                 }
@@ -135,18 +131,13 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             out.writeIterator(get(null, null), count, size);
         }
 
-        Path source = config.basePath().resolve(FILE + IN_PROGRESS_EXTENSION);
-        Files.move(source, source.resolveSibling(FILE + COMPOSITE_EXTENSION));
-        source = config.basePath().resolve(INDEX + IN_PROGRESS_EXTENSION);
-        Files.move(source, source.resolveSibling(INDEX + COMPOSITE_EXTENSION));
+        renameFile(FILE + IN_PROGRESS_EXTENSION, FILE + COMPOSITE_EXTENSION);
+        renameFile(INDEX + IN_PROGRESS_EXTENSION, INDEX + COMPOSITE_EXTENSION);
 
         memory.clear();
         deleteFiles();
-
-        source = config.basePath().resolve(FILE + COMPOSITE_EXTENSION);
-        Files.move(source, source.resolveSibling(FILE + 0 + SAFE_EXTENSION));
-        source = config.basePath().resolve(INDEX + COMPOSITE_EXTENSION);
-        Files.move(source, source.resolveSibling(INDEX + 0 + SAFE_EXTENSION));
+        renameFile(FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
+        renameFile(INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
         amountOfFiles = 1;
 
     }
@@ -169,6 +160,11 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                     config.basePath().resolve(INDEX + amountOfFiles + SAFE_EXTENSION)));
             amountOfFiles++;
         }
+    }
+
+    private void renameFile(String fileName, String newFileName) throws IOException {
+        Path source = config.basePath().resolve(fileName);
+        Files.move(source, source.resolveSibling(newFileName));
     }
 
     private BaseEntry<ByteBuffer> findInFiles(ByteBuffer key) {
@@ -199,8 +195,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 int comparison = l.curEntry.key().compareTo(r.curEntry.key());
                 if (comparison > 0) {
                     return 1;
-                }
-                if (comparison < 0) {
+                } else if (comparison < 0) {
                     return -1;
                 }
                 return Integer.compare(l.index, r.index);
