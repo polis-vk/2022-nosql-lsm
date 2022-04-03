@@ -23,13 +23,11 @@ public class CollapseTogether {
     public static void createCompact(FileWorker fw, Path dir, RangeIterator data) throws IOException {
         if (Files.notExists(dir)) {
             Files.createDirectory(dir);
-        } else {
-            Files.delete(dir);
         }
 
         List<BaseEntry<MemorySegment>> entries = new ArrayList<>();
         data.forEachRemaining(entries::add);
-        fw.writeEntries(entries, dir, FileName.COMPACT_DATA, FileName.COMPACT_OFFSETS);
+        fw.writeEntries(entries, dir, false, FileName.COMPACT_SAVED, FileName.COMPACT_OFFSETS);
     }
 
     public static void moveFile(Path source, Path distance) throws IOException {

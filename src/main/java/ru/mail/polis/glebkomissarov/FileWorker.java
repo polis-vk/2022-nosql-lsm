@@ -45,7 +45,7 @@ public class FileWorker {
     }
 
     public void writeEntries(Collection<BaseEntry<MemorySegment>> data,
-                             Path basePath, FileName... names) throws IOException {
+                             Path basePath, boolean compacted, FileName... names) throws IOException {
         if (names.length != 2) {
             throw new IllegalArgumentException();
         }
@@ -60,7 +60,7 @@ public class FileWorker {
             fileSize += Long.BYTES;
         }
 
-        long nanos = createFiles(basePath);
+        long nanos = createFiles(basePath, names);
         Path pathToEntries = basePath.resolve(names[0].getName() + nanos);
         Path pathToOffsets = basePath.resolve(names[1].getName() + nanos);
 
@@ -74,6 +74,7 @@ public class FileWorker {
             long index = 0L;
             long offset = 0L;
             for (BaseEntry<MemorySegment> entry : data) {
+
                 long keySize = entry.key().byteSize();
                 long valueSize = entry.value() == null ? WRONG_SIZE : entry.value().byteSize();
 
@@ -89,6 +90,9 @@ public class FileWorker {
                     offset += valueSize;
                 }
             }
+        }
+        if (compacted) {
+             load(basePath);
         }
     }
 
@@ -161,7 +165,7 @@ public class FileWorker {
     }
 
     public long fileCount() {
-        return paths.length;
+        return paths.length / 2;
     }
 
     private Path[] getPaths(Path basePath) throws IOException {
@@ -182,23 +186,23 @@ public class FileWorker {
 
     private Path[] recovery(Path[] result, Path basePath) throws IOException {
         CollapseTogether.removeOld(basePath);
-        Path newEntries = basePath.resolve(FileName.SAVED_DATA.getName() + LOWEST_PRIORITY);
         Path newOffsets = basePath.resolve(FileName.OFFSETS.getName() + LOWEST_PRIORITY);
-        Files.createFile(newEntries);
+        Path newEntries = basePath.resolve(FileName.SAVED_DATA.getName() + LOWEST_PRIORITY);
         Files.createFile(newOffsets);
+        Files.createFile(newEntries);
 
         if (Files.size(result[0]) == 0) {
-            result[0] = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_DATA.getName());
+            result[0] = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_OFFSETS.getName());
         }
 
         if (!result[1].toString().contains(IS_COMPACT) || Files.size(result[1]) == 0) {
-            result[1] = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_OFFSETS.getName());
+            result[1] = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_SAVED.getName());
         }
 
-        CollapseTogether.moveFile(result[0], newEntries);
-        CollapseTogether.moveFile(result[1], newOffsets);
+        CollapseTogether.moveFile(result[0], newOffsets);
+        CollapseTogether.moveFile(result[1], newEntries);
 
-        return new Path[] {newEntries, newOffsets};
+        return new Path[] {newOffsets, newEntries};
     }
 
     private long binarySearch(MemorySegment key,
@@ -237,10 +241,10 @@ public class FileWorker {
         );
     }
 
-    private long createFiles(Path basePath) throws IOException {
-        long nano = System.nanoTime();
-        Files.createFile(basePath.resolve(FileName.SAVED_DATA.getName() + nano));
-        Files.createFile(basePath.resolve(FileName.OFFSETS.getName() + nano));
+    private long createFiles(Path basePath, FileName[] names) throws IOException {
+        long nano = names[0] == FileName.COMPACT_SAVED ? LOWEST_PRIORITY : System.nanoTime();
+        Files.createFile(basePath.resolve(names[0].getName() + nano));
+        Files.createFile(basePath.resolve(names[1].getName() + nano));
         return nano;
     }
 }

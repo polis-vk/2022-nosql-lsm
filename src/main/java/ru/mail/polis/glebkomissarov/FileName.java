@@ -3,7 +3,7 @@ package ru.mail.polis.glebkomissarov;
 public enum FileName {
     SAVED_DATA("savedData"),
     OFFSETS("offsets"),
-    COMPACT_DATA("compact"),
+    COMPACT_SAVED("compactSavedData"),
     COMPACT_OFFSETS("compactOffsets");
 
     private final String name;
