@@ -16,7 +16,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
     private long endIndex;
     private long startIndex;
     private long currentFilePosition;
-    private ArrayList<Integer> offsets;
+    private ArrayList<Long> offsets;
     private int numberOfEntries;
     private Iterator<BaseEntry<String>> delegate;
 
@@ -33,21 +33,15 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
     private void init(String from, String to) {
         try (RandomAccessFile reader = new RandomAccessFile(path.toString(), "r")) {
             numberOfEntries = reader.readInt();
-            endIndex = reader.readInt();
-            startIndex = 0;
+            endIndex = reader.readLong();
+            startIndex = reader.getFilePointer();
             reader.seek(endIndex);
+
             for (int i = 0; i < numberOfEntries; i++) {
-                offsets.add(reader.readInt());
-            }
-            if (from != null && to != null) {
-                endIndex = fileBinarySearch(numberOfEntries - 1, to);
-                startIndex = fileBinarySearch(numberOfEntries - 1, from);
-            } else if (to != null) {
-                endIndex = fileBinarySearch(numberOfEntries - 1, to);
-            } else if (from != null) {
-                startIndex = fileBinarySearch(numberOfEntries - 1, from);
+                offsets.add(reader.readLong());
             }
 
+            findInRange(from, to);
             currentFilePosition = startIndex;
 
             if (startIndex < 0 || endIndex < 0) {
@@ -61,7 +55,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
     @Override
     public boolean hasNext() {
         if (delegate == null) {
-            return current != null || currentFilePosition < endIndex || currentFilePosition > -1;
+            return current != null || currentFilePosition < endIndex;
         } else {
             return current != null || delegate.hasNext();
         }
@@ -85,6 +79,17 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
         return peek;
     }
 
+    private void findInRange(String from, String to) {
+        if (from != null && to != null) {
+            endIndex = fileBinarySearch(numberOfEntries - 1, to);
+            startIndex = fileBinarySearch(numberOfEntries - 1, from);
+        } else if (to != null) {
+            endIndex = fileBinarySearch(numberOfEntries - 1, to);
+        } else if (from != null) {
+            startIndex = fileBinarySearch(numberOfEntries - 1, from);
+        }
+    }
+
     private long fileBinarySearch(int high, String targetKey) {
         int low = 0;
         currentFilePosition = startIndex;
@@ -92,7 +97,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
             int mid = low + ((high - low) / 2);
             currentFilePosition = offsets.get(mid);
             if (peek().key().equals(targetKey)) {
-                return currentFilePosition;
+                return offsets.get(mid);
             } else if (peek().key().toLowerCase(Locale.ROOT).compareTo(targetKey.toLowerCase(Locale.ROOT)) > 0) {
                 high = mid - 1;
             } else if (peek().key().toLowerCase(Locale.ROOT).compareTo(targetKey.toLowerCase(Locale.ROOT)) < 0) {
@@ -100,7 +105,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
             }
             next();
         }
-        return -1;
+        return high < 0 ? startIndex : endIndex;
     }
 
     private BaseEntry<String> readNext() {
@@ -118,7 +123,9 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
         if (delegate == null) {
             BaseEntry<String> result = null;
             if (fileBinarySearch(numberOfEntries - 1, key) > -1) {
-                result = next();
+                if(peek().key().equals(key)) {
+                    result = next();
+                }
             }
             return result;
         } else {
