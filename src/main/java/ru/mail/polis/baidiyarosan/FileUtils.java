@@ -139,7 +139,7 @@ public final class FileUtils {
                 }
             }
             Files.move(getIndexPath(path, fileNumber), getIndexPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
-            Files.move(getDataPath(path, fileNumber), getDataPath(path,1), StandardCopyOption.ATOMIC_MOVE);
+            Files.move(getDataPath(path, fileNumber), getDataPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
 
         }
 
