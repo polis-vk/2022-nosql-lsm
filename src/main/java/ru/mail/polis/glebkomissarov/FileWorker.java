@@ -12,18 +12,24 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Stream;
 
 public class FileWorker {
     private static final long WRONG_SIZE = -1;
+    private static final String IS_COMPACT = "compact";
+    private static final int LOWEST_PRIORITY = 0;
+    private static final String CMP_DIR = "COMPACT DIRECTORY";
+    private static final Logger log = Logger.getLogger(FileWorker.class.getName());
 
     private final List<BaseEntry<MemorySegment>> files = new ArrayList<>();
     private Path[] paths;
 
     public void load(Path basePath) {
-        paths = getPaths(basePath);
-
         try {
+            paths = getPaths(basePath);
+
             int count = paths.length / 2;
             for (int i = 0; i < count; i++) {
                 MemorySegment offsets = createMappedSegment(paths[i], Files.size(paths[i]),
@@ -33,11 +39,17 @@ public class FileWorker {
                 files.add(new BaseEntry<>(offsets, entries));
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            log.log(Level.SEVERE, "Broken files. Exception: ", e);
+            paths = new Path[]{};
         }
     }
 
-    public void writeEntries(Collection<BaseEntry<MemorySegment>> data, Path basePath) throws IOException {
+    public void writeEntries(Collection<BaseEntry<MemorySegment>> data,
+                             Path basePath, FileName... names) throws IOException {
+        if (names.length != 2) {
+            throw new IllegalArgumentException();
+        }
+
         long fileSize = 0;
         for (BaseEntry<MemorySegment> entry : data) {
             fileSize += entry.key().byteSize();
@@ -49,8 +61,8 @@ public class FileWorker {
         }
 
         long nanos = createFiles(basePath);
-        Path pathToEntries = basePath.resolve(FileName.SAVED_DATA.getName() + nanos);
-        Path pathToOffsets = basePath.resolve(FileName.OFFSETS.getName() + nanos);
+        Path pathToEntries = basePath.resolve(names[0].getName() + nanos);
+        Path pathToOffsets = basePath.resolve(names[1].getName() + nanos);
 
         try (ResourceScope scopeEntries = ResourceScope.newConfinedScope();
              ResourceScope scopeOffsets = ResourceScope.newConfinedScope()) {
@@ -152,13 +164,41 @@ public class FileWorker {
         return paths.length;
     }
 
-    private Path[] getPaths(Path basePath) {
+    private Path[] getPaths(Path basePath) throws IOException {
         try (Stream<Path> str = Files.list(basePath)) {
-            return str.sorted(java.util.Comparator.comparing(Path::toString)).toArray(Path[]::new);
-        } catch (IOException e) {
-            e.printStackTrace();
+            Path[] result = str.filter(i -> !Files.isDirectory(i))
+                    .sorted(java.util.Comparator.comparing(Path::toString))
+                    .toArray(Path[]::new);
+            if (checkCompact(result)) {
+                return recovery(result, basePath);
+            }
+            return result;
         }
-        return new Path[]{};
+    }
+
+    private boolean checkCompact(Path[] result) {
+        return result.length > 1 && result[0].toString().contains(IS_COMPACT);
+    }
+
+    private Path[] recovery(Path[] result, Path basePath) throws IOException {
+        CollapseTogether.removeOld(basePath);
+        Path newEntries = basePath.resolve(FileName.SAVED_DATA.getName() + LOWEST_PRIORITY);
+        Path newOffsets = basePath.resolve(FileName.OFFSETS.getName() + LOWEST_PRIORITY);
+        Files.createFile(newEntries);
+        Files.createFile(newOffsets);
+
+        if (Files.size(result[0]) == 0) {
+            result[0] = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_DATA.getName());
+        }
+
+        if (!result[1].toString().contains(IS_COMPACT) || Files.size(result[1]) == 0) {
+            result[1] = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_OFFSETS.getName());
+        }
+
+        CollapseTogether.moveFile(result[0], newEntries);
+        CollapseTogether.moveFile(result[1], newOffsets);
+
+        return new Path[] {newEntries, newOffsets};
     }
 
     private long binarySearch(MemorySegment key,

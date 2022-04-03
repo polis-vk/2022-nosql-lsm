@@ -15,6 +15,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private static final MemorySegment FIRST_KEY = MemorySegment.ofArray(new byte[]{});
+    private static final String CMP_DIR = "COMPACT DIRECTORY";
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<>(
@@ -90,8 +91,24 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public void flush() {
-        throw new UnsupportedOperationException("Not implemented");
+    public void flush() throws IOException {
+        fileWorker.writeEntries(data.values(), basePath, FileName.SAVED_DATA, FileName.OFFSETS);
+    }
+
+    @Override
+    public synchronized void compact() throws IOException {
+        // Если выполнился, то за основу всё равно берутся старые файлы
+        CollapseTogether.createCompact(fileWorker,
+                basePath.resolve(CMP_DIR),
+                new RangeIterator(fileWorker.findEntries(null, null)));
+        // Если хотя бы частично выполнился, то при открытии дао старые данные
+        // будут удалены, а чтение будет производиться только из новых файлов
+        Path offset = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_OFFSETS.getName());
+        Path data = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_DATA.getName());
+        CollapseTogether.moveFile(offset, basePath.resolve(FileName.COMPACT_OFFSETS.getName()));
+        CollapseTogether.moveFile(data, basePath.resolve(FileName.COMPACT_DATA.getName()));
+        // Удаляет старые файлы, влияет только на то, когда будут удалены старые данные
+        CollapseTogether.removeOld(basePath);
     }
 
     @Override
@@ -101,7 +118,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             if (data.isEmpty()) {
                 return;
             }
-            fileWorker.writeEntries(data.values(), basePath);
+            flush();
         } finally {
             lock.writeLock().unlock();
         }
