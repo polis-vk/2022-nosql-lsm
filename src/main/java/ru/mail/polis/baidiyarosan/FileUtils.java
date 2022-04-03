@@ -143,7 +143,7 @@ public final class FileUtils {
 
         }
 
-        for (int i = 2; i < fileNumber; ++i) {
+        for (int i = 2; i <= fileNumber; ++i) {
             Files.deleteIfExists(getIndexPath(path, i));
             Files.deleteIfExists(getDataPath(path, i));
         }
