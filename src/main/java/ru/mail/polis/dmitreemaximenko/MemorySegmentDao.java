@@ -29,7 +29,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private static final long NULL_VALUE_SIZE = -1;
     private static final String TMP_SUFFIX = "tmp";
     private static final int LOG_INDEX_START = 0;
-    private static int LOG_INDEX_NEXT_FILE_NAME = 0;
+    private int LOG_INDEX_NEXT_FILE_NAME;
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
             new ConcurrentSkipListMap<>(COMPARATOR);
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -97,7 +97,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         return result;
     }
 
-    private void RemoveLogFilesExceptFirst() throws IOException {
+    private void removeLogFilesExceptFirst() throws IOException {
         int logIndex = LOG_INDEX_START + 1;
         while (true) {
             Path filename = config.basePath().resolve(LOG_NAME + logIndex);
@@ -241,7 +241,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             writeValuesToFile(get(null, null), get(null, null), tmpLogFileName);
             Files.move(tmpLogFileName, getFirstLogFileName(), StandardCopyOption.ATOMIC_MOVE,
                     StandardCopyOption.REPLACE_EXISTING);
-            RemoveLogFilesExceptFirst();
+            removeLogFilesExceptFirst();
             LOG_INDEX_NEXT_FILE_NAME = 1;
         } finally {
             lock.writeLock().unlock();
