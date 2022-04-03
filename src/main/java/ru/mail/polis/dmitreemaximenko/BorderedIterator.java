@@ -67,13 +67,22 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             return result;
         }
 
-        Source source = popIterator();
-        if (source == null) {
-            throw new NoSuchElementException();
-        }
-        Entry<MemorySegment> result = source.element;
-        if (moveSource(source)) {
-            addSource(source);
+        Entry<MemorySegment> result;
+        if (sources.size() > 1) {
+            Source source = popIterator();
+            if (source == null) {
+                throw new NoSuchElementException();
+            }
+            result = source.element;
+            if (moveSource(source)) {
+                addSource(source);
+            }
+        } else {
+            Source source = peekIterator();
+            result = source.element;
+            if (!moveSource(sources.firstEntry().getValue())) {
+                sources.remove(source.element.key());
+            }
         }
         removeNextNullValues();
         return result;
@@ -146,6 +155,11 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
         private class EntryContainer {
             Entry<MemorySegment> entry;
             long entrySize;
+
+            public EntryContainer(Entry<MemorySegment> entry, long entrySize) {
+                this.entry = entry;
+                this.entrySize = entrySize;
+            }
         }
 
         private FileEntryIterator(MemorySegment from, MemorySegment last, MemorySegment log) {
@@ -185,7 +199,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
         }
 
         private EntryContainer getNextEntry() {
-            EntryContainer result = new EntryContainer();
+            Entry<MemorySegment> entry = null;
             long entryOffset = offset;
             if (entryOffset < log.byteSize()) {
                 long keySize = MemoryAccess.getLongAtOffset(log, entryOffset);
@@ -195,9 +209,9 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
 
                 MemorySegment currentKey = log.asSlice(entryOffset, keySize);
                 if (valueSize == NULL_VALUE_SIZE) {
-                    result.entry = new BaseEntry<>(currentKey, null);
+                    entry = new BaseEntry<>(currentKey, null);
                 } else {
-                    result.entry = new BaseEntry<>(currentKey, log.asSlice(entryOffset + keySize,
+                    entry = new BaseEntry<>(currentKey, log.asSlice(entryOffset + keySize,
                             valueSize));
                 }
                 if (valueSize == NULL_VALUE_SIZE) {
@@ -207,8 +221,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
 
             }
 
-            result.entrySize = entryOffset - offset;
-            return result;
+            return new EntryContainer(entry, entryOffset - offset);
         }
 
         private long getOffsetOfEntryNotLessThan(MemorySegment other) {
