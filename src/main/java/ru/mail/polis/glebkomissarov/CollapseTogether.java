@@ -12,7 +12,7 @@ import java.util.stream.Stream;
 
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 
-public class CollapseTogether {
+public final class CollapseTogether {
 
     private static final String INDEX = "compact";
 
