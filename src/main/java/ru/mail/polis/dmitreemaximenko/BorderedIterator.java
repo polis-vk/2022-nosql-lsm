@@ -79,6 +79,9 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             }
         } else {
             Source source = peekIterator();
+            if (source == null) {
+                throw new NoSuchElementException();
+            }
             result = source.element;
             if (!moveSource(sources.firstEntry().getValue())) {
                 sources.remove(source.element.key());
