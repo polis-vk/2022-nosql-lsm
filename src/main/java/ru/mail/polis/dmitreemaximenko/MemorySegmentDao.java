@@ -83,7 +83,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     private List<Path> getLogPaths() {
         List<Path> result = new LinkedList<>();
-        Integer logIndex = LOG_INDEX_START;
+        int logIndex = LOG_INDEX_START;
         while (true) {
             Path filename = config.basePath().resolve(LOG_NAME + logIndex);
             if (Files.exists(filename)) {
@@ -98,7 +98,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     }
 
     private void RemoveLogFilesExceptFirst() throws IOException {
-        Integer logIndex = LOG_INDEX_START + 1;
+        int logIndex = LOG_INDEX_START + 1;
         while (true) {
             Path filename = config.basePath().resolve(LOG_NAME + logIndex);
             if (Files.exists(filename)) {
