@@ -24,7 +24,9 @@ import java.util.stream.Stream;
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String FILE = "data";
     private static final String INDEX = "index";
-    private static final String EXTENSION = ".anime";
+    private static final String SAFE_EXTENSION = ".anime";
+    private static final String IN_PROGRESS_EXTENSION = ".animerr";
+    private static final String COMPOSITE_EXTENSION = ".ancord";
     private final Config config;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory = new ConcurrentSkipListMap<>();
     private long amountOfFiles;
@@ -40,7 +42,20 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                 List<Path> paths = files.toList();
                 numberOfFiles = paths.size();
                 for (Path path : paths) {
-                    if (!path.toString().endsWith(EXTENSION)) {
+                    if(path.toString().endsWith(IN_PROGRESS_EXTENSION)) {
+                        --numberOfFiles;
+                        Files.deleteIfExists(path);
+                    }
+                    else if(path.toString().endsWith(INDEX + COMPOSITE_EXTENSION)) {
+                        deleteFiles();
+                        Path source = config.basePath().resolve(FILE + COMPOSITE_EXTENSION);
+                        Files.move(source, source.resolveSibling(FILE + 0 + SAFE_EXTENSION));
+                        source = config.basePath().resolve(INDEX + COMPOSITE_EXTENSION);
+                        Files.move(source, source.resolveSibling(INDEX + 0 + SAFE_EXTENSION));
+                        numberOfFiles = 1;
+                        break;
+                    }
+                    else if (!path.toString().endsWith(SAFE_EXTENSION)) {
                         --numberOfFiles;
                     }
                 }
@@ -51,8 +66,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
         this.amountOfFiles = numberOfFiles;
         for (long i = amountOfFiles - 1; i >= 0; i--) {
-            readers.add(mapFile(config.basePath().resolve(FILE + i + EXTENSION),
-                    config.basePath().resolve(INDEX + i + EXTENSION)));
+            readers.add(mapFile(config.basePath().resolve(FILE + i + SAFE_EXTENSION),
+                    config.basePath().resolve(INDEX + i + SAFE_EXTENSION)));
         }
     }
 
@@ -105,10 +120,53 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         memory.clear();
     }
 
+    @Override
+    public void compact() throws IOException {
+        int count = 0;
+        int size = 0;
+        Iterator<BaseEntry<ByteBuffer>> iter = get(null, null);
+        while (iter.hasNext()) {
+            BaseEntry<ByteBuffer> entry = iter.next();
+            count++;
+            size += 2 * Integer.BYTES + entry.key().capacity() + entry.value().capacity();
+        }
+        try (DaoWriter out = new DaoWriter(config.basePath().resolve(FILE + IN_PROGRESS_EXTENSION),
+                config.basePath().resolve(INDEX + IN_PROGRESS_EXTENSION))) {
+            out.writeIterator(get(null, null), count, size);
+        }
+
+        Path source = config.basePath().resolve(FILE + IN_PROGRESS_EXTENSION);
+        Files.move(source, source.resolveSibling(FILE + COMPOSITE_EXTENSION));
+        source = config.basePath().resolve(INDEX + IN_PROGRESS_EXTENSION);
+        Files.move(source, source.resolveSibling(INDEX + COMPOSITE_EXTENSION));
+
+        memory.clear();
+        deleteFiles();
+
+        source = config.basePath().resolve(FILE + COMPOSITE_EXTENSION);
+        Files.move(source, source.resolveSibling(FILE + 0 + SAFE_EXTENSION));
+        source = config.basePath().resolve(INDEX + COMPOSITE_EXTENSION);
+        Files.move(source, source.resolveSibling(INDEX + 0 + SAFE_EXTENSION));
+        amountOfFiles = 1;
+
+    }
+
+    private void deleteFiles() throws IOException {
+        for(long i = amountOfFiles - 1; i >= 0; i--) {
+            Files.deleteIfExists(config.basePath().resolve(FILE + i + SAFE_EXTENSION));
+            Files.deleteIfExists(config.basePath().resolve(INDEX + i + SAFE_EXTENSION));
+        }
+    }
+
     private void store() throws IOException {
-        try (DaoWriter out = new DaoWriter(config.basePath().resolve(FILE + amountOfFiles + EXTENSION),
-                config.basePath().resolve(INDEX + amountOfFiles + EXTENSION))) {
+        if(memory.isEmpty()) {
+            return;
+        }
+        try (DaoWriter out = new DaoWriter(config.basePath().resolve(FILE + amountOfFiles + SAFE_EXTENSION),
+                config.basePath().resolve(INDEX + amountOfFiles + SAFE_EXTENSION))) {
             out.writeMap(memory);
+            readers.add(0, mapFile(config.basePath().resolve(FILE + amountOfFiles + SAFE_EXTENSION),
+                    config.basePath().resolve(INDEX + amountOfFiles + SAFE_EXTENSION)));
             amountOfFiles++;
         }
     }
