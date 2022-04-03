@@ -25,7 +25,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     private final Path basePath;
     private final FileWorker fileWorker;
 
-    private boolean compacted = false;
+    private boolean compacted;
 
     public MyMemoryDao(Config config) {
         basePath = config.basePath();
