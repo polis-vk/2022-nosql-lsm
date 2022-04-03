@@ -30,7 +30,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     private final Path path;
 
-    private final int filesCount;
+    private int filesCount;
 
     public MemoryAndDiskDao(Config config) throws IOException {
         this.path = config.basePath();
@@ -82,12 +82,14 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             return;
         }
         FileUtils.writeOnDisk(collection, path);
+        ++this.filesCount;
         collection.clear();
     }
 
     @Override
     public void compact() throws IOException {
         FileUtils.compact(get(null, null), path);
+        this.filesCount = 1;
         collection.clear();
     }
 
