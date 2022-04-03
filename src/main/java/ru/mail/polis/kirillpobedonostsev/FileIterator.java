@@ -35,9 +35,7 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
         int valueSize = mappedFile.getInt(offset);
         offset += Integer.BYTES;
         ByteBuffer value = null;
-        if (valueSize == PersistenceDao.NULL_VALUE_LENGTH) {
-            valueSize = 0;
-        } else {
+        if (valueSize != PersistenceDao.NULL_VALUE_LENGTH) {
             value = mappedFile.slice(offset, valueSize);
         }
         pos++;

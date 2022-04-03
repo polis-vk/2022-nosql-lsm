@@ -47,13 +47,14 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         this.config = config;
         checkTmpFile();
         files = new ArrayList<>();
-        for (int i = 0; ; i++) {
+        boolean fileExist = true;
+        for (int i = 0; fileExist; i++) {
             try (FileChannel channel = FileChannel.open(getFilePath(i))) {
                 MappedByteBuffer mappedDataFile =
                         channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
                 files.add(mappedDataFile);
             } catch (NoSuchFileException e) {
-                break;
+                fileExist = false;
             }
         }
     }
