@@ -1,14 +1,18 @@
 package ru.mail.polis.alexanderkosnitskiy;
 
+import ru.mail.polis.Config;
+
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-import ru.mail.polis.Config;
+public class DaoUtility {
+    private DaoUtility() {
+        
+    }
 
-public class Utils {
     public static void renameFile(Config config, String fileName, String newFileName) throws IOException {
         Path source = config.basePath().resolve(fileName);
         Files.move(source, source.resolveSibling(newFileName));
