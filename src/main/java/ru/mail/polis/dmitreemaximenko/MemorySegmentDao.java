@@ -11,6 +11,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -26,6 +27,9 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private static final String LOG_NAME = "log";
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
     private static final long NULL_VALUE_SIZE = -1;
+    private static final String TMP_SUFFIX = "tmp";
+    private static final int LOG_INDEX_START = 0;
+    private static int LOG_INDEX_NEXT_FILE_NAME = 0;
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
             new ConcurrentSkipListMap<>(COMPARATOR);
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -43,6 +47,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             logs = null;
         } else {
             List<Path> logPaths = getLogPaths();
+            LOG_INDEX_NEXT_FILE_NAME = logPaths.size();
             logs = new ArrayList<>(logPaths.size());
 
             for (Path logPath : logPaths) {
@@ -78,7 +83,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     private List<Path> getLogPaths() {
         List<Path> result = new LinkedList<>();
-        Integer logIndex = 0;
+        Integer logIndex = LOG_INDEX_START;
         while (true) {
             Path filename = config.basePath().resolve(LOG_NAME + logIndex);
             if (Files.exists(filename)) {
@@ -92,8 +97,29 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         return result;
     }
 
+    private void RemoveLogFilesExceptFirst() throws IOException {
+        Integer logIndex = LOG_INDEX_START + 1;
+        while (true) {
+            Path filename = config.basePath().resolve(LOG_NAME + logIndex);
+            if (Files.exists(filename)) {
+                logIndex++;
+                Files.delete(filename);
+            } else {
+                break;
+            }
+        }
+    }
+
     private Path getLogName() {
-        return config.basePath().resolve(LOG_NAME + logs.size());
+        return config.basePath().resolve(LOG_NAME + LOG_INDEX_NEXT_FILE_NAME);
+    }
+
+    private Path getTmpLogFileName() {
+        return config.basePath().resolve(LOG_NAME + TMP_SUFFIX);
+    }
+
+    private Path getFirstLogFileName() {
+        return config.basePath().resolve(LOG_NAME + "0");
     }
 
     @Override
@@ -155,6 +181,9 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                 size += 3L * Long.BYTES;
             }
 
+            if (Files.exists(fileName)) {
+                Files.delete(fileName);
+            }
             Files.createFile(fileName);
             MemorySegment log =
                     MemorySegment.mapFile(
@@ -193,25 +222,29 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         }
     }
 
-    private long calculateValues() throws IOException {
-        Iterator<Entry<MemorySegment>> iterator = get(null, null);
-        long result = 0;
-        while (iterator.hasNext()) {
-            result++;
-            iterator.next();
-        }
-        return result;
-    }
-
     @Override
     public void compact() throws IOException {
         lock.writeLock().lock();
         try {
-            long totalValues = calculateValues();
+            Path tmpLogFileName = getTmpLogFileName();
 
+            // we guarantee here correct behaviour even if crash happens at any time
+            // suppose we have logs: L1, L2 and M (memory values)
+            // 1) first we right compact log into: L_TMP
+            // 2) then we atomically change L1 with L_TMP
+            // 3) then we delete L2
+
+            // if we crashed after step 1 - nothing happens, because we will ignore L_TMP and lose only M.
+            // if we crashed after step 2 - values that was only in L1 - still in L1 (which is compact), values that
+            // were in L1 and L2 we will use still from L2, values that was in memory now in L1,
+            // values that was both in memory and L1 or L2 now in L1
+            writeValuesToFile(get(null, null), get(null, null), tmpLogFileName);
+            Files.move(tmpLogFileName, getFirstLogFileName(), StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+            RemoveLogFilesExceptFirst();
+            LOG_INDEX_NEXT_FILE_NAME = 1;
         } finally {
             lock.writeLock().unlock();
         }
-
     }
 }
