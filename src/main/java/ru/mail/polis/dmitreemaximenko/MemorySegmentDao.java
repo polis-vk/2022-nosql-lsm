@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<MemorySegment>> {
+public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
     private static final String LOG_NAME = "log";
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
@@ -33,11 +33,11 @@ public class MemorySegmentInMemoryDao implements Dao<MemorySegment, Entry<Memory
     private final List<MemorySegment> logs;
     private final ResourceScope scope = ResourceScope.newSharedScope();
 
-    public MemorySegmentInMemoryDao() throws IOException {
+    public MemorySegmentDao() throws IOException {
         this(null);
     }
 
-    public MemorySegmentInMemoryDao(Config config) throws IOException {
+    public MemorySegmentDao(Config config) throws IOException {
         this.config = config;
         if (config == null) {
             logs = null;

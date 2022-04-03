@@ -4,22 +4,22 @@ import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.dmitreemaximenko.MemorySegmentInMemoryDao;
+import ru.mail.polis.dmitreemaximenko.MemorySegmentDao;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
 
-@DaoFactory(stage = 3, week = 2)
+@DaoFactory(stage = 4, week = 1)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public Dao<MemorySegment, Entry<MemorySegment>> createDao(Config config) throws IOException {
-        return new MemorySegmentInMemoryDao(config);
+        return new MemorySegmentDao(config);
     }
 
     @Override
     public Dao<MemorySegment, Entry<MemorySegment>> createDao() throws IOException {
-        return new MemorySegmentInMemoryDao();
+        return new MemorySegmentDao();
     }
 
     @Override
