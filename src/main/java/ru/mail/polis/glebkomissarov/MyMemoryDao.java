@@ -115,9 +115,9 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         // Если хотя бы частично выполнился, то при открытии дао старые данные
         // будут удалены, а чтение будет производиться только из новых файлов
         Path offset = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_OFFSETS.getName() + PRIORITY);
-        Path data = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_SAVED.getName() + PRIORITY);
+        Path savedData = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_SAVED.getName() + PRIORITY);
         CollapseTogether.moveFile(offset, basePath.resolve(FileName.COMPACT_OFFSETS.getName() + PRIORITY));
-        CollapseTogether.moveFile(data, basePath.resolve(FileName.COMPACT_SAVED.getName() + PRIORITY));
+        CollapseTogether.moveFile(savedData, basePath.resolve(FileName.COMPACT_SAVED.getName() + PRIORITY));
         // Удаляет старые файлы, влияет только на то, когда будут удалены старые данные
         CollapseTogether.removeOld(basePath);
         compacted = false;

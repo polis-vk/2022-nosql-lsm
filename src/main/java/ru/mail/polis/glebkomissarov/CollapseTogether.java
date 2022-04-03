@@ -1,14 +1,14 @@
 package ru.mail.polis.glebkomissarov;
 
+import jdk.incubator.foreign.MemorySegment;
+import ru.mail.polis.BaseEntry;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
-
-import jdk.incubator.foreign.MemorySegment;
-import ru.mail.polis.BaseEntry;
 
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 
