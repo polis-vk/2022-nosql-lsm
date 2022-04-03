@@ -127,12 +127,24 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         }
         scope.close();
         lock.writeLock().lock();
+        try {
+            writeValuesToFile(data.values().iterator(), data.values().iterator(), getLogName());
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
 
+    private void writeValuesToFile(Iterator<Entry<MemorySegment>> valuesIterator,
+                                   Iterator<Entry<MemorySegment>> valuesIteratorCopy,
+                                   Path fileName)
+            throws IOException {
         try (ResourceScope writeScope = ResourceScope.newConfinedScope()) {
-            // values amount
             long size = Long.BYTES;
+            long valuesAmount = 0;
 
-            for (Entry<MemorySegment> value : data.values()) {
+            while (valuesIterator.hasNext()) {
+                valuesAmount++;
+                Entry<MemorySegment> value = valuesIterator.next();
                 if (value.value() == null) {
                     size += value.key().byteSize();
                 } else {
@@ -143,21 +155,21 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                 size += 3L * Long.BYTES;
             }
 
-            Path newLogFile = getLogName();
-            Files.createFile(newLogFile);
+            Files.createFile(fileName);
             MemorySegment log =
                     MemorySegment.mapFile(
-                            newLogFile,
+                            fileName,
                             0,
                             size,
                             FileChannel.MapMode.READ_WRITE,
                             writeScope);
 
-            MemoryAccess.setLongAtOffset(log, 0, data.size());
+            MemoryAccess.setLongAtOffset(log, 0, valuesAmount);
             long indexOffset = Long.BYTES;
-            long dataOffset = Long.BYTES + data.size() * Long.BYTES;
+            long dataOffset = Long.BYTES + valuesAmount * Long.BYTES;
 
-            for (Entry<MemorySegment> value : data.values()) {
+            while (valuesIteratorCopy.hasNext()) {
+                Entry<MemorySegment> value = valuesIteratorCopy.next();
                 MemoryAccess.setLongAtOffset(log, indexOffset, dataOffset);
                 indexOffset += Long.BYTES;
 
@@ -178,8 +190,28 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                     dataOffset += value.value().byteSize();
                 }
             }
+        }
+    }
+
+    private long calculateValues() throws IOException {
+        Iterator<Entry<MemorySegment>> iterator = get(null, null);
+        long result = 0;
+        while (iterator.hasNext()) {
+            result++;
+            iterator.next();
+        }
+        return result;
+    }
+
+    @Override
+    public void compact() throws IOException {
+        lock.writeLock().lock();
+        try {
+            long totalValues = calculateValues();
+
         } finally {
             lock.writeLock().unlock();
         }
+
     }
 }
