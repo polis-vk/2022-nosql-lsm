@@ -29,7 +29,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private static final long NULL_VALUE_SIZE = -1;
     private static final String TMP_SUFFIX = "tmp";
     private static final int LOG_INDEX_START = 0;
-    private int LOG_INDEX_NEXT_FILE_NAME;
+    private int logIndexNextFileName;
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
             new ConcurrentSkipListMap<>(COMPARATOR);
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -47,7 +47,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             logs = null;
         } else {
             List<Path> logPaths = getLogPaths();
-            LOG_INDEX_NEXT_FILE_NAME = logPaths.size();
+            logIndexNextFileName = logPaths.size();
             logs = new ArrayList<>(logPaths.size());
 
             for (Path logPath : logPaths) {
@@ -111,7 +111,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     }
 
     private Path getLogName() {
-        return config.basePath().resolve(LOG_NAME + LOG_INDEX_NEXT_FILE_NAME);
+        return config.basePath().resolve(LOG_NAME + logIndexNextFileName);
     }
 
     private Path getTmpLogFileName() {
@@ -242,7 +242,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             Files.move(tmpLogFileName, getFirstLogFileName(), StandardCopyOption.ATOMIC_MOVE,
                     StandardCopyOption.REPLACE_EXISTING);
             removeLogFilesExceptFirst();
-            LOG_INDEX_NEXT_FILE_NAME = 1;
+            logIndexNextFileName = 1;
         } finally {
             lock.writeLock().unlock();
         }
