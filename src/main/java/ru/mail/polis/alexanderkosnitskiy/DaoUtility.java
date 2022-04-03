@@ -10,7 +10,7 @@ import java.nio.file.StandardOpenOption;
 
 public class DaoUtility {
     private DaoUtility() {
-        
+
     }
 
     public static void renameFile(Config config, String fileName, String newFileName) throws IOException {

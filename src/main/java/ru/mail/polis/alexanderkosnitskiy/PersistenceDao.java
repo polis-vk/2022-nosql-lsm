@@ -125,7 +125,6 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
         renameFile(config,FILE + IN_PROGRESS_EXTENSION, FILE + COMPOSITE_EXTENSION);
         renameFile(config,INDEX + IN_PROGRESS_EXTENSION, INDEX + COMPOSITE_EXTENSION);
-
         memory.clear();
         deleteFiles();
         renameFile(config,FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
