@@ -87,9 +87,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     @Override
     public void compact() throws IOException {
-        Iterator<BaseEntry<ByteBuffer>> iter = get(null, null);
-        collection.clear();
-        FileUtils.compact(iter, path);
+        FileUtils.compact(get(null, null), path);
     }
 
 }
