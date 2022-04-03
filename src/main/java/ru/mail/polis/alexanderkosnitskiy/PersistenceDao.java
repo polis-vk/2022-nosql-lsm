@@ -191,6 +191,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             for (FilePack pack : readers) {
                 iterators.add(new FileIterator(pack.getReader(), from, to));
             }
+            
             queue = new PriorityQueue<>((l, r) -> {
                 int comparison = l.curEntry.key().compareTo(r.curEntry.key());
                 if (comparison > 0) {
