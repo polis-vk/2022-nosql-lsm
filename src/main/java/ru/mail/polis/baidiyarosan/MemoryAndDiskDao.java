@@ -85,4 +85,9 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         FileUtils.writeOnDisk(collection, path);
     }
 
+    @Override
+    public void compact() throws IOException {
+        FileUtils.compact(get(null, null), path);
+    }
+
 }
