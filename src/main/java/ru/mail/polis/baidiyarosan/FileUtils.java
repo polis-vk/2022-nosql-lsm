@@ -112,27 +112,31 @@ public final class FileUtils {
     }
 
     public static void compact(Iterator<BaseEntry<ByteBuffer>> iter, Path path) throws IOException {
-        ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
-        ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
+
         int fileNumber = getPaths(path).size() + 1;
-        try (FileChannel dataOut = FileChannel.open(getDataPath(path, fileNumber),
-                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-             FileChannel indexOut = FileChannel.open(getIndexPath(path, fileNumber),
-                     StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-            int size;
-            while (iter.hasNext()) {
-                BaseEntry<ByteBuffer> entry = iter.next();
-                size = sizeOfEntry(entry);
-                if (buffer.remaining() < size) {
-                    buffer = ByteBuffer.allocate(size);
-                } else {
-                    buffer.clear();
+
+        if (iter.hasNext()) {
+            ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
+            ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
+            try (FileChannel dataOut = FileChannel.open(getDataPath(path, fileNumber),
+                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+                 FileChannel indexOut = FileChannel.open(getIndexPath(path, fileNumber),
+                         StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+                int size;
+                while (iter.hasNext()) {
+                    BaseEntry<ByteBuffer> entry = iter.next();
+                    size = sizeOfEntry(entry);
+                    if (buffer.remaining() < size) {
+                        buffer = ByteBuffer.allocate(size);
+                    } else {
+                        buffer.clear();
+                    }
+                    indexBuffer.clear();
+                    indexBuffer.putInt((int) dataOut.position());
+                    indexBuffer.flip();
+                    indexOut.write(indexBuffer);
+                    dataOut.write(writeEntryToBuffer(buffer, entry));
                 }
-                indexBuffer.clear();
-                indexBuffer.putInt((int) dataOut.position());
-                indexBuffer.flip();
-                indexOut.write(indexBuffer);
-                dataOut.write(writeEntryToBuffer(buffer, entry));
             }
         }
 
