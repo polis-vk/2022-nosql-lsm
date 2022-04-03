@@ -93,9 +93,9 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         clear();
     }
 
+    // changed from collection.clear() due to the fact that it's slower
     public void clear() {
         collection = new ConcurrentSkipListMap<>();
-        //collection.clear();
     }
 
 }
