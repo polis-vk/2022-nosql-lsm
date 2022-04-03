@@ -90,7 +90,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     public void compact() throws IOException {
         FileUtils.compact(get(null, null), path);
         this.filesCount = 1;
-        collection.clear();
+        //collection.clear();
     }
 
 }
