@@ -8,7 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-public class DaoUtility {
+public final class DaoUtility {
     private DaoUtility() {
 
     }

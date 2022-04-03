@@ -1,7 +1,5 @@
 package ru.mail.polis.alexanderkosnitskiy;
 
-import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.mapFile;
-import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.renameFile;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -20,6 +18,9 @@ import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Stream;
+
+import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.mapFile;
+import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.renameFile;
 
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String FILE = "data";
