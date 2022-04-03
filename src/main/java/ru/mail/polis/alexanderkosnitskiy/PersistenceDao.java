@@ -21,6 +21,9 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Stream;
 
+import static ru.mail.polis.alexanderkosnitskiy.Utils.mapFile;
+import static ru.mail.polis.alexanderkosnitskiy.Utils.renameFile;
+
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     private static final String FILE = "data";
     private static final String INDEX = "index";
@@ -47,8 +50,8 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                         Files.deleteIfExists(path);
                     } else if (path.toString().endsWith(INDEX + COMPOSITE_EXTENSION)) {
                         deleteFiles();
-                        renameFile(FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
-                        renameFile(INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
+                        renameFile(config, FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
+                        renameFile(config, INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
                         numberOfFiles = 1;
                         break;
                     } else if (!path.toString().endsWith(SAFE_EXTENSION)) {
@@ -64,14 +67,6 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         for (long i = amountOfFiles - 1; i >= 0; i--) {
             readers.add(mapFile(config.basePath().resolve(FILE + i + SAFE_EXTENSION),
                     config.basePath().resolve(INDEX + i + SAFE_EXTENSION)));
-        }
-    }
-
-    private FilePack mapFile(Path fileName, Path indexName) throws IOException {
-        try (FileChannel reader = FileChannel.open(fileName, StandardOpenOption.READ);
-             FileChannel indexReader = FileChannel.open(indexName, StandardOpenOption.READ)) {
-            return new FilePack(reader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(fileName)),
-                    indexReader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(indexName)));
         }
     }
 
@@ -131,26 +126,26 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             out.writeIterator(get(null, null), count, size);
         }
 
-        renameFile(FILE + IN_PROGRESS_EXTENSION, FILE + COMPOSITE_EXTENSION);
-        renameFile(INDEX + IN_PROGRESS_EXTENSION, INDEX + COMPOSITE_EXTENSION);
+        renameFile(config,FILE + IN_PROGRESS_EXTENSION, FILE + COMPOSITE_EXTENSION);
+        renameFile(config,INDEX + IN_PROGRESS_EXTENSION, INDEX + COMPOSITE_EXTENSION);
 
         memory.clear();
         deleteFiles();
-        renameFile(FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
-        renameFile(INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
+        renameFile(config,FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
+        renameFile(config,INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
         amountOfFiles = 1;
 
     }
 
     private void deleteFiles() throws IOException {
-        for(long i = amountOfFiles - 1; i >= 0; i--) {
+        for (long i = amountOfFiles - 1; i >= 0; i--) {
             Files.deleteIfExists(config.basePath().resolve(FILE + i + SAFE_EXTENSION));
             Files.deleteIfExists(config.basePath().resolve(INDEX + i + SAFE_EXTENSION));
         }
     }
 
     private void store() throws IOException {
-        if(memory.isEmpty()) {
+        if (memory.isEmpty()) {
             return;
         }
         try (DaoWriter out = new DaoWriter(config.basePath().resolve(FILE + amountOfFiles + SAFE_EXTENSION),
@@ -160,11 +155,6 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
                     config.basePath().resolve(INDEX + amountOfFiles + SAFE_EXTENSION)));
             amountOfFiles++;
         }
-    }
-
-    private void renameFile(String fileName, String newFileName) throws IOException {
-        Path source = config.basePath().resolve(fileName);
-        Files.move(source, source.resolveSibling(newFileName));
     }
 
     private BaseEntry<ByteBuffer> findInFiles(ByteBuffer key) {
@@ -191,7 +181,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             for (FilePack pack : readers) {
                 iterators.add(new FileIterator(pack.getReader(), from, to));
             }
-            
+
             queue = new PriorityQueue<>((l, r) -> {
                 int comparison = l.curEntry.key().compareTo(r.curEntry.key());
                 if (comparison > 0) {
@@ -268,7 +258,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
     }
 
-    private static class FilePack {
+    static class FilePack {
         private final MappedByteBuffer valueFile;
         private final MappedByteBuffer indexFile;
 
