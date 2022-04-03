@@ -138,17 +138,16 @@ public final class FileUtils {
                     dataOut.write(writeEntryToBuffer(buffer, entry));
                 }
             }
+            Files.move(getIndexPath(path, fileNumber), getIndexPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
+            Files.move(getDataPath(path, fileNumber), getDataPath(path,1), StandardCopyOption.ATOMIC_MOVE);
+
         }
 
-        for (int i = 1; i < fileNumber; ++i) {
+        for (int i = 2; i < fileNumber; ++i) {
             Files.deleteIfExists(getIndexPath(path, i));
             Files.deleteIfExists(getDataPath(path, i));
         }
 
-        //if (Files.exists(getIndexPath(path, fileNumber))) {
-        Files.move(getIndexPath(path, fileNumber), getIndexPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
-        //}
-        Files.move(getDataPath(path, fileNumber), getDataPath(path,1), StandardCopyOption.ATOMIC_MOVE);
     }
 
     public static Collection<BaseEntry<ByteBuffer>> getInMemoryCollection(
