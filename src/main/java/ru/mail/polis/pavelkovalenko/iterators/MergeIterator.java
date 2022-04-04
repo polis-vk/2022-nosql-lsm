@@ -1,11 +1,10 @@
 package ru.mail.polis.pavelkovalenko.iterators;
 
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
-import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
 import ru.mail.polis.pavelkovalenko.PairedFiles;
 import ru.mail.polis.pavelkovalenko.Serializer;
+import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
@@ -51,26 +50,32 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     @Override
     public Entry<ByteBuffer> next() {
-        PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
-        PeekIterator<Entry<ByteBuffer>> second = iterators.poll();
         Entry<ByteBuffer> result;
+        PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
 
-        int compare = second == null ? -1 : EntryComparator.INSTANSE.compare(first.peek(), second.peek());
-        if (compare == 0) {
-            compare = Integer.compare(first.getPriority(), second.getPriority());
-        }
-
-        if (compare < 0) {
+        if (iterators.isEmpty()) {
             result = first.peek();
-        } else if (compare == 0) {
-            throw new IllegalStateException("Illegal priority equality");
+            backIterator(first);
         } else {
-            result = second.peek();
+            PeekIterator<Entry<ByteBuffer>> second = iterators.remove();
+
+            int compare = second == null ? -1 : Utils.entryComparator.compare(first.peek(), second.peek());
+            if (compare == 0) {
+                compare = Integer.compare(first.getPriority(), second.getPriority());
+            }
+
+            if (compare < 0) {
+                result = first.peek();
+            } else if (compare == 0) {
+                throw new IllegalStateException("Illegal priority equality");
+            } else {
+                result = second.peek();
+            }
+
+            backIterators(first, second);
         }
 
-        backIterators(first, second);
         fallEntry(result);
-
         return result;
     }
 
@@ -80,9 +85,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private void backIterator(PeekIterator<Entry<ByteBuffer>> it) {
-        if (it != null) {
-            iterators.add(it);
-        }
+        iterators.add(it);
     }
 
     private boolean removeIteratorIf(PeekIterator<Entry<ByteBuffer>> iterator) {
@@ -117,17 +120,26 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     private void skipPairStanding() {
         PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
-        PeekIterator<Entry<ByteBuffer>> second = iterators.poll();
+        if (iterators.isEmpty()) {
+            while (Utils.isTombstone(first.peek()) && first.hasNext()) {
+                backIterator(first);
+                fallEntry(first.peek());
+                refreshIterators();
+                first = iterators.remove();
+            }
+            backIterator(first);
+        } else {
+            PeekIterator<Entry<ByteBuffer>> second = iterators.poll();
 
-        while (Utils.isTombstone(first.peek()) && first.hasNext()) {
+            while (Utils.isTombstone(first.peek()) && first.hasNext()) {
+                backIterators(first, second);
+                fallEntry(first.peek());
+                refreshIterators();
+                first = iterators.remove();
+                second = iterators.poll();
+            }
             backIterators(first, second);
-            fallEntry(first.peek());
-            refreshIterators();
-            first = iterators.remove();
-            second = iterators.poll();
         }
-
-        backIterators(first, second);
         iterators.removeIf(this::removeIteratorIf);
     }
 
