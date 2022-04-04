@@ -4,9 +4,9 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
 import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
 import ru.mail.polis.pavelkovalenko.PairedFiles;
 import ru.mail.polis.pavelkovalenko.Serializer;
+import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -51,9 +51,8 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     @Override
     public Entry<ByteBuffer> next() {
-        Entry<PeekIterator<Entry<ByteBuffer>>> its = confiscateFirsIteratorsPair();
-        PeekIterator<Entry<ByteBuffer>> first = its.key();
-        PeekIterator<Entry<ByteBuffer>> second = its.value();
+        PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
+        PeekIterator<Entry<ByteBuffer>> second = iterators.poll();
         Entry<ByteBuffer> result;
 
         int compare = second == null ? -1 : EntryComparator.INSTANSE.compare(first.peek(), second.peek());
@@ -73,10 +72,6 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         fallEntry(result);
 
         return result;
-    }
-
-    private Entry<PeekIterator<Entry<ByteBuffer>>> confiscateFirsIteratorsPair() {
-        return new BaseEntry<>(iterators.remove(), iterators.poll());
     }
 
     @SafeVarargs
@@ -121,17 +116,15 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private void skipPairStanding() {
-        Entry<PeekIterator<Entry<ByteBuffer>>> its = confiscateFirsIteratorsPair();
-        PeekIterator<Entry<ByteBuffer>> first = its.key();
-        PeekIterator<Entry<ByteBuffer>> second = its.value();
+        PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
+        PeekIterator<Entry<ByteBuffer>> second = iterators.poll();
 
         while (Utils.isTombstone(first.peek()) && first.hasNext()) {
             backIterators(first, second);
             fallEntry(first.peek());
             refreshIterators();
-            its = confiscateFirsIteratorsPair();
-            first = its.key();
-            second = its.value();
+            first = iterators.remove();
+            second = iterators.poll();
         }
 
         backIterators(first, second);
