@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.Set;
 
-import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.WRITE;
 import static ru.mail.polis.daniilbakin.Storage.DATA_FILE_NAME;
 import static ru.mail.polis.daniilbakin.Storage.INDEX_FILE_NAME;
@@ -21,6 +21,7 @@ public class MapSerializeStream implements Closeable {
 
     private final FileChannel mapChannel;
     private final FileChannel indexesChannel;
+
 
     public MapSerializeStream(Config config, int dataCount, int startIndexFile) throws IOException {
         int newIndex = (startIndexFile == -1) ? 0 : startIndexFile + dataCount;
@@ -56,6 +57,7 @@ public class MapSerializeStream implements Closeable {
             BaseEntry<ByteBuffer> entry = dataIterator.next();
             int valueCapacity = (entry.value() == null) ? 0 : entry.value().capacity();
             int bufferSize = entry.key().capacity() + valueCapacity + Integer.BYTES * 2;
+
             if (localBuffer.capacity() < bufferSize) {
                 localBuffer = ByteBuffer.allocate(bufferSize);
             } else {
