@@ -31,7 +31,6 @@ final class Storage implements Closeable {
     private static final String FILE_EXT_TMP = ".tmp";
 
     // supposed to have fresh files first
-
     private final ResourceScope scope;
     private final List<MemorySegment> sstables;
 
