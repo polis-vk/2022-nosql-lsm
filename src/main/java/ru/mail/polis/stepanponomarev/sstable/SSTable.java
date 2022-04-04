@@ -3,8 +3,8 @@ package ru.mail.polis.stepanponomarev.sstable;
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
-import ru.mail.polis.Entry;
-import ru.mail.polis.stepanponomarev.OSXMemorySegment;
+import ru.mail.polis.stepanponomarev.TimestampEntry;
+import ru.mail.polis.stepanponomarev.Utils;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -15,134 +15,172 @@ import java.util.Collections;
 import java.util.Iterator;
 
 public final class SSTable implements Closeable {
-    public static final int TOMBSTONE_TAG = -1;
-    private static final String FILE_NAME = "ss.data";
+    public static final long TOMBSTONE_TAG = -1;
+    private static final String SSTABLE_FILE_NAME = "sstable.data";
+    private static final String INDEX_FILE_NAME = "sstable.index";
 
-    private final Index index;
+    private final MemorySegment indexMemorySegment;
     private final MemorySegment tableMemorySegment;
 
-    private SSTable(Index index, MemorySegment tableMemorySegment) {
-        this.index = index;
+    private SSTable(MemorySegment indexMemorySegment, MemorySegment tableMemorySegment) {
+        this.indexMemorySegment = indexMemorySegment;
         this.tableMemorySegment = tableMemorySegment;
     }
 
     public static SSTable createInstance(
             Path path,
-            Iterator<Entry<OSXMemorySegment>> data,
-            long dataSize,
-            int dataAmount
+            Iterator<TimestampEntry> data,
+            long sizeBytes,
+            int count
     ) throws IOException {
-        final Path file = path.resolve(FILE_NAME);
-        Files.createFile(file);
+        final Path sstableFile = path.resolve(SSTABLE_FILE_NAME);
+        Files.createFile(sstableFile);
 
-        final long fileSize = (long) Long.BYTES * 2 * dataAmount + dataSize;
-        final long[] positions = flushAndAndGetPositions(file, data, fileSize, dataAmount);
-        final MemorySegment tableMemorySegment = MemorySegment.mapFile(
-                file,
+        final long sstableSizeBytes = (long) Long.BYTES * 2 * count + sizeBytes;
+        final MemorySegment mappedSsTable = MemorySegment.mapFile(
+                sstableFile,
                 0,
-                fileSize,
-                FileChannel.MapMode.READ_ONLY,
-                ResourceScope.newConfinedScope()
+                sstableSizeBytes,
+                FileChannel.MapMode.READ_WRITE,
+                ResourceScope.newSharedScope()
         );
 
-        return new SSTable(
-                Index.createInstance(path, positions, tableMemorySegment),
-                tableMemorySegment
+        final Path indexFile = path.resolve(INDEX_FILE_NAME);
+        Files.createFile(indexFile);
+
+        final long indexSizeBytes = (long) Long.BYTES * count;
+        final MemorySegment mappedIndex = MemorySegment.mapFile(
+                indexFile,
+                0,
+                indexSizeBytes,
+                FileChannel.MapMode.READ_WRITE,
+                ResourceScope.newSharedScope()
         );
+
+        flush(data, mappedSsTable, mappedIndex);
+
+        return new SSTable(mappedIndex.asReadOnly(), mappedSsTable.asReadOnly());
     }
 
     public static SSTable upInstance(Path path) throws IOException {
-        final Path file = path.resolve(FILE_NAME);
-        if (Files.notExists(path)) {
-            throw new IllegalArgumentException("File" + path + " is not exits.");
+        final Path sstableFile = path.resolve(SSTABLE_FILE_NAME);
+        final Path indexFile = path.resolve(INDEX_FILE_NAME);
+        if (Files.notExists(path) || Files.notExists(indexFile)) {
+            throw new IllegalArgumentException("Files must exist.");
         }
 
-        final MemorySegment memorySegment = MemorySegment.mapFile(
-                file,
+        final MemorySegment mappedSsTable = MemorySegment.mapFile(
+                sstableFile,
                 0,
-                Files.size(file),
+                Files.size(sstableFile),
                 FileChannel.MapMode.READ_ONLY,
                 ResourceScope.newSharedScope()
         );
-        final Index index = Index.upInstance(path, memorySegment);
 
-        return new SSTable(index, memorySegment);
+        final MemorySegment mappedIndex = MemorySegment.mapFile(
+                indexFile,
+                0,
+                Files.size(indexFile),
+                FileChannel.MapMode.READ_ONLY,
+                ResourceScope.newSharedScope()
+        );
+
+        return new SSTable(mappedIndex, mappedSsTable);
     }
 
-    private static long[] flushAndAndGetPositions(
-            Path file,
-            Iterator<Entry<OSXMemorySegment>> data,
-            long fileSize,
-            int dataAmount
-    ) throws IOException {
-        try (ResourceScope scope = ResourceScope.newSharedScope()) {
-            MemorySegment memorySegment = MemorySegment.mapFile(
-                    file,
-                    0,
-                    fileSize,
-                    FileChannel.MapMode.READ_WRITE,
-                    scope
-            );
+    private static void flush(Iterator<TimestampEntry> data, MemorySegment sstable, MemorySegment index) {
+        long indexOffset = 0;
+        long sstableOffset = 0;
+        while (data.hasNext()) {
+            MemoryAccess.setLongAtOffset(index, indexOffset, sstableOffset);
+            indexOffset += Long.BYTES;
 
-            int i = 0;
-            final long[] positions = new long[dataAmount];
-
-            long currentOffset = 0;
-            while (data.hasNext()) {
-                positions[i++] = currentOffset;
-
-                final Entry<OSXMemorySegment> entry = data.next();
-                final MemorySegment key = entry.key().getMemorySegment();
-                final long keySize = key.byteSize();
-                MemoryAccess.setLongAtOffset(memorySegment, currentOffset, keySize);
-                currentOffset += Long.BYTES;
-
-                memorySegment.asSlice(currentOffset, keySize).copyFrom(key);
-                currentOffset += keySize;
-
-                final OSXMemorySegment value = entry.value();
-                if (value == null) {
-                    MemoryAccess.setLongAtOffset(memorySegment, currentOffset, TOMBSTONE_TAG);
-                    currentOffset += Long.BYTES;
-                    continue;
-                }
-
-                final long valueSize = value.getMemorySegment().byteSize();
-                MemoryAccess.setLongAtOffset(memorySegment, currentOffset, valueSize);
-                currentOffset += Long.BYTES;
-
-                memorySegment.asSlice(currentOffset, valueSize).copyFrom(value.getMemorySegment());
-                currentOffset += valueSize;
-            }
-
-            return positions;
+            final TimestampEntry entry = data.next();
+            sstableOffset += flush(entry, sstable, sstableOffset);
         }
     }
 
     @Override
-    public void close() throws IOException {
-        index.close();
+    public void close() {
+        indexMemorySegment.scope().close();
         tableMemorySegment.scope().close();
     }
 
-    public Iterator<Entry<OSXMemorySegment>> get(OSXMemorySegment from, OSXMemorySegment to) throws IOException {
+    public Iterator<TimestampEntry> get(MemorySegment from, MemorySegment to) {
         final long size = tableMemorySegment.byteSize();
         if (size == 0) {
             return Collections.emptyIterator();
         }
 
-        final long fromPosition = getKeyPositionOrDefault(from, 0);
-        final long toPosition = getKeyPositionOrDefault(to, size);
+        if (from == null && to == null) {
+            return new MappedIterator(tableMemorySegment);
+        }
+
+        final int max = (int) (indexMemorySegment.byteSize() / Long.BYTES) - 1;
+        final int fromIndex = from == null ? 0 : Math.abs(findIndexOfKey(from));
+
+        if (fromIndex > max) {
+            return Collections.emptyIterator();
+        }
+
+        final int toIndex = to == null ? max + 1 : Math.abs(findIndexOfKey(to));
+        final long fromPosition = MemoryAccess.getLongAtIndex(indexMemorySegment, fromIndex);
+        final long toPosition = toIndex > max ? size : MemoryAccess.getLongAtIndex(indexMemorySegment, toIndex);
 
         return new MappedIterator(tableMemorySegment.asSlice(fromPosition, toPosition - fromPosition));
     }
 
-    private long getKeyPositionOrDefault(OSXMemorySegment key, long defaultPosition) {
-        final long keyPosition = index.getKeyPosition(key);
-        if (keyPosition == -1) {
-            return defaultPosition;
+    private int findIndexOfKey(MemorySegment key) {
+        int low = 0;
+        int high = (int) (indexMemorySegment.byteSize() / Long.BYTES) - 1;
+
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+
+            final long keyPosition = MemoryAccess.getLongAtIndex(indexMemorySegment, mid);
+            final long keySize = MemoryAccess.getLongAtOffset(tableMemorySegment, keyPosition);
+            final MemorySegment current = tableMemorySegment.asSlice(keyPosition + Long.BYTES, keySize);
+
+            final int compareResult = Utils.compare(current, key);
+            if (compareResult < 0) {
+                low = mid + 1;
+            } else if (compareResult > 0) {
+                high = mid - 1;
+            } else {
+                return mid;
+            }
         }
 
-        return keyPosition;
+        return -low;
+    }
+    
+    private static long flush(TimestampEntry entry, MemorySegment memorySegment, long offset) {
+        final MemorySegment key = entry.key();
+        final long keySize = key.byteSize();
+
+        long writeOffset = offset;
+        MemoryAccess.setLongAtOffset(memorySegment, writeOffset, keySize);
+        writeOffset += Long.BYTES;
+
+        memorySegment.asSlice(writeOffset, keySize).copyFrom(key);
+        writeOffset += keySize;
+
+        MemoryAccess.setLongAtOffset(memorySegment, writeOffset, entry.getTimestamp());
+        writeOffset += Long.BYTES;
+
+        final MemorySegment value = entry.value();
+        if (value == null) {
+            MemoryAccess.setLongAtOffset(memorySegment, writeOffset, TOMBSTONE_TAG);
+            return writeOffset + Long.BYTES - offset;
+        }
+
+        final long valueSize = value.byteSize();
+        MemoryAccess.setLongAtOffset(memorySegment, writeOffset, valueSize);
+        writeOffset += Long.BYTES;
+
+        memorySegment.asSlice(writeOffset, valueSize).copyFrom(value);
+        writeOffset += valueSize;
+
+        return writeOffset - offset;
     }
 }
