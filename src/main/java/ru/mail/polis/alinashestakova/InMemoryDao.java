@@ -117,8 +117,8 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             memory.clear();
 
             if (tmp != null) {
-                Storage.deleteFiles(config);
                 Storage.moveFile(config, tmp, 0);
+                Storage.deleteFiles(config);
             }
         } finally {
             lock.writeLock().unlock();

@@ -129,7 +129,7 @@ final class Storage implements Closeable {
     }
 
     public static void deleteFiles(Config config) throws IOException {
-        for (long i = 0; i < getFilesCount(config); i++) {
+        for (long i = 1; i < getFilesCount(config); i++) {
             Files.deleteIfExists(config.basePath().resolve(FILE_NAME + i + FILE_EXT));
         }
     }
