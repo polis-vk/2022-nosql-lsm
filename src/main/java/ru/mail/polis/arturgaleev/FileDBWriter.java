@@ -143,6 +143,7 @@ public class FileDBWriter implements Closeable {
         writeScope.close();
     }
 
-    private static record Pair<K, V>(K first, V second) {
+    @SuppressWarnings("UnusedVariable")
+    private record Pair<K, V>(K first, V second) {
     }
 }

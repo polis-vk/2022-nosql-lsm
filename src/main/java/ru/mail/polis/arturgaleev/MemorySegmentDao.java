@@ -80,6 +80,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         }
     }
 
+    @SuppressWarnings("LockNotBeforeTry")
     @Override
     public void compact() throws IOException {
         lock.writeLock().lock();
