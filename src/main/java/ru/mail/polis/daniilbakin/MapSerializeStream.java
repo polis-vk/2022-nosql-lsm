@@ -22,7 +22,6 @@ public class MapSerializeStream implements Closeable {
     private final FileChannel mapChannel;
     private final FileChannel indexesChannel;
 
-
     public MapSerializeStream(Config config, int dataCount, int startIndexFile) throws IOException {
         int newIndex = (startIndexFile == -1) ? 0 : startIndexFile + dataCount;
         Path mapPath = config.basePath().resolve(DATA_FILE_NAME + newIndex);
