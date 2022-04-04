@@ -40,15 +40,19 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             if (files == null) {
                 numberOfFiles = 0;
             } else {
+                if (Files.exists(config.basePath().resolve(INDEX + IN_PROGRESS_EXTENSION))) {
+                    Files.deleteIfExists(config.basePath().resolve(FILE + COMPOSITE_EXTENSION));
+                    Files.deleteIfExists(config.basePath().resolve(FILE + IN_PROGRESS_EXTENSION));
+                    Files.deleteIfExists(config.basePath().resolve(INDEX + IN_PROGRESS_EXTENSION));
+                }
                 List<Path> paths = files.toList();
                 numberOfFiles = paths.size();
                 for (Path path : paths) {
-                    if (path.toString().endsWith(IN_PROGRESS_EXTENSION)) {
-                        --numberOfFiles;
-                        Files.deleteIfExists(path);
-                    } else if (path.toString().endsWith(INDEX + COMPOSITE_EXTENSION)) {
+                    if (path.toString().endsWith(INDEX + COMPOSITE_EXTENSION)) {
                         deleteFiles();
-                        renameFile(config, FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
+                        if (Files.exists(config.basePath().resolve(FILE + COMPOSITE_EXTENSION))) {
+                            renameFile(config, FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
+                        }
                         renameFile(config, INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
                         numberOfFiles = 1;
                         break;
