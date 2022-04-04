@@ -81,8 +81,11 @@ public class FileDBWriter implements Closeable {
         );
     }
 
-
-    private static void writeIterator(MemorySegment page, long numberOfEntries, Iterator<Entry<MemorySegment>> iterator) {
+    private static void writeIterator(
+            MemorySegment page,
+            long numberOfEntries,
+            Iterator<Entry<MemorySegment>> iterator
+    ) {
         MemoryAccess.setLongAtOffset(page, 0, numberOfEntries);
 
         long dataBeingOffset = Long.BYTES + (long) Long.BYTES * numberOfEntries;
@@ -124,7 +127,11 @@ public class FileDBWriter implements Closeable {
         writeIteratorWithTempFile(iterator2, iteratorLengthData.first, iteratorLengthData.second);
     }
 
-    private void writeIteratorWithTempFile(Iterator<Entry<MemorySegment>> iterator, long numberOfEntries, long mapByteSize) throws IOException {
+    private void writeIteratorWithTempFile(
+            Iterator<Entry<MemorySegment>> iterator,
+            long numberOfEntries,
+            long mapByteSize
+    ) throws IOException {
         Path tmpPath = path.getParent().resolve(FILE_TMP);
         if (Files.exists(tmpPath)) {
             throw new FileAlreadyExistsException("File " + tmpPath
