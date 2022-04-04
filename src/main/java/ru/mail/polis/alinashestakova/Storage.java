@@ -8,6 +8,7 @@ import ru.mail.polis.Config;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 final class Storage implements Closeable {
@@ -129,8 +131,16 @@ final class Storage implements Closeable {
     }
 
     public static void deleteFiles(Config config) throws IOException {
-        for (long i = 0; i < getFilesCount(config); i++) {
-            Files.deleteIfExists(config.basePath().resolve(FILE_NAME + i + FILE_EXT));
+        try (Stream<Path> stream = Files.list(config.basePath())) {
+            stream
+                    .filter(file -> !file.toString().contains(FILE_EXT_TMP))
+                    .forEach(f -> {
+                        try {
+                            Files.delete(f);
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    });
         }
     }
 
