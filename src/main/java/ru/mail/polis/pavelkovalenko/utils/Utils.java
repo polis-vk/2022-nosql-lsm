@@ -35,7 +35,8 @@ public final class Utils {
         return isTombstone(entry) ? Utils.TOMBSTONE_VALUE : Utils.NORMAL_VALUE;
     }
 
-    public static MappedByteBuffer mapFile(FileChannel channel, FileChannel.MapMode mode, long size) throws IOException {
+    public static MappedByteBuffer mapFile(FileChannel channel, FileChannel.MapMode mode, long size)
+            throws IOException {
         return channel.map(mode, 0, size);
     }
 

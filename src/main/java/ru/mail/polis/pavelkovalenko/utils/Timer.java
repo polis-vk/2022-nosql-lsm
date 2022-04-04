@@ -10,7 +10,7 @@ public final class Timer {
         double times;
         String result = TIME_PATTERN;
 
-        for (Time time: Time.getTimes()) {
+        for (Time time: Time.times) {
             if (elapse * time.getFactor() > 0) {
                 times = Math.floor(elapse * time.getFactor());
                 elapse -= times * time.getFactor();
@@ -32,15 +32,11 @@ public final class Timer {
         MICROSECONDS(-3),
         NANOSECONDS(0);
 
-        private static final Time[] times = values();
+        public static final Time[] times = values();
         private final double factor;
 
         Time(int degree) {
             this.factor = Math.pow(10, degree);
-        }
-
-        public static Time[] getTimes() {
-            return times;
         }
 
         public double getFactor() {

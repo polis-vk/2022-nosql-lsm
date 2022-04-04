@@ -15,11 +15,11 @@ import java.util.TreeMap;
 
 public final class Serializer {
 
-    private final NavigableMap<Integer, PairedFiles> SSTables;
+    private final NavigableMap<Integer, PairedFiles> sstables;
     private final NavigableMap<Integer, MappedPairedFiles> mappedSSTables = new TreeMap<>();
 
-    public Serializer(NavigableMap<Integer, PairedFiles> SSTables) throws IOException {
-        this.SSTables = SSTables.descendingMap();
+    public Serializer(NavigableMap<Integer, PairedFiles> sstables) throws IOException {
+        this.sstables = sstables.descendingMap();
         mapSSTables();
     }
 
@@ -65,7 +65,7 @@ public final class Serializer {
     }
 
     public MappedPairedFiles get(int key) throws IOException {
-        if (SSTables.size() != mappedSSTables.size()) {
+        if (sstables.size() != mappedSSTables.size()) {
             mapSSTables();
         }
         return mappedSSTables.get(key);
@@ -90,7 +90,7 @@ public final class Serializer {
     private void mapSSTables() throws IOException {
         int priority = 1;
 
-        for (PairedFiles filePair: SSTables.values()) {
+        for (PairedFiles filePair: sstables.values()) {
             try (FileChannel dataFile = FileChannel.open(filePair.dataFile());
                  FileChannel indexesFile = FileChannel.open(filePair.indexesFile())) {
                 MappedByteBuffer mappedDataFile = Utils.mapFile(dataFile,
