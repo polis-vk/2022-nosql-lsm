@@ -24,7 +24,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     public MergeIterator(ByteBuffer from, ByteBuffer to, Serializer serializer,
                          ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memorySSTable,
-                         NavigableMap<Integer, PairedFiles> SSTables) throws IOException {
+                         NavigableMap<Integer, PairedFiles> sstables) throws IOException {
         ByteBuffer from1 = from == null ? Utils.EMPTY_BYTEBUFFER : from;
         int priority = 0;
 
@@ -34,7 +34,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
             iterators.add(new PeekIterator<>(memorySSTable.subMap(from1, to).values().iterator(), priority++));
         }
 
-        for (; priority <= SSTables.size(); ++priority) {
+        for (; priority <= sstables.size(); ++priority) {
             iterators.add(new PeekIterator<>(
                     new FileIterator(serializer.get(priority), serializer, from1, to), priority)
             );

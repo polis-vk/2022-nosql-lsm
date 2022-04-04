@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memorySSTable = new ConcurrentSkipListMap<>();
-    private final NavigableMap<Integer /*priority*/, PairedFiles> SSTables = new TreeMap<>();
+    private final NavigableMap<Integer /*priority*/, PairedFiles> sstables = new TreeMap<>();
     private final Config config;
     private final Serializer serializer;
 
@@ -34,12 +34,12 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             }
         }
 
-        this.serializer = new Serializer(SSTables);
+        this.serializer = new Serializer(sstables);
     }
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        return new MergeIterator(from, to, serializer, memorySSTable, SSTables);
+        return new MergeIterator(from, to, serializer, memorySSTable, sstables);
     }
 
     @Override
@@ -49,7 +49,7 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        serializer.write(SSTables.lastEntry().getValue(), memorySSTable);
+        serializer.write(sstables.lastEntry().getValue(), memorySSTable);
     }
 
     @Override
@@ -62,11 +62,11 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         Path pathToDataFile = addFile(Utils.DATA_FILENAME);
         Path pathToIndexesFile = addFile(Utils.INDEXES_FILENAME);
         PairedFiles pathToPairedFiles = new PairedFiles(pathToDataFile, pathToIndexesFile);
-        SSTables.put(SSTables.size() + 1, pathToPairedFiles);
+        sstables.put(sstables.size() + 1, pathToPairedFiles);
     }
 
     private Path addFile(String filename) throws IOException {
-        Path file = config.basePath().resolve(filename + (SSTables.size() + 1) + Utils.FILE_EXTENSION);
+        Path file = config.basePath().resolve(filename + (sstables.size() + 1) + Utils.FILE_EXTENSION);
         createFile(file);
         return file;
     }

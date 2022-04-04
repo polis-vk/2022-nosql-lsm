@@ -20,9 +20,9 @@ public class PeekIterator<E> implements Iterator<E> {
 
     @Override
     public E next() {
-        E peek = peek();
+        E peek1 = peek();
         this.peek = null;
-        return peek;
+        return peek1;
     }
 
     public E peek() {

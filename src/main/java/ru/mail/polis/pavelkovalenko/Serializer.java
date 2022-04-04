@@ -4,14 +4,14 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
-import java.nio.MappedByteBuffer;
+import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;
+import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
+import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.NavigableMap;
 import java.util.TreeMap;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.concurrent.ConcurrentNavigableMap;
 
 public final class Serializer {
 
@@ -39,16 +39,20 @@ public final class Serializer {
             return;
         }
 
-        try (FileChannel dataFile = FileChannel.open(pairedFiles.dataFile(), StandardOpenOption.READ, StandardOpenOption.WRITE);
-             FileChannel indexesFile = FileChannel.open(pairedFiles.indexesFile(), StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+        try (FileChannel dataFile = FileChannel.open(pairedFiles.dataFile(),
+                StandardOpenOption.READ, StandardOpenOption.WRITE);
+             FileChannel indexesFile = FileChannel.open(pairedFiles.indexesFile(),
+                     StandardOpenOption.READ, StandardOpenOption.WRITE)) {
             long dataSize = 0;
             long indexesSize = (long)memorySSTable.size() * Utils.INDEX_OFFSET;
             for (Entry<ByteBuffer> entry: memorySSTable.values()) {
                 dataSize += sizeOf(entry);
             }
 
-            MappedByteBuffer mappedDataFile = Utils.mapFile(dataFile, FileChannel.MapMode.READ_WRITE, dataSize);
-            MappedByteBuffer mappedIndexesFile = Utils.mapFile(indexesFile, FileChannel.MapMode.READ_WRITE, indexesSize);
+            MappedByteBuffer mappedDataFile = Utils.mapFile(dataFile,
+                    FileChannel.MapMode.READ_WRITE, dataSize);
+            MappedByteBuffer mappedIndexesFile = Utils.mapFile(indexesFile,
+                    FileChannel.MapMode.READ_WRITE, indexesSize);
             int curOffset = 0;
             int bbSize = 0;
             for (Entry<ByteBuffer> entry: memorySSTable.values()) {
@@ -89,15 +93,13 @@ public final class Serializer {
         for (PairedFiles filePair: SSTables.values()) {
             try (FileChannel dataFile = FileChannel.open(filePair.dataFile());
                  FileChannel indexesFile = FileChannel.open(filePair.indexesFile())) {
-                MappedByteBuffer mappedDataFile = Utils.mapFile(dataFile, FileChannel.MapMode.READ_ONLY, dataFile.size());
-                MappedByteBuffer mappedIndexesFile = Utils.mapFile(indexesFile, FileChannel.MapMode.READ_ONLY, indexesFile.size());
+                MappedByteBuffer mappedDataFile = Utils.mapFile(dataFile,
+                        FileChannel.MapMode.READ_ONLY, dataFile.size());
+                MappedByteBuffer mappedIndexesFile = Utils.mapFile(indexesFile,
+                        FileChannel.MapMode.READ_ONLY, indexesFile.size());
                 mappedSSTables.put(priority++, new MappedPairedFiles(mappedDataFile, mappedIndexesFile));
             }
         }
-    }
-
-    private void readLineSeparator(MappedByteBuffer file) {
-        file.getChar();
     }
 
     private byte readByte(MappedByteBuffer dataFile, int dataPos) {

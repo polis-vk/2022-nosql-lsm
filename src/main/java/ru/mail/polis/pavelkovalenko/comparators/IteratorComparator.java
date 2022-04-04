@@ -6,7 +6,7 @@ import ru.mail.polis.pavelkovalenko.iterators.PeekIterator;
 import java.nio.ByteBuffer;
 import java.util.Comparator;
 
-public class IteratorComparator implements Comparator<PeekIterator<Entry<ByteBuffer>>> {
+public final class IteratorComparator implements Comparator<PeekIterator<Entry<ByteBuffer>>> {
 
     public static final IteratorComparator INSTANSE = new IteratorComparator();
 

@@ -19,9 +19,10 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
     private final Entry<ByteBuffer> toEntry;
     private Entry<ByteBuffer> current;
     private final Serializer serializer;
-    private int curIndexesPos = 0;
+    private int curIndexesPos;
 
-    public FileIterator(MappedPairedFiles mappedFilePair, Serializer serializer, ByteBuffer from, ByteBuffer to) throws IOException {
+    public FileIterator(MappedPairedFiles mappedFilePair, Serializer serializer, ByteBuffer from, ByteBuffer to)
+            throws IOException {
         this.mappedFilePair = mappedFilePair;
         this.from = from;
         this.to = to;

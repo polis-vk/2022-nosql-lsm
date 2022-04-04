@@ -2,60 +2,50 @@ package ru.mail.polis.pavelkovalenko.utils;
 
 public final class Timer {
 
-    public static final Timer INSTANSE = new Timer();
+    private static final String TIME_PATTERN = "?s:?ms:?mcs:?ns";
     private long startTime;
 
-    private Timer() {
-    }
+    public String elapse() {
+        double elapse = System.nanoTime() - startTime;
+        double times;
+        String result = TIME_PATTERN;
 
-    private enum Time {
-        SECONDS(0, "s"),
-        MILLISECONDS(3, "ms"),
-        MICROSECONDS(6, "mcs"),
-        NANOSECONDS(9, "ns");
-
-        private final double multiplier;
-        private final double divider;
-        private final String system;
-
-        Time(double factor, String system) {
-            this.multiplier = Math.pow(10, factor);
-            this.divider = Math.pow(10, -factor);
-            this.system = system;
+        for (Time time: Time.getTimes()) {
+            if (elapse * time.getFactor() > 0) {
+                times = Math.floor(elapse * time.getFactor());
+                elapse -= times * time.getFactor();
+                result = result.replaceFirst("/?", String.valueOf(times));
+            }
         }
 
-        public double getMultiplier() {
-            return multiplier;
-        }
-
-        public double getDivider() {
-            return divider;
-        }
-
-        public String getSystem() {
-            System.out.println();
-            return system;
-        }
+        return result;
     }
 
     public void set() {
         startTime = System.nanoTime();
     }
 
-    public String elapse() {
-        double result = (System.nanoTime() - startTime) / Math.pow(10, 9);
-        long times;
-        StringBuilder resultStr = new StringBuilder();
+    // Relatively to nanoseconds
+    private enum Time {
+        SECONDS(-9),
+        MILLISECONDS(-6),
+        MICROSECONDS(-3),
+        NANOSECONDS(0);
 
-        for (Time time: Time.values()) {
-            if (Double.compare(result * time.getMultiplier(), 0) > 0) {
-                times = (long)Math.floor(result * time.getMultiplier());
-                result -= times * time.getDivider();
-                resultStr.append(times).append(time.getSystem()).append(":");
-            }
+        private static final Time[] times = values();
+        private final double factor;
+
+        Time(int degree) {
+            this.factor = Math.pow(10, degree);
         }
 
-        return resultStr.toString();
+        public static Time[] getTimes() {
+            return times;
+        }
+
+        public double getFactor() {
+            return factor;
+        }
     }
 
 }
