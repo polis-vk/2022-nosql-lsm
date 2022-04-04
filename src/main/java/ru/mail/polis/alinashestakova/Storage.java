@@ -14,7 +14,6 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -66,33 +65,40 @@ final class Storage implements Closeable {
         return new Storage(scope, sstables);
     }
 
-    // it is supposed that entries can not be changed externally during this method call
-    static void save(
+    static Path save(
             Config config,
             Storage previousState,
-            Collection<BaseEntry<MemorySegment>> entries) throws IOException {
-        if (previousState.scope.isAlive()) {
-            throw new IllegalStateException("Previous storage is open for write");
+            Iterator<BaseEntry<MemorySegment>> entries) throws IOException {
+        if (!entries.hasNext()) {
+            return null;
         }
 
-        int nextSSTableIndex = previousState.sstables.size();
-        long entriesCount = entries.size();
-        long dataStart = INDEX_HEADER_SIZE + INDEX_RECORD_SIZE * entriesCount;
-
-        Path sstableTmpPath = config.basePath().resolve(FILE_NAME + nextSSTableIndex + FILE_EXT_TMP);
+        int sstablesCount = previousState.sstables.size();
+        Path sstableTmpPath = config.basePath().resolve(FILE_NAME + sstablesCount + FILE_EXT_TMP);
 
         Files.deleteIfExists(sstableTmpPath);
         Files.createFile(sstableTmpPath);
 
+        ArrayList<BaseEntry<MemorySegment>> entriesList = new ArrayList<>();
+
         try (ResourceScope writeScope = ResourceScope.newConfinedScope()) {
             long size = 0;
-            for (BaseEntry<MemorySegment> entry : entries) {
+            long entriesCount = 0;
+
+            while (entries.hasNext()) {
+                BaseEntry<MemorySegment> entry = entries.next();
+                entriesList.add(entry);
+
                 if (entry.value() == null) {
                     size += Long.BYTES + entry.key().byteSize() + Long.BYTES;
                 } else {
                     size += Long.BYTES + entry.value().byteSize() + entry.key().byteSize() + Long.BYTES;
                 }
+
+                entriesCount++;
             }
+
+            long dataStart = INDEX_HEADER_SIZE + INDEX_RECORD_SIZE * entriesCount;
 
             MemorySegment nextSSTable = MemorySegment.mapFile(
                             sstableTmpPath,
@@ -104,7 +110,7 @@ final class Storage implements Closeable {
 
             long index = 0;
             long offset = dataStart;
-            for (BaseEntry<MemorySegment> entry : entries) {
+            for (BaseEntry<MemorySegment> entry : entriesList) {
                 MemoryAccess.setLongAtOffset(nextSSTable, INDEX_HEADER_SIZE + index * INDEX_RECORD_SIZE, offset);
 
                 offset += writeRecord(nextSSTable, offset, entry.key());
@@ -119,8 +125,30 @@ final class Storage implements Closeable {
             nextSSTable.force();
         }
 
-        Path sstablePath = config.basePath().resolve(FILE_NAME + nextSSTableIndex + FILE_EXT);
-        Files.move(sstableTmpPath, sstablePath, StandardCopyOption.ATOMIC_MOVE);
+        return sstableTmpPath;
+    }
+
+    public static void deleteFiles(Config config) throws IOException {
+        for (long i = 0; i < getFilesCount(config); i++) {
+            Files.deleteIfExists(config.basePath().resolve(FILE_NAME + i + FILE_EXT));
+        }
+    }
+
+    public static void moveFile(Config config, Path source, long index) throws IOException {
+        Path sstablePath = config.basePath().resolve(FILE_NAME + index + FILE_EXT);
+        Files.move(source, sstablePath, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    public static long getFilesCount(Config config) throws IOException {
+        long filesCount = 0;
+
+        if (Files.exists(config.basePath())) {
+            try (Stream<Path> files = Files.list(config.basePath())) {
+                filesCount = files.count();
+            }
+        }
+
+        return filesCount;
     }
 
     private static long writeRecord(MemorySegment nextSSTable, long offset, MemorySegment record) {
