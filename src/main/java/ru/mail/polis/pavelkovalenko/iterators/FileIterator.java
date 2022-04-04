@@ -29,7 +29,9 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
         toEntry = new BaseEntry<>(to, to);
         this.serializer = serializer;
 
-        binarySearchInFile();
+        if (dataExists() && !isFromOutOfBound()) {
+            binarySearchInFile();
+        }
     }
 
     @Override
@@ -77,10 +79,6 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private void binarySearchInFile() throws IOException {
-        if (!dataExists() || isFromOutOfBound()) {
-            return;
-        }
-
         Entry<ByteBuffer> ceilEntry = getLast();
         int a = 0;
         int b = getIndexesFileLength() / Utils.INDEX_OFFSET;

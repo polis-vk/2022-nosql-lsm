@@ -1,7 +1,6 @@
 package ru.mail.polis.pavelkovalenko.iterators;
 
 import ru.mail.polis.Entry;
-import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
 import ru.mail.polis.pavelkovalenko.PairedFiles;
 import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
@@ -52,14 +51,13 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     public Entry<ByteBuffer> next() {
         Entry<ByteBuffer> result;
         PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
+        PeekIterator<Entry<ByteBuffer>> second = iterators.poll();
 
-        if (iterators.isEmpty()) {
+        if (second == null) {
             result = first.peek();
             backIterator(first);
         } else {
-            PeekIterator<Entry<ByteBuffer>> second = iterators.remove();
-
-            int compare = second == null ? -1 : Utils.entryComparator.compare(first.peek(), second.peek());
+            int compare = Utils.entryComparator.compare(first.peek(), second.peek());
             if (compare == 0) {
                 compare = Integer.compare(first.getPriority(), second.getPriority());
             }

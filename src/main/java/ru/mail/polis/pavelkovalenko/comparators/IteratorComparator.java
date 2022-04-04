@@ -2,10 +2,10 @@ package ru.mail.polis.pavelkovalenko.comparators;
 
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.iterators.PeekIterator;
+import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.nio.ByteBuffer;
 import java.util.Comparator;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 public final class IteratorComparator implements Comparator<PeekIterator<Entry<ByteBuffer>>> {
 
