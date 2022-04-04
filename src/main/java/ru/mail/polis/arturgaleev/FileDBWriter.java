@@ -81,48 +81,8 @@ public class FileDBWriter implements Closeable {
         );
     }
 
-    public void writeMap(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map) throws IOException {
-        if (map.isEmpty()) {
-            return;
-        }
-        Path tmpPath = path.getParent().resolve(FILE_TMP);
-        if (Files.exists(tmpPath)) {
-            throw new FileAlreadyExistsException("File " + tmpPath
-                    + " already exists. Creation of new one may accuse errors");
-        }
 
-        int numberOfEntries = map.size();
-        Iterator<Entry<MemorySegment>> iterator = map.values().iterator();
-        MemorySegment page = createTmpMemorySegmentPage(getMapByteSize(map), tmpPath, writeScope);
-
-        writeIterator(page, numberOfEntries, iterator);
-
-        Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
-    }
-
-    // First iterator uses to count length and second to write data
-    public void writeIterator(
-            Iterator<Entry<MemorySegment>> iterator1,
-            Iterator<Entry<MemorySegment>> iterator2
-    ) throws IOException {
-        if (!iterator1.hasNext()) {
-            return;
-        }
-        Path tmpPath = path.getParent().resolve(FILE_TMP);
-        if (Files.exists(tmpPath)) {
-            throw new FileAlreadyExistsException("File " + tmpPath
-                    + " already exists. Creation of new one may accuse errors");
-        }
-
-        Pair<Long, Long> iteratorLengthData = getIteratorLengthData(iterator1);
-        MemorySegment page = createTmpMemorySegmentPage(iteratorLengthData.second, tmpPath, writeScope);
-
-        writeIterator(page, iteratorLengthData.first, iterator2);
-
-        Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
-    }
-
-    private void writeIterator(MemorySegment page, long numberOfEntries, Iterator<Entry<MemorySegment>> iterator) {
+    private static void writeIterator(MemorySegment page, long numberOfEntries, Iterator<Entry<MemorySegment>> iterator) {
         MemoryAccess.setLongAtOffset(page, 0, numberOfEntries);
 
         long dataBeingOffset = Long.BYTES + (long) Long.BYTES * numberOfEntries;
@@ -136,6 +96,46 @@ public class FileDBWriter implements Closeable {
 
             i++;
         }
+    }
+
+    public void writeMap(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map) throws IOException {
+        if (map.isEmpty()) {
+            return;
+        }
+
+        Iterator<Entry<MemorySegment>> iterator = map.values().iterator();
+        long numberOfEntries = map.size();
+        long mapByteSize = getMapByteSize(map);
+
+        writeIteratorWithTempFile(iterator, numberOfEntries, mapByteSize);
+    }
+
+    // First iterator uses to count length and second to write data
+
+    public void writeIterator(
+            Iterator<Entry<MemorySegment>> iterator1,
+            Iterator<Entry<MemorySegment>> iterator2
+    ) throws IOException {
+        if (!iterator1.hasNext()) {
+            return;
+        }
+        Pair<Long, Long> iteratorLengthData = getIteratorLengthData(iterator1);
+
+        writeIteratorWithTempFile(iterator2, iteratorLengthData.first, iteratorLengthData.second);
+    }
+
+    private void writeIteratorWithTempFile(Iterator<Entry<MemorySegment>> iterator, long numberOfEntries, long mapByteSize) throws IOException {
+        Path tmpPath = path.getParent().resolve(FILE_TMP);
+        if (Files.exists(tmpPath)) {
+            throw new FileAlreadyExistsException("File " + tmpPath
+                    + " already exists. Creation of new one may accuse errors");
+        }
+
+        MemorySegment page = createTmpMemorySegmentPage(mapByteSize, tmpPath, writeScope);
+
+        writeIterator(page, numberOfEntries, iterator);
+
+        Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
     }
 
     @Override
