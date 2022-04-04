@@ -50,7 +50,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             }
 
             List<PeekIterator> iterators = fileWorker.findEntries(from, to);
-            iterators.add(new PeekIterator(memoryIterator, iterators.size()));
+            iterators.add(new PeekIterator(memoryIterator, fileWorker.fileCount() + 1));
             return new RangeIterator(iterators);
         } finally {
             lock.readLock().unlock();

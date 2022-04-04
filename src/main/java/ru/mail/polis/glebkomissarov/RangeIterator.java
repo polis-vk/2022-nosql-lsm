@@ -41,29 +41,22 @@ public class RangeIterator implements Iterator<BaseEntry<MemorySegment>> {
 
     @Override
     public BaseEntry<MemorySegment> next() {
-        PeekIterator next = iterators.poll();
-        if (next == null) {
-            throw new NoSuchElementException();
-        }
-
-        BaseEntry<MemorySegment> result = next.next();
+        BaseEntry<MemorySegment> result = reInsert();
         previous = result.key();
-        if (next.hasNext()) {
-            iterators.add(next);
-        }
         return result;
     }
 
-    private void reInsert() {
+    private BaseEntry<MemorySegment> reInsert() {
         PeekIterator nextElem = iterators.poll();
         if (nextElem == null) {
             throw new NoSuchElementException();
         }
 
-        nextElem.next();
+        BaseEntry<MemorySegment> res = nextElem.next();
         if (nextElem.hasNext()) {
             iterators.add(nextElem);
         }
+        return res;
     }
 
     private boolean isEquals(MemorySegment o1, MemorySegment o2) {
