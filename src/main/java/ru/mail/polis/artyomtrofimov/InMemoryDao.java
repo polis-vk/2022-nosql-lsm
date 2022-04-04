@@ -1,81 +1,92 @@
 package ru.mail.polis.artyomtrofimov;
 
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryDao implements Dao<String, Entry<String>> {
-    private static final String FILENAME = "db.txt";
+    public static final String DATA_EXT = ".dat";
+    public static final String INDEX_EXT = ".ind";
+    private static final String ALL_FILES = "files.fl";
+    private static final Random rnd = new Random();
     private final ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
-    private final Path dataPath;
-    private long lastWritePos;
+    private final Path basePath;
     private volatile boolean commit;
+    private final Deque<String> filesList = new ArrayDeque<>();
 
-    public InMemoryDao(Config config) {
+    public InMemoryDao(Config config) throws IOException {
         if (config == null) {
             throw new IllegalArgumentException("Config shouldn't be null");
         }
-        dataPath = config.basePath().resolve(FILENAME);
+        basePath = config.basePath();
+        loadFilesList();
+    }
+
+    private static String generateString() {
+        char[] chars = new char[rnd.nextInt(8, 9)];
+        for (int i = 0; i < chars.length; i++) {
+            chars[i] = (char) (rnd.nextInt('z' - '0') + '0');
+        }
+        return new String(chars);
     }
 
     @Override
     public Iterator<Entry<String>> get(String from, String to) throws IOException {
-        boolean isFromNull = from == null;
-        boolean isToNull = to == null;
-        if (isFromNull && isToNull) {
-            return data.values().iterator();
+        String start = from;
+        if (start == null) {
+            start = "";
         }
-        if (isFromNull) {
-            return data.headMap(to).values().iterator();
+        Iterator<Entry<String>> dataIterator;
+        if (to == null) {
+            dataIterator = data.tailMap(start).values().iterator();
+        } else {
+            dataIterator = data.subMap(start, to).values().iterator();
         }
-        if (isToNull) {
-            return data.tailMap(from).values().iterator();
+        List<PeekingIterator> iterators = new ArrayList<>();
+        int priority = 0;
+        iterators.add(new PeekingIterator(dataIterator, priority++));
+        for (String file : filesList) {
+            iterators.add(new PeekingIterator(new FileIterator(basePath, file, start, to), priority++));
         }
-        return data.subMap(from, to).values().iterator();
+        return new MergeIterator(iterators);
     }
 
     @Override
     public Entry<String> get(String key) throws IOException {
         Entry<String> entry = data.get(key);
-        if (entry == null) {
-            entry = findInFileByKey(key);
-            if (entry != null) {
-                data.put(entry.key(), entry);
-            }
-            return entry;
+        if (entry != null) {
+            return getRealEntry(entry);
         }
-        return entry;
+        for (String file : filesList) {
+            try (RandomAccessFile raf = new RandomAccessFile(basePath.resolve(file + DATA_EXT).toString(), "r")) {
+                entry = Utils.findCeilEntry(raf, key, basePath.resolve(file + INDEX_EXT));
+            }
+            if (entry != null && entry.key().equals(key)) {
+                break;
+            } else {
+                entry = null;
+            }
+        }
+        return getRealEntry(entry);
     }
 
-    private Entry<String> findInFileByKey(String key) throws IOException {
-        try (RandomAccessFile input = new RandomAccessFile(dataPath.toString(), "r")) {
-            input.seek(0);
-            String line;
-            while (input.getFilePointer() <= input.length()) {
-                line = input.readUTF();
-                int delimiterIndex = line.indexOf(' ');
-                if (delimiterIndex == -1) {
-                    continue;
-                }
-                int keyLength = Integer.parseInt(line, 0,delimiterIndex, 10);
-                String currentKey = line.substring(delimiterIndex + 1, delimiterIndex + keyLength + 1);
-                if (key.equals(currentKey)) {
-                    return new BaseEntry<>(currentKey, line.substring(delimiterIndex + keyLength + 1));
-                }
-            }
-            return null;
-        } catch (FileNotFoundException | EOFException e) {
+    private Entry<String> getRealEntry(Entry<String> entry) {
+        if (entry != null && entry.value() == null) {
             return null;
         }
+        return entry;
     }
 
     @Override
@@ -84,20 +95,52 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         commit = false;
     }
 
+    private void loadFilesList() throws IOException {
+        try (RandomAccessFile reader = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "r")) {
+            while (reader.getFilePointer() < reader.length()) {
+                String file = reader.readUTF();
+                filesList.addFirst(file);
+            }
+        } catch (FileNotFoundException ignored) {
+            //it is ok because there can be no files
+        }
+    }
+
     @Override
     public void flush() throws IOException {
         if (commit) {
             return;
         }
-        try (RandomAccessFile output = new RandomAccessFile(dataPath.toString(), "rw")) {
-            output.seek(lastWritePos);
-            StringBuilder result = new StringBuilder();
+        String name;
+        do {
+            name = generateString();
+        } while (filesList.contains(name));
+        Path file = basePath.resolve(name + DATA_EXT);
+        Path index = basePath.resolve(name + INDEX_EXT);
+        filesList.addFirst(name);
+
+        try (RandomAccessFile output = new RandomAccessFile(file.toString(), "rw");
+             RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
+             RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw")
+        ) {
+            output.seek(0);
+            output.writeInt(data.size());
             for (Entry<String> value : data.values()) {
-                result.append(value.key().length()).append(' ').append(value.key()).append(value.value());
-                output.writeUTF(result.toString());
-                result.setLength(0);
+                String val = value.value();
+                indexOut.writeLong(output.getFilePointer());
+                if (val == null) {
+                    output.writeByte(-1);
+                    output.writeUTF(value.key());
+                } else {
+                    output.writeByte(1);
+                    output.writeUTF(value.key());
+                    output.writeUTF(val);
+                }
             }
-            lastWritePos = output.getFilePointer();
+            allFilesOut.setLength(0);
+            while (!filesList.isEmpty()) {
+                allFilesOut.writeUTF(filesList.pollLast());
+            }
         }
         commit = true;
     }
