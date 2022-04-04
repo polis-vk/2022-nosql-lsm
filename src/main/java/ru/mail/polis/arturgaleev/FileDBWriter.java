@@ -8,27 +8,43 @@ import ru.mail.polis.Entry;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public class FileDBWriter implements Closeable {
+    public static final String FILE_TMP = "file.tmp";
     private final Path path;
     private final ResourceScope writeScope;
-    private MemorySegment page;
 
     public FileDBWriter(Path path) {
         this.writeScope = ResourceScope.newConfinedScope();
         this.path = path;
     }
 
-    static long getMapByteSize(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map) {
-        final long[] sz = {Long.BYTES + (long) map.size() * Long.BYTES};
-        map.forEach((key, val) ->
-                sz[0] = sz[0] + key.byteSize()
-                        + ((val.value() == null) ? 0 : val.value().byteSize()) + 2 * Long.BYTES
-        );
-        return sz[0];
+    private static long getMapByteSize(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map) {
+        return getIteratorLengthData(map.values().iterator()).second;
+    }
+
+    // first value is number of entries, second is byte size
+    private static Pair<Long, Long> getIteratorLengthData(Iterator<Entry<MemorySegment>> iterator) {
+        long numberOfElements = 0;
+        long byteSize = 0;
+        while (iterator.hasNext()) {
+            numberOfElements++;
+            Entry<MemorySegment> entry = iterator.next();
+            byteSize += getEntryLength(entry);
+        }
+        byteSize += Long.BYTES + numberOfElements * Long.BYTES;
+        return new Pair<>(numberOfElements, byteSize);
+    }
+
+    private static long getEntryLength(Entry<MemorySegment> entry) {
+        return entry.key().byteSize()
+                + ((entry.value() == null) ? 0 : entry.value().byteSize()) + 2 * Long.BYTES;
     }
 
     private static long writeEntry(MemorySegment page, long posToWrite, Entry<MemorySegment> baseEntry) {
@@ -49,21 +65,67 @@ public class FileDBWriter implements Closeable {
         return offset;
     }
 
+    private static MemorySegment createTmpMemorySegmentPage(long mapByteSize, Path tmpPath, ResourceScope writeScope) throws IOException {
+        Files.deleteIfExists(tmpPath);
+        Files.createFile(tmpPath);
+        return MemorySegment.mapFile(
+                tmpPath,
+                0,
+                mapByteSize,
+                FileChannel.MapMode.READ_WRITE,
+                writeScope
+        );
+    }
+
     public void writeMap(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map) throws IOException {
-        createMap(map);
-        MemoryAccess.setLongAtOffset(page, 0, map.size());
-        long i = 0;
-        long linksOffset = 0;
-        for (Entry<MemorySegment> entry : map.values()) {
-            MemoryAccess.setLongAtOffset(page, Long.BYTES + Long.BYTES * i, linksOffset);
-            linksOffset += 2 * Long.BYTES;
-            linksOffset += entry.key().byteSize();
-            linksOffset += entry.value() == null ? 0 : entry.value().byteSize();
-            i++;
+        if (map.isEmpty()) {
+            return;
         }
-        long offset = Long.BYTES + (long) Long.BYTES * map.size();
-        for (Entry<MemorySegment> entry : map.values()) {
-            offset += writeEntry(page, offset, entry);
+        Path tmpPath = path.getParent().resolve(FILE_TMP);
+        if (Files.exists(tmpPath)) {
+            throw new FileAlreadyExistsException("File " + tmpPath + " already exists. Creation of new one may accuse errors");
+        }
+
+        int numberOfEntries = map.size();
+        Iterator<Entry<MemorySegment>> iterator = map.values().iterator();
+        MemorySegment page = createTmpMemorySegmentPage(getMapByteSize(map), tmpPath, writeScope);
+
+        writeIterator(page, numberOfEntries, iterator);
+
+        Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    // First iterator uses to count length and second to write data
+    public void writeIterator(Iterator<Entry<MemorySegment>> iterator1, Iterator<Entry<MemorySegment>> iterator2) throws IOException {
+        if (!iterator1.hasNext()) {
+            return;
+        }
+        Path tmpPath = path.getParent().resolve(FILE_TMP);
+        if (Files.exists(tmpPath)) {
+            throw new FileAlreadyExistsException("File " + tmpPath + " already exists. Creation of new one may accuse errors");
+        }
+
+        Pair<Long, Long> iteratorLengthData = getIteratorLengthData(iterator1);
+        MemorySegment page = createTmpMemorySegmentPage(iteratorLengthData.second, tmpPath, writeScope);
+
+        writeIterator(page, iteratorLengthData.first, iterator2);
+
+        Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    private void writeIterator(MemorySegment page, long numberOfEntries, Iterator<Entry<MemorySegment>> iterator) {
+        MemoryAccess.setLongAtOffset(page, 0, numberOfEntries);
+
+        long dataBeingOffset = Long.BYTES + (long) Long.BYTES * numberOfEntries;
+        long i = 0;
+        long dataWriteOffset = 0;
+        while (iterator.hasNext()) {
+            Entry<MemorySegment> entry = iterator.next();
+            MemoryAccess.setLongAtOffset(page, Long.BYTES + Long.BYTES * i, dataWriteOffset);
+
+            dataWriteOffset += writeEntry(page, dataBeingOffset + dataWriteOffset, entry);
+
+            i++;
         }
     }
 
@@ -72,18 +134,6 @@ public class FileDBWriter implements Closeable {
         writeScope.close();
     }
 
-    private void createMap(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map) throws IOException {
-        if (page == null) {
-            Files.deleteIfExists(path);
-            Files.createFile(path);
-            page = MemorySegment.mapFile(
-                    path,
-                    0,
-                    getMapByteSize(map),
-                    FileChannel.MapMode.READ_WRITE,
-                    writeScope
-            );
-        }
+    private static record Pair<K, V>(K first, V second) {
     }
 }
-

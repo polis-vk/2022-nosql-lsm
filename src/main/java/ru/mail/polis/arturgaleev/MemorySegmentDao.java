@@ -6,12 +6,15 @@ import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Stream;
 
 public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
@@ -42,9 +45,10 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             } else {
                 dataBaseIterator = dataBase.subMap(from, to).values().iterator();
             }
-            return new MergeIterator(
+            return new MergeIterator<>(
                     new PriorityPeekingIterator<>(0, reader.get(from, to)),
-                    new PriorityPeekingIterator<>(1, dataBaseIterator)
+                    new PriorityPeekingIterator<>(1, dataBaseIterator),
+                    MemorySegmentComparator.INSTANCE
             );
         } finally {
             lock.readLock().unlock();
@@ -76,15 +80,38 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     }
 
     @Override
-    public void flush() throws IOException {
+    public void compact() throws IOException {
         lock.writeLock().lock();
-        try {
-            try (FileDBWriter writer =
-                         new FileDBWriter(config.basePath().resolve(reader.getNumberOfFiles() + ".txt"))) {
-                writer.writeMap(dataBase);
+        Path tmpPath = config.basePath().resolve((reader.getBiggestFileId() + 1) + ".txt");
+        try (FileDBWriter writer =
+                     new FileDBWriter(tmpPath)) {
+            writer.writeIterator(get(null, null), get(null, null));
+            try (Stream<Path> files = Files.list(config.basePath())) {
+                for (Path path : files.toList()) {
+                    if (!path.equals(tmpPath)) {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    }
+                }
             }
         } finally {
             lock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public void flush() throws IOException {
+        lock.writeLock().lock();
+        if (!dataBase.isEmpty()) {
+            try (FileDBWriter writer =
+                         new FileDBWriter(config.basePath().resolve((reader.getBiggestFileId() + 1) + ".txt"))) {
+                writer.writeMap(dataBase);
+            } finally {
+                lock.writeLock().unlock();
+            }
         }
     }
 }

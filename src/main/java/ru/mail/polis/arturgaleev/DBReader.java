@@ -23,8 +23,17 @@ public class DBReader implements AutoCloseable {
         fileReaders = getFileDBReaders(dbDirectoryPath);
     }
 
-    public int getNumberOfFiles() {
-        return fileReaders.size();
+    public long getBiggestFileId() {
+        if (fileReaders.isEmpty()) {
+            return -1;
+        }
+        long max = fileReaders.get(0).getFileID();
+        for (FileDBReader reader : fileReaders) {
+            if (reader.getFileID() > max) {
+                max = reader.getFileID();
+            }
+        }
+        return max;
     }
 
     private List<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
@@ -41,7 +50,7 @@ public class DBReader implements AutoCloseable {
         return fileDBReaderList;
     }
 
-    public MergeIterator get(MemorySegment from, MemorySegment to) {
+    public MergeIterator<MemorySegment> get(MemorySegment from, MemorySegment to) {
         List<PriorityPeekingIterator<Entry<MemorySegment>>> iterators = new ArrayList<>(fileReaders.size());
         for (FileDBReader reader : fileReaders) {
             FileDBReader.FileIterator fromToIterator = reader.getFromToIterator(from, to);
@@ -49,7 +58,7 @@ public class DBReader implements AutoCloseable {
                 iterators.add(new PriorityPeekingIterator<>(fromToIterator.getFileId(), fromToIterator));
             }
         }
-        return new MergeIterator(iterators);
+        return new MergeIterator<>(iterators, MemorySegmentComparator.INSTANCE);
     }
 
     public Entry<MemorySegment> get(MemorySegment key) {
