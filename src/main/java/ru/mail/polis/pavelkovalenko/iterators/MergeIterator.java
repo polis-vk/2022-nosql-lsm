@@ -2,6 +2,12 @@ package ru.mail.polis.pavelkovalenko.iterators;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
+import ru.mail.polis.pavelkovalenko.Serializer;
+import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
+import ru.mail.polis.pavelkovalenko.PairedFiles;
+import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
+import ru.mail.polis.pavelkovalenko.utils.Utils;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -11,11 +17,6 @@ import java.util.NavigableMap;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
-import ru.mail.polis.pavelkovalenko.Serializer;
-import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
-import ru.mail.polis.pavelkovalenko.PairedFiles;
-import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 

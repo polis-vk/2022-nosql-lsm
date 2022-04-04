@@ -2,13 +2,14 @@ package ru.mail.polis.pavelkovalenko.iterators;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
+import ru.mail.polis.pavelkovalenko.MappedPairedFiles;
+import ru.mail.polis.pavelkovalenko.Serializer;
+import ru.mail.polis.pavelkovalenko.utils.Utils;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
-import ru.mail.polis.pavelkovalenko.MappedPairedFiles;
-import ru.mail.polis.pavelkovalenko.Serializer;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 public class FileIterator implements Iterator<Entry<ByteBuffer>> {
 

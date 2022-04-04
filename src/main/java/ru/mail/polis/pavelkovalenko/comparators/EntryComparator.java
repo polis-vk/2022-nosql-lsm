@@ -1,9 +1,10 @@
 package ru.mail.polis.pavelkovalenko.comparators;
 
-import java.nio.ByteBuffer;
-import java.util.Comparator;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
+
+import java.nio.ByteBuffer;
+import java.util.Comparator;
 
 public final class EntryComparator implements Comparator<Entry<ByteBuffer>> {
 
