@@ -7,9 +7,6 @@ import ru.mail.polis.Dao;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -17,59 +14,27 @@ import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.stream.Stream;
 
+import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.deleteFiles;
+import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.getFiles;
 import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.mapFile;
 import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.renameFile;
 
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private static final String FILE = "data";
-    private static final String INDEX = "index";
-    private static final String SAFE_EXTENSION = ".anime";
-    private static final String IN_PROGRESS_EXTENSION = ".animerr";
-    private static final String COMPOSITE_EXTENSION = ".ancord";
+    public static final String FILE = "data";
+    public static final String INDEX = "index";
+    public static final String SAFE_EXTENSION = ".anime";
+    public static final String IN_PROGRESS_EXTENSION = ".animerr";
+    public static final String COMPOSITE_EXTENSION = ".ancord";
     private final Config config;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory = new ConcurrentSkipListMap<>();
     private long amountOfFiles;
-    private final List<FilePack> readers = new ArrayList<>();
+    private final List<FilePack> readers;
 
     public PersistenceDao(Config config) throws IOException {
-        long numberOfFiles;
         this.config = config;
-        try (Stream<Path> files = Files.list(config.basePath())) {
-            if (files == null) {
-                numberOfFiles = 0;
-            } else {
-                if (Files.exists(config.basePath().resolve(INDEX + IN_PROGRESS_EXTENSION))) {
-                    Files.deleteIfExists(config.basePath().resolve(FILE + COMPOSITE_EXTENSION));
-                    Files.deleteIfExists(config.basePath().resolve(FILE + IN_PROGRESS_EXTENSION));
-                    Files.deleteIfExists(config.basePath().resolve(INDEX + IN_PROGRESS_EXTENSION));
-                }
-                List<Path> paths = files.toList();
-                numberOfFiles = paths.size();
-                for (Path path : paths) {
-                    if (path.toString().endsWith(INDEX + COMPOSITE_EXTENSION)) {
-                        deleteFiles();
-                        if (Files.exists(config.basePath().resolve(FILE + COMPOSITE_EXTENSION))) {
-                            renameFile(config, FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
-                        }
-                        renameFile(config, INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
-                        numberOfFiles = 1;
-                        break;
-                    } else if (!path.toString().endsWith(SAFE_EXTENSION)) {
-                        --numberOfFiles;
-                    }
-                }
-                numberOfFiles = numberOfFiles / 2;
-            }
-        } catch (NoSuchFileException e) {
-            numberOfFiles = 0;
-        }
-        this.amountOfFiles = numberOfFiles;
-        for (long i = amountOfFiles - 1; i >= 0; i--) {
-            readers.add(mapFile(config.basePath().resolve(FILE + i + SAFE_EXTENSION),
-                    config.basePath().resolve(INDEX + i + SAFE_EXTENSION)));
-        }
+        readers = getFiles(config);
+        amountOfFiles = readers.size();
     }
 
     @Override
@@ -131,18 +96,11 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         renameFile(config,FILE + IN_PROGRESS_EXTENSION, FILE + COMPOSITE_EXTENSION);
         renameFile(config,INDEX + IN_PROGRESS_EXTENSION, INDEX + COMPOSITE_EXTENSION);
         memory.clear();
-        deleteFiles();
+        deleteFiles(config, amountOfFiles);
         renameFile(config,FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
         renameFile(config,INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
         amountOfFiles = 1;
 
-    }
-
-    private void deleteFiles() throws IOException {
-        for (long i = amountOfFiles - 1; i >= 0; i--) {
-            Files.deleteIfExists(config.basePath().resolve(FILE + i + SAFE_EXTENSION));
-            Files.deleteIfExists(config.basePath().resolve(INDEX + i + SAFE_EXTENSION));
-        }
     }
 
     private void store() throws IOException {
