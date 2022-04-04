@@ -13,15 +13,15 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import ru.mail.polis.pavelkovalenko.iterators.FileIterator;
 import ru.mail.polis.pavelkovalenko.iterators.MergeIterator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
-    private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data = new ConcurrentSkipListMap<>();
-    private final NavigableMap<Integer /*priority*/, FilePair> sstablesPaths = new TreeMap<>();
+    private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memorySSTable = new ConcurrentSkipListMap<>();
+    private final NavigableMap<Integer /*priority*/, PairedFiles> SSTables = new TreeMap<>();
     private final Config config;
+    private final Serializer serializer;
 
     public PersistentDao(Config config) throws IOException {
         this.config = config;
@@ -32,31 +32,23 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
                 addPairedFiles();
             }
         }
+
+        this.serializer = new Serializer(SSTables);
     }
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        return new MergeIterator(from, to, data, sstablesPaths);
-    }
-
-    @Override
-    public Entry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        Entry<ByteBuffer> result = findKeyInStorage(key);
-        if (result == null) {
-            result = findKeyInFile(key);
-        }
-        return Utils.isTombstone(result) ? null : result;
+        return new MergeIterator(from, to, serializer, memorySSTable, SSTables);
     }
 
     @Override
     public void upsert(Entry<ByteBuffer> entry) {
-        data.put(entry.key(), entry);
+        memorySSTable.put(entry.key(), entry);
     }
 
     @Override
     public void flush() throws IOException {
-        FilePair newestFilePair = sstablesPaths.lastEntry().getValue();
-        Serializer.write(newestFilePair.dataFile(), newestFilePair.indexesFile(), data);
+        serializer.write(SSTables.lastEntry().getValue(), memorySSTable);
     }
 
     @Override
@@ -68,12 +60,12 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     private void addPairedFiles() throws IOException {
         Path pathToDataFile = addFile(Utils.DATA_FILENAME);
         Path pathToIndexesFile = addFile(Utils.INDEXES_FILENAME);
-        FilePair pathToPairedFiles = new FilePair(pathToDataFile, pathToIndexesFile);
-        sstablesPaths.put(sstablesPaths.size() + 1, pathToPairedFiles);
+        PairedFiles pathToPairedFiles = new PairedFiles(pathToDataFile, pathToIndexesFile);
+        SSTables.put(SSTables.size() + 1, pathToPairedFiles);
     }
 
     private Path addFile(String filename) throws IOException {
-        Path file = config.basePath().resolve(filename + (sstablesPaths.size() + 1) + Utils.FILE_EXTENSION);
+        Path file = config.basePath().resolve(filename + (SSTables.size() + 1) + Utils.FILE_EXTENSION);
         createFile(file);
         return file;
     }
@@ -82,30 +74,6 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         if (!Files.exists(filename)) {
             Files.createFile(filename);
         }
-    }
-
-    private Entry<ByteBuffer> findKeyInStorage(ByteBuffer key) {
-        return data.get(key);
-    }
-
-    private Entry<ByteBuffer> findKeyInFile(ByteBuffer key) throws IOException {
-        Entry<ByteBuffer> result = null;
-
-        for (FilePair filePair: sstablesPaths.values()) {
-            Path pathToDataFile = filePair.dataFile();
-            Path pathToIndexesFile = filePair.indexesFile();
-            try (FileIterator fileIterator = new FileIterator(pathToDataFile, pathToIndexesFile, key, null)) {
-                if (!fileIterator.hasNext()) {
-                    continue;
-                }
-                result = fileIterator.next();
-                if (result != null && !result.key().equals(key)) {
-                    return null;
-                }
-            }
-        }
-
-        return result;
     }
 
 }

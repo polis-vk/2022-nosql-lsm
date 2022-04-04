@@ -11,8 +11,9 @@ import java.util.NavigableMap;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
+import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
-import ru.mail.polis.pavelkovalenko.FilePair;
+import ru.mail.polis.pavelkovalenko.PairedFiles;
 import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
@@ -20,19 +21,22 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     private final Queue<PeekIterator<Entry<ByteBuffer>>> iterators = new PriorityQueue<>(IteratorComparator.INSTANSE);
 
-    public MergeIterator(ByteBuffer from, ByteBuffer to, ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data,
-                NavigableMap<Integer, FilePair> sstablesPaths) throws IOException {
+    public MergeIterator(ByteBuffer from, ByteBuffer to, Serializer serializer,
+                         ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memorySSTable,
+                         NavigableMap<Integer, PairedFiles> SSTables) throws IOException {
         ByteBuffer from1 = from == null ? Utils.EMPTY_BYTEBUFFER : from;
         int priority = 0;
 
         if (to == null) {
-            iterators.add(new PeekIterator<>(data.tailMap(from1).values().iterator(), priority++));
+            iterators.add(new PeekIterator<>(memorySSTable.tailMap(from1).values().iterator(), priority++));
         } else {
-            iterators.add(new PeekIterator<>(data.subMap(from1, to).values().iterator(), priority++));
+            iterators.add(new PeekIterator<>(memorySSTable.subMap(from1, to).values().iterator(), priority++));
         }
-        for (FilePair filePair: sstablesPaths.descendingMap().values()) {
-            iterators.add(new PeekIterator<>(new FileIterator(
-                            filePair.dataFile(), filePair.indexesFile(), from1, to), priority++));
+
+        for (; priority <= SSTables.size(); ++priority) {
+            iterators.add(new PeekIterator<>(
+                    new FileIterator(serializer.get(priority), serializer, from1, to), priority)
+            );
         }
     }
 

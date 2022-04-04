@@ -2,47 +2,39 @@ package ru.mail.polis.pavelkovalenko.iterators;
 
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
-import java.io.Closeable;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
-import java.nio.file.Path;
 import java.util.Iterator;
-import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
+import ru.mail.polis.pavelkovalenko.MappedPairedFiles;
 import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
-public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
+public class FileIterator implements Iterator<Entry<ByteBuffer>> {
 
-    private final RandomAccessFile dataFile;
-    private final RandomAccessFile indexesFile;
+    private final MappedPairedFiles mappedFilePair;
     private final ByteBuffer from;
     private final ByteBuffer to;
     private final Entry<ByteBuffer> toEntry;
     private Entry<ByteBuffer> current;
+    private final Serializer serializer;
+    private int curIndexesPos = 0;
 
-    public FileIterator(Path pathToDataFile, Path pathToIndexesFile, ByteBuffer from, ByteBuffer to)
-            throws IOException {
-        this.dataFile = new RandomAccessFile(pathToDataFile.toString(), "r");
-        this.indexesFile = new RandomAccessFile(pathToIndexesFile.toString(), "r");
+    public FileIterator(MappedPairedFiles mappedFilePair, Serializer serializer, ByteBuffer from, ByteBuffer to) throws IOException {
+        this.mappedFilePair = mappedFilePair;
         this.from = from;
         this.to = to;
         toEntry = new BaseEntry<>(to, to);
-        current = binarySearchInFile();
+        this.serializer = serializer;
 
-        if (current == null) {
-            close();
-        }
+        binarySearchInFile();
     }
 
     @Override
     public boolean hasNext() {
         try {
             boolean hasNext = dataExists() && canContinue();
-            if (!hasNext) {
-                close();
-            }
+            current = null;
             return hasNext;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -54,24 +46,16 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
         try {
             Entry<ByteBuffer> peek = peek();
             current = null;
-            if (!dataExists() || !canContinue()) {
-                close();
-            }
+            curIndexesPos += Utils.INDEX_OFFSET;
             return peek;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
-    @Override
-    public void close() throws IOException {
-        dataFile.close();
-        indexesFile.close();
-    }
-
     private Entry<ByteBuffer> peek() throws IOException {
         if (current == null && !isEOFReached()) {
-            current = Serializer.readEntry(dataFile, indexesFile);
+            current = serializer.readEntry(mappedFilePair, curIndexesPos);
         }
         return current;
     }
@@ -81,34 +65,31 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
     }
 
     private boolean canContinue() throws IOException {
-        return (to == null && peek() != null)
-                || (peek() != null && EntryComparator.INSTANSE.compare(peek(), toEntry) < 0);
+        return (peek() != null && peek().key().compareTo(from) >= 0)
+                && ((to == null && peek() != null)
+                    || (peek() != null && Utils.entryComparator.compare(peek(), toEntry) < 0));
     }
 
-    private boolean isEOFReached() throws IOException {
-        return !dataFile.getChannel().isOpen() || dataFile.getFilePointer() >= dataFile.length();
+    private boolean isEOFReached() {
+        return curIndexesPos >= mappedFilePair.indexesFile().limit();
     }
 
-    private Entry<ByteBuffer> binarySearchInFile() throws IOException {
-        if (!hasNext() || isFromOutOfBound()) {
-            return null;
+    private void binarySearchInFile() throws IOException {
+        if (!dataExists() || isFromOutOfBound()) {
+            return;
         }
-        Entry<ByteBuffer> ceilEntry = getLast();
 
-        long a = 0;
-        long b = getIndexesFileLength() / Utils.INDEX_OFFSET;
-        long lastDataFileOffset = 0;
-        long lastIndexesFileOffset = 0;
+        Entry<ByteBuffer> ceilEntry = getLast();
+        int a = 0;
+        int b = getIndexesFileLength() / Utils.INDEX_OFFSET;
+        int c;
 
         while (b - a >= 1) {
-            long c = (b + a) / 2;
-            setIndexesFileOffset(c * Utils.INDEX_OFFSET);
-            Entry<ByteBuffer> curEntry = Serializer.readEntry(dataFile, indexesFile);
-
-            if (curEntry.key().compareTo(from) >= 0 && EntryComparator.INSTANSE.compare(curEntry, ceilEntry) <= 0) {
+            c = (b + a) / 2;
+            Entry<ByteBuffer> curEntry = serializer.readEntry(mappedFilePair, c * Utils.INDEX_OFFSET);
+            if (curEntry.key().compareTo(from) >= 0 && Utils.entryComparator.compare(curEntry, ceilEntry) <= 0) {
                 ceilEntry = curEntry;
-                lastIndexesFileOffset = getIndexesFileOffset();
-                lastDataFileOffset = getDataFileOffset();
+                curIndexesPos = c * Utils.INDEX_OFFSET;
             }
 
             int compare = curEntry.key().compareTo(from);
@@ -118,7 +99,6 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
                 }
                 a = c;
             } else if (compare == 0) {
-                ceilEntry = curEntry;
                 break;
             } else {
                 if (b - a <= 1) {
@@ -127,41 +107,18 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>>, Closeable {
                 b = c;
             }
         }
-
-        setIndexesFileOffset(lastIndexesFileOffset);
-        setDataFileOffset(lastDataFileOffset);
-        return ceilEntry;
     }
 
-    private Entry<ByteBuffer> getLast() throws IOException {
-        setIndexesFileOffset(getIndexesFileLength() - Utils.INDEX_OFFSET);
-        Entry<ByteBuffer> last = Serializer.readEntry(dataFile, indexesFile);
-        setIndexesFileOffset(0);
-        return last;
+    private Entry<ByteBuffer> getLast() {
+        return serializer.readEntry(mappedFilePair, getIndexesFileLength() - Utils.INDEX_OFFSET);
     }
 
-    private boolean isFromOutOfBound() throws IOException {
+    private boolean isFromOutOfBound() {
         return from.compareTo(getLast().key()) > 0;
     }
 
-    private long getIndexesFileLength() throws IOException {
-        return indexesFile.length();
-    }
-
-    private void setDataFileOffset(long dataFileOffset) throws IOException {
-        dataFile.seek(dataFileOffset);
-    }
-
-    private long getIndexesFileOffset() throws IOException {
-        return indexesFile.getFilePointer();
-    }
-
-    private long getDataFileOffset() throws IOException {
-        return dataFile.getFilePointer();
-    }
-
-    private void setIndexesFileOffset(long indexesFileOffset) throws IOException {
-        indexesFile.seek(indexesFileOffset);
+    private int getIndexesFileLength() {
+        return mappedFilePair.indexesFile().limit();
     }
 
 }

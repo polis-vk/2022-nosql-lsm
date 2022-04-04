@@ -1,78 +1,113 @@
 package ru.mail.polis.pavelkovalenko;
 
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
+import java.util.NavigableMap;
+import java.util.TreeMap;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.file.Path;
 import java.util.concurrent.ConcurrentNavigableMap;
+import ru.mail.polis.pavelkovalenko.iterators.FileIterator;
+import ru.mail.polis.pavelkovalenko.iterators.PeekIterator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 public final class Serializer {
 
-    private Serializer() {
+    private final NavigableMap<Integer, PairedFiles> SSTables;
+    private final NavigableMap<Integer, MappedPairedFiles> mappedSSTables = new TreeMap<>();
+
+    public Serializer(NavigableMap<Integer, PairedFiles> SSTables) throws IOException {
+        this.SSTables = SSTables.descendingMap();
+        mapSSTables();
     }
 
-    public static Entry<ByteBuffer> readEntry(RandomAccessFile dataFile, RandomAccessFile indexesFile)
+    public Entry<ByteBuffer> readEntry(MappedPairedFiles mappedFilePair, int indexesPos) {
+        int dataPos = readDataFileOffset(mappedFilePair.indexesFile(), indexesPos);
+        byte tombstone = readByte(mappedFilePair.dataFile(), dataPos);
+        ++dataPos;
+        ByteBuffer key = readByteBuffer(mappedFilePair.dataFile(), dataPos);
+        dataPos += (Integer.BYTES + key.remaining());
+        ByteBuffer value = Utils.isTombstone(tombstone) ? null : readByteBuffer(mappedFilePair.dataFile(), dataPos);
+        return new BaseEntry<>(key, value);
+    }
+
+    public void write(PairedFiles pairedFiles, ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memorySSTable)
             throws IOException {
-        int dataFileOffset = readDataFileOffset(indexesFile);
-        dataFile.seek(dataFileOffset);
-        byte tombstone = readByte(dataFile);
-        ByteBuffer key = readByteBuffer(dataFile);
-        ByteBuffer value = Utils.isTombstone(tombstone) ? null : readByteBuffer(dataFile);
-        Entry<ByteBuffer> entry = new BaseEntry<>(key, value);
-        readLineSeparator(dataFile);
-        return entry;
-    }
-
-    public static void write(Path pathToDataFile, Path pathToIndexesFile,
-                ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> data) throws IOException {
-        if (data.isEmpty()) {
+        if (memorySSTable.isEmpty()) {
             return;
         }
 
-        try (RandomAccessFile dataFile = new RandomAccessFile(pathToDataFile.toString(), "rw");
-             RandomAccessFile indexesFile = new RandomAccessFile(pathToIndexesFile.toString(), "rw")) {
+        try (FileChannel dataFile = FileChannel.open(pairedFiles.dataFile(), StandardOpenOption.READ, StandardOpenOption.WRITE);
+             FileChannel indexesFile = FileChannel.open(pairedFiles.indexesFile(), StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            long dataSize = 0;
+            long indexesSize = (long)memorySSTable.size() * Utils.INDEX_OFFSET;
+            for (Entry<ByteBuffer> entry: memorySSTable.values()) {
+                dataSize += sizeOf(entry);
+            }
+
+            MappedByteBuffer mappedDataFile = Utils.mapFile(dataFile, FileChannel.MapMode.READ_WRITE, dataSize);
+            MappedByteBuffer mappedIndexesFile = Utils.mapFile(indexesFile, FileChannel.MapMode.READ_WRITE, indexesSize);
             int curOffset = 0;
             int bbSize = 0;
-            for (Entry<ByteBuffer> entry: data.values()) {
+            for (Entry<ByteBuffer> entry: memorySSTable.values()) {
                 curOffset += bbSize;
-                writeOffset(curOffset, indexesFile);
-                bbSize = writePair(entry, dataFile);
+                writeOffset(curOffset, mappedIndexesFile);
+                writePair(entry, mappedDataFile);
+                bbSize = sizeOf(entry);
             }
         }
     }
 
-    public static int sizeOf(Entry<ByteBuffer> entry) {
+    public MappedPairedFiles get(int key) throws IOException {
+        if (SSTables.size() != mappedSSTables.size()) {
+            mapSSTables();
+        }
+        return mappedSSTables.get(key);
+    }
+
+    public int sizeOf(Entry<ByteBuffer> entry) {
+        entry.key().rewind();
+
         int size = 1 + Integer.BYTES + entry.key().remaining();
         if (!Utils.isTombstone(entry)) {
+            entry.value().rewind();
             size += Integer.BYTES + entry.value().remaining();
         }
         size += Character.BYTES;
         return size;
     }
 
-    private static int readDataFileOffset(RandomAccessFile indexesFile) throws IOException {
-        int dataFileOffset = indexesFile.readInt();
-        readLineSeparator(indexesFile);
-        return dataFileOffset;
+    private int readDataFileOffset(MappedByteBuffer indexesFile, int indexesPos) {
+        return indexesFile.getInt(indexesPos);
     }
 
-    private static void readLineSeparator(RandomAccessFile file) throws IOException {
-        file.readChar();
+    private void mapSSTables() throws IOException {
+        int priority = 1;
+
+        for (PairedFiles filePair: SSTables.values()) {
+            try (FileChannel dataFile = FileChannel.open(filePair.dataFile());
+                 FileChannel indexesFile = FileChannel.open(filePair.indexesFile())) {
+                MappedByteBuffer mappedDataFile = Utils.mapFile(dataFile, FileChannel.MapMode.READ_ONLY, dataFile.size());
+                MappedByteBuffer mappedIndexesFile = Utils.mapFile(indexesFile, FileChannel.MapMode.READ_ONLY, indexesFile.size());
+                mappedSSTables.put(priority++, new MappedPairedFiles(mappedDataFile, mappedIndexesFile));
+            }
+        }
     }
 
-    private static byte readByte(RandomAccessFile dataFile) throws IOException {
-        return dataFile.readByte();
+    private void readLineSeparator(MappedByteBuffer file) {
+        file.getChar();
     }
 
-    private static ByteBuffer readByteBuffer(RandomAccessFile dataFile) throws IOException {
-        int bbSize = dataFile.readInt();
-        ByteBuffer bb = ByteBuffer.allocate(bbSize);
-        dataFile.getChannel().read(bb);
-        bb.rewind();
-        return bb;
+    private byte readByte(MappedByteBuffer dataFile, int dataPos) {
+        return dataFile.get(dataPos);
+    }
+
+    private ByteBuffer readByteBuffer(MappedByteBuffer dataFile, int dataPos) {
+        int bbSize = dataFile.getInt(dataPos);
+        return dataFile.slice(dataPos + Integer.BYTES, bbSize);
     }
 
     /*
@@ -81,12 +116,9 @@ public final class Serializer {
      * │ integer │ \n │
      * └─────────┴────┘
      */
-    private static void writeOffset(int offset, RandomAccessFile indexesFile) throws IOException {
-        ByteBuffer bbOffset = ByteBuffer.allocate(Utils.INDEX_OFFSET);
-        bbOffset.putInt(offset);
-        bbOffset.putChar(Utils.LINE_SEPARATOR);
-        bbOffset.rewind();
-        indexesFile.getChannel().write(bbOffset);
+    private void writeOffset(int offset, MappedByteBuffer indexesFile) {
+        indexesFile.putInt(offset);
+        indexesFile.putChar(Utils.LINE_SEPARATOR);
     }
 
     /*
@@ -95,24 +127,17 @@ public final class Serializer {
      * │ isTombstone: byte │ key: byte[entry.key().remaining()] │ value: byte[entry.value().remaining()] │ \n │
      * └───────────────────┴────────────────────────────────────┴────────────────────────────────────────┴────┘
      */
-    private static int writePair(Entry<ByteBuffer> entry, RandomAccessFile dataFile) throws IOException {
-        int bbSize = sizeOf(entry);
-        ByteBuffer pair = ByteBuffer.allocate(bbSize);
-
-        pair.put(Utils.getTombstoneValue(entry));
-        pair.putInt(entry.key().remaining());
-        pair.put(entry.key());
+    private void writePair(Entry<ByteBuffer> entry, MappedByteBuffer dataFile) {
+        dataFile.put(Utils.getTombstoneValue(entry));
+        dataFile.putInt(entry.key().remaining());
+        dataFile.put(entry.key());
 
         if (!Utils.isTombstone(entry)) {
-            pair.putInt(entry.value().remaining());
-            pair.put(entry.value());
+            dataFile.putInt(entry.value().remaining());
+            dataFile.put(entry.value());
         }
 
-        pair.putChar(Utils.LINE_SEPARATOR);
-        pair.rewind();
-        dataFile.getChannel().write(pair);
-
-        return bbSize;
+        dataFile.putChar(Utils.LINE_SEPARATOR);
     }
 
 }

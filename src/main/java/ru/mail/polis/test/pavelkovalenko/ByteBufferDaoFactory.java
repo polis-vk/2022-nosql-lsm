@@ -21,7 +21,10 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Entr
 
     @Override
     public String toString(ByteBuffer data) {
-        return new String(data.array(), StandardCharsets.UTF_8);
+        ByteBuffer transfer = data.asReadOnlyBuffer();
+        byte[] bytes = new byte[transfer.remaining()];
+        transfer.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     @Override
