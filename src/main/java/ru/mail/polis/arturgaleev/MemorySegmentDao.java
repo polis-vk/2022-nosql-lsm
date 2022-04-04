@@ -19,7 +19,8 @@ import java.util.stream.Stream;
 public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> dataBase = new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
+    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> dataBase
+            = new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
     private final Config config;
     private final DBReader reader;
 

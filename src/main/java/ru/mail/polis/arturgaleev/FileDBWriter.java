@@ -65,7 +65,11 @@ public class FileDBWriter implements Closeable {
         return offset;
     }
 
-    private static MemorySegment createTmpMemorySegmentPage(long mapByteSize, Path tmpPath, ResourceScope writeScope) throws IOException {
+    private static MemorySegment createTmpMemorySegmentPage(
+            long mapByteSize,
+            Path tmpPath,
+            ResourceScope writeScope
+    ) throws IOException {
         Files.deleteIfExists(tmpPath);
         Files.createFile(tmpPath);
         return MemorySegment.mapFile(
@@ -83,7 +87,8 @@ public class FileDBWriter implements Closeable {
         }
         Path tmpPath = path.getParent().resolve(FILE_TMP);
         if (Files.exists(tmpPath)) {
-            throw new FileAlreadyExistsException("File " + tmpPath + " already exists. Creation of new one may accuse errors");
+            throw new FileAlreadyExistsException("File " + tmpPath
+                    + " already exists. Creation of new one may accuse errors");
         }
 
         int numberOfEntries = map.size();
@@ -96,13 +101,17 @@ public class FileDBWriter implements Closeable {
     }
 
     // First iterator uses to count length and second to write data
-    public void writeIterator(Iterator<Entry<MemorySegment>> iterator1, Iterator<Entry<MemorySegment>> iterator2) throws IOException {
+    public void writeIterator(
+            Iterator<Entry<MemorySegment>> iterator1,
+            Iterator<Entry<MemorySegment>> iterator2
+    ) throws IOException {
         if (!iterator1.hasNext()) {
             return;
         }
         Path tmpPath = path.getParent().resolve(FILE_TMP);
         if (Files.exists(tmpPath)) {
-            throw new FileAlreadyExistsException("File " + tmpPath + " already exists. Creation of new one may accuse errors");
+            throw new FileAlreadyExistsException("File " + tmpPath
+                    + " already exists. Creation of new one may accuse errors");
         }
 
         Pair<Long, Long> iteratorLengthData = getIteratorLengthData(iterator1);
