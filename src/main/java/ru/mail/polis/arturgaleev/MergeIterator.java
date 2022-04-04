@@ -2,7 +2,11 @@ package ru.mail.polis.arturgaleev;
 
 import ru.mail.polis.Entry;
 
-import java.util.*;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.PriorityQueue;
 
 public class MergeIterator<E> implements Iterator<Entry<E>> {
     private final PriorityQueue<PriorityPeekingIterator<Entry<E>>> iteratorsQueue;
