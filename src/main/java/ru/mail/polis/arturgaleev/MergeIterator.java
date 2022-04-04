@@ -2,14 +2,10 @@ package ru.mail.polis.arturgaleev;
 
 import ru.mail.polis.Entry;
 
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.concurrent.PriorityBlockingQueue;
+import java.util.*;
 
 public class MergeIterator<E> implements Iterator<Entry<E>> {
-    private final PriorityBlockingQueue<PriorityPeekingIterator<Entry<E>>> iteratorsQueue;
+    private final PriorityQueue<PriorityPeekingIterator<Entry<E>>> iteratorsQueue;
     private final Comparator<E> keyComparator;
     private Entry<E> currentEntry;
     private Comparator<PriorityPeekingIterator<Entry<E>>> iteratorComparator;
@@ -21,24 +17,24 @@ public class MergeIterator<E> implements Iterator<Entry<E>> {
                          Comparator<E> keyComparator
     ) {
         this.keyComparator = keyComparator;
-        iteratorsQueue = new PriorityBlockingQueue<>(2, getIteratorComparator());
+        iteratorsQueue = new PriorityQueue<>(2, getIteratorComparator());
 
         if (iterator2.hasNext()) {
-            iteratorsQueue.put(iterator2);
+            iteratorsQueue.add(iterator2);
         }
         if (iterator1.hasNext()) {
-            iteratorsQueue.put(iterator1);
+            iteratorsQueue.add(iterator1);
         }
     }
 
     public MergeIterator(List<PriorityPeekingIterator<Entry<E>>> iterators, Comparator<E> keyComparator) {
         this.keyComparator = keyComparator;
         int iterSize = iterators.isEmpty() ? 1 : iterators.size();
-        iteratorsQueue = new PriorityBlockingQueue<>(iterSize, getIteratorComparator());
+        iteratorsQueue = new PriorityQueue<>(iterSize, getIteratorComparator());
 
         for (PriorityPeekingIterator<Entry<E>> inFilesIterator : iterators) {
             if (inFilesIterator.hasNext()) {
-                iteratorsQueue.put(inFilesIterator);
+                iteratorsQueue.add(inFilesIterator);
             }
         }
     }
@@ -64,7 +60,7 @@ public class MergeIterator<E> implements Iterator<Entry<E>> {
     @Override
     public boolean hasNext() {
         if (currentEntry == null) {
-            currentEntry = nullablePeek();
+            currentEntry = nullableNext();
             return currentEntry != null;
         }
         return true;
@@ -86,43 +82,60 @@ public class MergeIterator<E> implements Iterator<Entry<E>> {
             currentEntry = null;
             return prev;
         }
-        if (iteratorsQueue.isEmpty()) {
-            return null;
-        }
 
-        return getNotDeletedElement();
+        return getNotDeletedEntry();
     }
 
-    private Entry<E> getNotDeletedElement() {
-        PriorityPeekingIterator<Entry<E>> iterator = iteratorsQueue.poll();
-        Entry<E> entry = iterator.next();
-        if (iterator.hasNext()) {
-            iteratorsQueue.put(iterator);
-        }
-        removeElementsWithKey(entry.key());
+    private Entry<E> getNotDeletedEntry() {
+        Entry<E> entry;
 
-        while (!iteratorsQueue.isEmpty() && entry.value() == null) {
+        while (!iteratorsQueue.isEmpty()) {
+            entry = getNextEntry();
+            removeElementsWithKey(entry.key());
+
+            if (entry.value() != null) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private Entry<E> getNextEntry() {
+        Entry<E> entry;
+        PriorityPeekingIterator<Entry<E>> iterator;
+        if (iteratorsQueue.size() == 1) {
+            iterator = iteratorsQueue.peek();
+            entry = iterator.next();
+            if (!iterator.hasNext()) {
+                // clear faster than poll
+                iteratorsQueue.clear();
+            }
+        } else {
             iterator = iteratorsQueue.poll();
             entry = iterator.next();
             if (iterator.hasNext()) {
-                iteratorsQueue.put(iterator);
+                iteratorsQueue.add(iterator);
             }
-            removeElementsWithKey(entry.key());
-        }
-
-        if (entry.value() == null) {
-            return null;
         }
         return entry;
     }
 
     private void removeElementsWithKey(E lastKey) {
         while (!iteratorsQueue.isEmpty() && keyComparator.compare(lastKey, iteratorsQueue.peek().peek().key()) == 0) {
-            PriorityPeekingIterator<Entry<E>> poll = iteratorsQueue.poll();
-            if (poll.hasNext()) {
-                poll.next();
-                if (poll.hasNext()) {
-                    iteratorsQueue.put(poll);
+            PriorityPeekingIterator<Entry<E>> iterator;
+            if (iteratorsQueue.size() == 1) {
+                iterator = iteratorsQueue.peek();
+                iterator.next();
+                if (!iterator.hasNext()) {
+                    iteratorsQueue.poll();
+                }
+            } else {
+                iterator = iteratorsQueue.poll();
+                if (iterator.hasNext()) {
+                    iterator.next();
+                    if (iterator.hasNext()) {
+                        iteratorsQueue.add(iterator);
+                    }
                 }
             }
         }

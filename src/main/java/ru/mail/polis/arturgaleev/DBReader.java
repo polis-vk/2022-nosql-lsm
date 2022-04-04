@@ -5,7 +5,6 @@ import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Stream;
@@ -15,9 +14,6 @@ public class DBReader implements AutoCloseable {
     private final List<FileDBReader> fileReaders;
 
     public DBReader(Path dbDirectoryPath) throws IOException {
-        if (!Files.isDirectory(dbDirectoryPath)) {
-            throw new NotDirectoryException(dbDirectoryPath + " is not a directory with DB files");
-        }
         fileReaders = getFileDBReaders(dbDirectoryPath);
     }
 

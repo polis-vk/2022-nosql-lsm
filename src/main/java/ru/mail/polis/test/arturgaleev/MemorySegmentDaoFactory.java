@@ -19,7 +19,7 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
 
     @Override
     public String toString(MemorySegment data) {
-        return (data == null) ? null : new String(data.toByteArray(), StandardCharsets.UTF_8);
+        return (data == null) ? null : new String(data.asReadOnly().toByteArray(), StandardCharsets.UTF_8);
     }
 
     @Override

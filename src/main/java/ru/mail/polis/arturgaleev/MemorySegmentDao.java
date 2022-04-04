@@ -26,9 +26,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     public MemorySegmentDao(Config config) throws IOException {
         this.config = config;
-        if (!Files.isDirectory(config.basePath())) {
-            Files.createDirectories(config.basePath());
-        }
         reader = new DBReader(config.basePath());
     }
 
