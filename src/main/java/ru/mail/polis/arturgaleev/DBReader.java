@@ -7,9 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Stream;
 
 public class DBReader implements AutoCloseable {
@@ -50,7 +48,10 @@ public class DBReader implements AutoCloseable {
         return fileDBReaderList;
     }
 
-    public MergeIterator<MemorySegment> get(MemorySegment from, MemorySegment to) {
+    public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
+        if (fileReaders.isEmpty()) {
+            return Collections.emptyIterator();
+        }
         List<PriorityPeekingIterator<Entry<MemorySegment>>> iterators = new ArrayList<>(fileReaders.size());
         for (FileDBReader reader : fileReaders) {
             FileDBReader.FileIterator fromToIterator = reader.getFromToIterator(from, to);
