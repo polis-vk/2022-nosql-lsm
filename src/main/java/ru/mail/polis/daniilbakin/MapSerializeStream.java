@@ -29,8 +29,8 @@ public class MapSerializeStream implements Closeable {
         Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + newIndex);
         Files.deleteIfExists(mapPath);
         Files.deleteIfExists(indexesPath);
-        mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE));
-        indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE));
+        mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE_NEW));
+        indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE_NEW));
     }
 
     //Constructor for compact method
@@ -39,8 +39,8 @@ public class MapSerializeStream implements Closeable {
         Path indexesPath = config.basePath().resolve(prefix + INDEX_FILE_NAME);
         Files.deleteIfExists(mapPath);
         Files.deleteIfExists(indexesPath);
-        mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE));
-        indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE));
+        mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE_NEW));
+        indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE_NEW));
     }
 
     @Override
