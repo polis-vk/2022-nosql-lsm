@@ -12,7 +12,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -55,7 +54,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         } else {
             dataIterator = data.subMap(start, to).values().iterator();
         }
-        List<PeekingIterator> iterators = new ArrayList<>();
+        ArrayList<PeekingIterator> iterators = new ArrayList<>(filesList.size() + 1);
         int priority = 0;
         iterators.add(new PeekingIterator(dataIterator, priority++));
         for (String file : filesList) {
