@@ -12,9 +12,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
-import static ru.mail.polis.alexanderkosnitskiy.PersistenceDao.*;
-
 public final class DaoUtility {
+    public static final String FILE = PersistenceDao.FILE;
+    public static final String INDEX = PersistenceDao.INDEX;
+    public static final String SAFE_EXTENSION = PersistenceDao.SAFE_EXTENSION;
+    public static final String IN_PROGRESS_EXTENSION = PersistenceDao.IN_PROGRESS_EXTENSION;
+    public static final String COMPOSITE_EXTENSION = PersistenceDao.COMPOSITE_EXTENSION;
+
     private DaoUtility() {
 
     }
