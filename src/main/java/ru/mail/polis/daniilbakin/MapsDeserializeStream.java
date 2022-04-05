@@ -24,16 +24,14 @@ import static ru.mail.polis.daniilbakin.Storage.INDEX_FILE_NAME;
 
 public class MapsDeserializeStream implements Closeable {
 
-    private final List<MappedByteBuffer> mapData;
-    private final List<MappedByteBuffer> indexesData;
+    private final List<MappedByteBuffer> mapData = new ArrayList<>();
+    private final List<MappedByteBuffer> indexesData = new ArrayList<>();
     private int numOfFiles;
     private final Method unmap;
     private final Object fieldValue;
 
     public MapsDeserializeStream(Config config, int numOfFiles, int startIndexOfFile) throws IOException {
         this.numOfFiles = numOfFiles;
-        mapData = new ArrayList<>();
-        indexesData = new ArrayList<>();
 
         for (int i = startIndexOfFile; i < numOfFiles + startIndexOfFile; i++) {
             addMappedFile(i, config.basePath());

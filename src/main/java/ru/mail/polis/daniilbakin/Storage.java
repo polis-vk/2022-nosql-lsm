@@ -33,6 +33,9 @@ public class Storage implements Closeable {
     }
 
     public void compact(PeekIterator<BaseEntry<ByteBuffer>> inMemoryIterator) throws IOException {
+        if (numOfFiles <= 1 && !inMemoryIterator.hasNext()) {
+            return;
+        }
         List<PeekIterator<BaseEntry<ByteBuffer>>> iterators = getFileIterators(null, null);
         iterators.add(inMemoryIterator);
         MergeIterator<ByteBuffer> mergeIterator = new MergeIterator<>(iterators);
