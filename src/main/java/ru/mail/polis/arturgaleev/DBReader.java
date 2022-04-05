@@ -15,10 +15,20 @@ import java.util.stream.Stream;
 
 public class DBReader implements AutoCloseable {
     private static final String DB_FILES_EXTENSION = ".txt";
-    private final List<FileDBReader> fileReaders;
+    private final Path dbDirectoryPath;
+    private List<FileDBReader> fileReaders;
 
     public DBReader(Path dbDirectoryPath) throws IOException {
+        this.dbDirectoryPath = dbDirectoryPath;
         fileReaders = getFileDBReaders(dbDirectoryPath);
+    }
+
+    public void updateReadersList() throws IOException {
+        fileReaders = getFileDBReaders(dbDirectoryPath);
+    }
+
+    public long getReadersCount() {
+        return fileReaders.size();
     }
 
     public long getBiggestFileId() {
@@ -36,7 +46,7 @@ public class DBReader implements AutoCloseable {
 
     private List<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
         List<FileDBReader> fileDBReaderList = new ArrayList<>();
-        try (Stream<Path> files = Files.list(dbDirectoryPath)) {
+        try (Stream<Path> files = Files.list(this.dbDirectoryPath)) {
             List<Path> paths = files
                     .filter(path -> path.toString().endsWith(DB_FILES_EXTENSION))
                     .toList();

@@ -81,23 +81,27 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     @Override
     public void compact() throws IOException {
         lock.writeLock().lock();
-        Path tmpPath = config.basePath().resolve((reader.getBiggestFileId() + 1) + ".txt");
-        try (FileDBWriter writer =
-                     new FileDBWriter(tmpPath)) {
-            writer.writeIterator(get(null, null), get(null, null));
-            try (Stream<Path> files = Files.list(config.basePath())) {
-                for (Path path : files.toList()) {
-                    if (!path.equals(tmpPath)) {
-                        try {
-                            Files.deleteIfExists(path);
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(e);
+        if (!dataBase.isEmpty() || reader.getReadersCount() > 1) {
+            Path tmpPath = config.basePath().resolve((reader.getBiggestFileId() + 1) + ".txt");
+            try (FileDBWriter writer =
+                         new FileDBWriter(tmpPath)) {
+                writer.writeIterator(get(null, null), get(null, null));
+                dataBase.clear();
+                try (Stream<Path> files = Files.list(config.basePath())) {
+                    for (Path path : files.toList()) {
+                        if (!path.equals(tmpPath)) {
+                            try {
+                                Files.deleteIfExists(path);
+                            } catch (IOException e) {
+                                throw new UncheckedIOException(e);
+                            }
                         }
                     }
                 }
+            } finally {
+                reader.updateReadersList();
+                lock.writeLock().unlock();
             }
-        } finally {
-            lock.writeLock().unlock();
         }
     }
 
@@ -109,6 +113,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                          new FileDBWriter(config.basePath().resolve((reader.getBiggestFileId() + 1) + ".txt"))) {
                 writer.writeMap(dataBase);
             } finally {
+                reader.updateReadersList();
                 lock.writeLock().unlock();
             }
         }
