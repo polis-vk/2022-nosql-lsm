@@ -74,7 +74,6 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     private Iterator<BaseEntry<MemorySegment>> getMemoryIterator(MemorySegment from, MemorySegment to) {
         lock.readLock().lock();
         try {
-
             if (to == null) {
                 return memory.tailMap(from).values().iterator();
             }
