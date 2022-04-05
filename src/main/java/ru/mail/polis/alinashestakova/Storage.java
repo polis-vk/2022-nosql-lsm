@@ -124,7 +124,6 @@ final class Storage implements Closeable {
 
             nextSSTable.force();
         }
-
         return sstableTmpPath;
     }
 
@@ -260,7 +259,7 @@ final class Storage implements Closeable {
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() {
         if (scope.isAlive()) {
             scope.close();
         }
