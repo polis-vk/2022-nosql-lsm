@@ -67,7 +67,7 @@ class MemorySegmentReader {
         long high = lastIndex;
 
         while (low <= high) {
-            long mid = countMid(low, high);
+            long mid = (low + high) >>> 1;
 
             MemorySegment currentKey = getMemorySegment(mid, false);
             int compare = utils.compareMemorySegment(key, currentKey);
@@ -82,10 +82,6 @@ class MemorySegmentReader {
         }
 
         return -(low + 1);
-    }
-
-    private long countMid(long low, long high) {
-        return (low + high) >>> 1;
     }
 
     private MemorySegment getMemorySegment(long entityIndex, boolean isValue) {
