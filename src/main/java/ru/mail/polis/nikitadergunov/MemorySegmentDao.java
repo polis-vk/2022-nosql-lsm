@@ -22,7 +22,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> memory =
             new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
 
-    private Storage storage;
+    private final Storage storage;
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Config config;

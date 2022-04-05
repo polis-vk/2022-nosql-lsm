@@ -64,12 +64,19 @@ final class Storage implements Closeable {
         while (entriesIterator.hasNext()) {
             entries.add(entriesIterator.next());
         }
+        if (entries.isEmpty()) {
+            return;
+        }
 
         save(config, previousState, entries);
         memory.clear();
-        Path sstablePath = config.basePath().resolve(FILE_NAME + previousState.sstables.size() + FILE_EXT);
+        Path sstablePathOld = config.basePath().resolve(FILE_NAME + previousState.sstables.size() + FILE_EXT);
+
+
+        Path sstablePathNew = config.basePath().resolve(FILE_NAME + "0" + FILE_EXT);
+        Files.move(sstablePathOld, sstablePathNew, StandardCopyOption.ATOMIC_MOVE);
         try (Stream<Path> listFiles = Files.list(config.basePath())){
-            listFiles.filter(path -> !path.equals(sstablePath))
+            listFiles.filter(path -> !path.equals(sstablePathNew))
                     .forEach(path -> {
                         try {
                             Files.delete(path);
@@ -79,16 +86,6 @@ final class Storage implements Closeable {
                     });
 
         }
-//        try (Stream<Path> stream = Files.list(config.basePath())) {
-//            stream.filter(file -> !file.toString().contains(FILE_EXT_TMP))
-//                    .forEach(f -> {
-//                        try {
-//                            Files.delete(f);
-//                        } catch (IOException e) {
-//                            throw new UncheckedIOException(e);
-//                        }
-//                    });
-//        }
     }
 
     // it is supposed that entries can not be changed externally during this method call
@@ -275,86 +272,5 @@ final class Storage implements Closeable {
         return !scope.isAlive();
     }
 
-//    static Path save(
-//            Config config,
-//            Storage previousState,
-//            Iterator<Entry<MemorySegment>> entries) throws IOException {
-//        if (!entries.hasNext()) {
-//            return null;
-//        }
-//
-//        int sstablesCount = previousState.sstables.size();
-//        Path sstableTmpPath = config.basePath().resolve(FILE_NAME + sstablesCount + FILE_EXT_TMP);
-//
-//        Files.deleteIfExists(sstableTmpPath);
-//        Files.createFile(sstableTmpPath);
-//
-//        List<Entry<MemorySegment>> entriesList = new ArrayList<>();
-//
-//        try (ResourceScope writeScope = ResourceScope.newConfinedScope()) {
-//            long size = 0;
-//            long entriesCount = 0;
-//
-//            while (entries.hasNext()) {
-//                Entry<MemorySegment> entry = entries.next();
-//                entriesList.add(entry);
-//
-//                if (entry.value() == null) {
-//                    size += Long.BYTES + entry.key().byteSize() + Long.BYTES;
-//                } else {
-//                    size += Long.BYTES + entry.value().byteSize() + entry.key().byteSize() + Long.BYTES;
-//                }
-//
-//                entriesCount++;
-//            }
-//
-//            long dataStart = INDEX_HEADER_SIZE + INDEX_RECORD_SIZE * entriesCount;
-//
-//            MemorySegment nextSSTable = MemorySegment.mapFile(
-//                    sstableTmpPath,
-//                    0,
-//                    dataStart + size,
-//                    FileChannel.MapMode.READ_WRITE,
-//                    writeScope
-//            );
-//
-//            long index = 0;
-//            long offset = dataStart;
-//            for (Entry<MemorySegment> entry : entriesList) {
-//                MemoryAccess.setLongAtOffset(nextSSTable, INDEX_HEADER_SIZE + index * INDEX_RECORD_SIZE, offset);
-//
-//                offset += writeRecord(nextSSTable, offset, entry.key());
-//                offset += writeRecord(nextSSTable, offset, entry.value());
-//
-//                index++;
-//            }
-//
-//            MemoryAccess.setLongAtOffset(nextSSTable, 0, VERSION);
-//            MemoryAccess.setLongAtOffset(nextSSTable, 8, entriesCount);
-//
-//            nextSSTable.force();
-//        }
-//
-//        return sstableTmpPath;
-//    }
-//
-//    public static void deleteFiles(Config config) throws IOException {
-//        try (Stream<Path> stream = Files.list(config.basePath())) {
-//            stream
-//                    .filter(file -> !file.toString().contains(FILE_EXT_TMP))
-//                    .forEach(f -> {
-//                        try {
-//                            Files.delete(f);
-//                        } catch (IOException e) {
-//                            throw new UncheckedIOException(e);
-//                        }
-//                    });
-//        }
-//    }
-//
-//    public static void moveFile(Config config, Path source, long index) throws IOException {
-//        Path sstablePath = config.basePath().resolve(FILE_NAME + index + FILE_EXT);
-//        Files.move(source, sstablePath, StandardCopyOption.ATOMIC_MOVE);
-//    }
 
 }
