@@ -81,6 +81,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         if (collection.isEmpty()) {
             return;
         }
+
         FileUtils.writeOnDisk(collection, path);
         ++filesCount;
         clear();
