@@ -23,7 +23,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     private static final Random rnd = new Random();
     private final ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
     private final Path basePath;
-    private volatile boolean commit;
+    private volatile boolean commit = true;
     private final Deque<String> filesList = new ArrayDeque<>();
 
     public InMemoryDao(Config config) throws IOException {
@@ -142,6 +142,9 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     @Override
     public void compact() throws IOException {
+        if (filesList.size() <= 1 && data.isEmpty()) {
+            return;
+        }
         Iterator<Entry<String>> iterator = all();
         String name;
         do {
