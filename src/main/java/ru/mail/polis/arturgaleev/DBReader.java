@@ -18,11 +18,6 @@ public class DBReader implements AutoCloseable {
     private final Path dbDirectoryPath;
     private List<FileDBReader> fileReaders;
 
-    public DBReader(Path dbDirectoryPath) throws IOException {
-        this.dbDirectoryPath = dbDirectoryPath;
-        updateReadersList();
-    }
-
     private static List<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
         List<FileDBReader> fileDBReaderList = new ArrayList<>();
         try (Stream<Path> files = Files.list(dbDirectoryPath)) {
@@ -35,6 +30,11 @@ public class DBReader implements AutoCloseable {
         }
         fileDBReaderList.sort(Comparator.comparing(FileDBReader::getFileID));
         return fileDBReaderList;
+    }
+
+    public DBReader(Path dbDirectoryPath) throws IOException {
+        this.dbDirectoryPath = dbDirectoryPath;
+        fileReaders = getFileDBReaders(dbDirectoryPath);
     }
 
     public void updateReadersList() throws IOException {
