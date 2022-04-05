@@ -16,9 +16,10 @@ public class MergeIterator<E> implements Iterator<Entry<E>> {
 
     // Low priority = old value
     // High priority = new value
-    public MergeIterator(PriorityPeekingIterator<Entry<E>> iterator1,
-                         PriorityPeekingIterator<Entry<E>> iterator2,
-                         Comparator<E> keyComparator
+    public MergeIterator(
+            PriorityPeekingIterator<Entry<E>> iterator1,
+            PriorityPeekingIterator<Entry<E>> iterator2,
+            Comparator<E> keyComparator
     ) {
         this.keyComparator = keyComparator;
         iteratorsQueue = new PriorityQueue<>(2, getIteratorComparator());

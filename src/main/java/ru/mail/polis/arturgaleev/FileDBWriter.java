@@ -8,7 +8,6 @@ import ru.mail.polis.Entry;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -133,10 +132,6 @@ public class FileDBWriter implements Closeable {
             long mapByteSize
     ) throws IOException {
         Path tmpPath = path.getParent().resolve(FILE_TMP);
-        if (Files.exists(tmpPath)) {
-            throw new FileAlreadyExistsException("File " + tmpPath
-                    + " already exists. Creation of new one may accuse errors");
-        }
 
         MemorySegment page = createTmpMemorySegmentPage(mapByteSize, tmpPath, writeScope);
 
