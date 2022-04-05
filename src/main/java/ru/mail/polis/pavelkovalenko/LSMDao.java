@@ -26,6 +26,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     public LSMDao(Config config) throws IOException {
         this.config = config;
         this.serializer = new Serializer(sstables, config);
+        
         Files.walkFileTree(config.basePath(), new ConfigVisitor(sstables));
     }
 
