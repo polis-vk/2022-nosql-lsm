@@ -12,7 +12,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-@DaoFactory(stage = 3, week = 2)
+@DaoFactory(stage = 3, week = 3)
 public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
