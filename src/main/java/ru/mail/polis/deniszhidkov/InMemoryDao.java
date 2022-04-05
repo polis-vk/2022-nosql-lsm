@@ -134,15 +134,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void compact() throws IOException {
-        if (readers.size() == 0 && storage.isEmpty()) {
+        if (readers.size() <= 1 && storage.isEmpty()) {
             return;
         } else if (readers.size() == 0) {
             flush();
             storage.clear();
             return;
         }
-        flush(); // Флашим данные, чтобы не потерять при потере электричества
-        storage.clear();
+        flush(); // Флашим данные, чтобы не потерять при падении
         lock.writeLock().lock();
         try {
             // Этап 1: Упадём здесь - при переоткрытии игнорируем tmp файлы
@@ -176,6 +175,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     directoryPath.resolve(OFFSETS_FILE_NAME + 0 + FILE_EXTENSION),
                     StandardCopyOption.ATOMIC_MOVE
             );
+            storage.clear();
         } finally {
             lock.writeLock().unlock();
         }
