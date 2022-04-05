@@ -110,6 +110,10 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     @Override
     public void compact() throws IOException {
+        if (memory.isEmpty() && Storage.getFilesCount(config) <= 1) {
+            return;
+        }
+
         lock.writeLock().lock();
         try {
             Iterator<BaseEntry<MemorySegment>> allDataIterator = get(null, null);
