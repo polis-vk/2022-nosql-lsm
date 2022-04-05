@@ -1,5 +1,9 @@
 package ru.mail.polis.pavelkovalenko.visitors;
 
+import ru.mail.polis.pavelkovalenko.comparators.PathComparator;
+import ru.mail.polis.pavelkovalenko.PairedFiles;
+import ru.mail.polis.pavelkovalenko.utils.Utils;
+
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Path;
@@ -9,9 +13,6 @@ import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.TreeSet;
-import ru.mail.polis.pavelkovalenko.PairedFiles;
-import ru.mail.polis.pavelkovalenko.comparators.PathComparator;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 public class ConfigVisitor extends SimpleFileVisitor<Path> {
 

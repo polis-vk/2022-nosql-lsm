@@ -1,14 +1,14 @@
 package ru.mail.polis.pavelkovalenko;
 
-import java.io.RandomAccessFile;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Iterator;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
+import java.io.RandomAccessFile;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Iterator;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
@@ -41,10 +41,6 @@ public final class Serializer {
             throws IOException {
         if (!sstable.hasNext()) {
             return;
-        }
-
-        if (sstables.size() == 9) {
-            System.out.println();
         }
 
         PairedFiles lastPairedFiles = addPairedFiles();

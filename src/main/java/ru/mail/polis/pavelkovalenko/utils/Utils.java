@@ -1,12 +1,12 @@
 package ru.mail.polis.pavelkovalenko.utils;
 
-import java.nio.file.Path;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
+import java.nio.file.Path;
 import java.nio.channels.FileChannel;
 
 public final class Utils {

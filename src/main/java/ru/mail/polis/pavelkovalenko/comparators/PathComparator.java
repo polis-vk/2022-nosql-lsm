@@ -3,7 +3,7 @@ package ru.mail.polis.pavelkovalenko.comparators;
 import java.nio.file.Path;
 import java.util.Comparator;
 
-public final class PathComparator implements Comparator<Path>  {
+public final class PathComparator implements Comparator<Path> {
 
     public static final PathComparator INSTANSE = new PathComparator();
 
