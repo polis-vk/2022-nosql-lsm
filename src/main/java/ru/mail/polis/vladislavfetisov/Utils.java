@@ -2,10 +2,18 @@ package ru.mail.polis.vladislavfetisov;
 
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
+import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 
+import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+
 public final class Utils {
+
     private Utils() {
 
     }
@@ -31,39 +39,41 @@ public final class Utils {
         return Byte.compare(b1, b2);
     }
 
-    public static Entry<MemorySegment> binarySearch(MemorySegment key, MemorySegment mapFile, MemorySegment mapIndex) {
+    public static long binarySearch(MemorySegment key,
+                                    MemorySegment mapFile,
+                                    MemorySegment mapIndex) {
         long l = 0;
-        long rb = mapIndex.byteSize() / Long.BYTES;
-        long r = rb;
+        long rightBound = mapIndex.byteSize() / Long.BYTES;
+        long r = rightBound - 1;
         while (l <= r) {
             long middle = (l + r) >>> 1;
             Entry<MemorySegment> middleEntry = getByIndex(mapFile, mapIndex, middle);
             int res = compareMemorySegments(middleEntry.key(), key);
             if (res == 0) {
-                return middleEntry;
-            }
-            if (res < 0) {
+                return middle;
+            } else if (res < 0) {
                 l = middle + 1;
             } else {
                 r = middle - 1;
             }
-            if (l == rb) {
-                return null;
-            }
         }
-        return null;
+        if (r == -1) {
+            return -(l + 1);
+        }
+        return l;
     }
 
-    private static Entry<MemorySegment> getByIndex(MemorySegment mapFile, MemorySegment mapIndex, long index) {
+    public static Entry<MemorySegment> getByIndex(MemorySegment mapFile, MemorySegment mapIndex, long index) {
         long offset = getLength(mapIndex, index * Long.BYTES);
 
         long keyLength = getLength(mapFile, offset);
-        MemorySegment key = mapFile.asSlice(offset + Long.BYTES, keyLength);
+        offset += Long.BYTES;
+        MemorySegment key = mapFile.asSlice(offset, keyLength);
 
-        offset += Long.BYTES + keyLength;
+        offset += keyLength;
         long valueLength = getLength(mapFile, offset);
         MemorySegment value;
-        if (valueLength == -1) {
+        if (valueLength == SSTable.NULL_VALUE) {
             value = null;
         } else {
             value = mapFile.asSlice(offset + Long.BYTES, valueLength);
@@ -75,4 +85,32 @@ public final class Utils {
         return MemoryAccess.getLongAtOffset(mapFile, offset);
     }
 
+    public static long writeSegment(MemorySegment segment, MemorySegment fileMap, long fileOffset) {
+        long length = segment.byteSize();
+        MemoryAccess.setLongAtOffset(fileMap, fileOffset, length);
+
+        fileMap.asSlice(fileOffset + Long.BYTES).copyFrom(segment);
+
+        return Long.BYTES + length;
+    }
+
+    public static MemorySegment map(Path table, long length, FileChannel.MapMode mapMode) throws IOException {
+        return MemorySegment.mapFile(table,
+                0,
+                length,
+                mapMode,
+                ResourceScope.globalScope());
+    }
+
+    public static void rename(Path source, Path target) throws IOException {
+        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    public static Path withSuffix(Path path, String suffix) {
+        return path.resolveSibling(path.getFileName() + suffix);
+    }
+
+    public static boolean isTombstone(Entry<MemorySegment> entry) {
+        return entry.value() == null;
+    }
 }
