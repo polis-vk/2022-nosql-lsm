@@ -112,9 +112,7 @@ public final class FileUtils {
     }
 
     public static void compact(Iterator<BaseEntry<ByteBuffer>> iter, Path path) throws IOException {
-
         int fileNumber = getPaths(path).size() + 1;
-
         if (iter.hasNext()) {
             ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
             ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
