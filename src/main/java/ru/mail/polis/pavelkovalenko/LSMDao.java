@@ -6,7 +6,6 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.iterators.MergeIterator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -16,25 +15,21 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import ru.mail.polis.pavelkovalenko.visitors.CompactVisitor;
+import ru.mail.polis.pavelkovalenko.visitors.ConfigVisitor;
 
-public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
+public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memorySSTable = new ConcurrentSkipListMap<>();
     private final NavigableMap<Integer /*priority*/, PairedFiles> sstables = new TreeMap<>();
     private final Config config;
     private final Serializer serializer;
 
-    public PersistentDao(Config config) throws IOException {
+    public LSMDao(Config config) throws IOException {
         this.config = config;
+        this.serializer = new Serializer(sstables, config);
 
-        String[] files = new File(config.basePath().toString()).list();
-        if (files != null && files.length > 0) {
-            for (int i = 0; i < files.length / 2; ++i) {
-                addPairedFiles();
-            }
-        }
-
-        this.serializer = new Serializer(sstables);
+        Files.walkFileTree(config.basePath(), new ConfigVisitor(sstables));
     }
 
     @Override
@@ -49,37 +44,25 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        serializer.write(sstables.lastEntry().getValue(), memorySSTable);
+        serializer.write(memorySSTable.values().iterator());
     }
 
     @Override
     public void close() throws IOException {
-        addPairedFiles();
         flush();
+        memorySSTable.clear();
     }
 
     @Override
     public void compact() throws IOException {
-        Dao.super.compact();
-    }
-
-    private void addPairedFiles() throws IOException {
-        Path pathToDataFile = addFile(Utils.DATA_FILENAME);
-        Path pathToIndexesFile = addFile(Utils.INDEXES_FILENAME);
-        PairedFiles pathToPairedFiles = new PairedFiles(pathToDataFile, pathToIndexesFile);
-        sstables.put(sstables.size() + 1, pathToPairedFiles);
-    }
-
-    private Path addFile(String filename) throws IOException {
-        Path file = config.basePath().resolve(filename + (sstables.size() + 1) + Utils.FILE_EXTENSION);
-        createFile(file);
-        return file;
-    }
-
-    private void createFile(Path filename) throws IOException {
-        if (!Files.exists(filename)) {
-            Files.createFile(filename);
+        Iterator<Entry<ByteBuffer>> mergeIterator = get(null, null);
+        if (!mergeIterator.hasNext()) {
+            return;
         }
+        serializer.write(mergeIterator);
+
+        Files.walkFileTree(config.basePath(), new CompactVisitor(sstables.lastEntry().getValue()));
+        memorySSTable.clear();
     }
 
 }

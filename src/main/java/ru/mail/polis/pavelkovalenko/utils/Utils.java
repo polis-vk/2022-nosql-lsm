@@ -1,5 +1,6 @@
 package ru.mail.polis.pavelkovalenko.utils;
 
+import java.nio.file.Path;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
 
@@ -38,6 +39,14 @@ public final class Utils {
     public static MappedByteBuffer mapFile(FileChannel channel, FileChannel.MapMode mode, long size)
             throws IOException {
         return channel.map(mode, 0, size);
+    }
+
+    public static boolean isDataFile(Path file) {
+        return file.getFileName().toString().startsWith(DATA_FILENAME);
+    }
+
+    public static boolean isIndexesFile(Path file) {
+        return file.getFileName().toString().startsWith(INDEXES_FILENAME);
     }
 
 }

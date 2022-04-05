@@ -15,7 +15,7 @@ public final class EntryComparator implements Comparator<Entry<ByteBuffer>> {
 
     @Override
     public int compare(Entry<ByteBuffer> e1, Entry<ByteBuffer> e2) {
-        int keyCompare = e1.key().compareTo(e2.key());
+        int keyCompare = e1.key().rewind().compareTo(e2.key().rewind());
         if (keyCompare == 0 && (Utils.isTombstone(e1) || Utils.isTombstone(e2))) {
             return 0;
         }
