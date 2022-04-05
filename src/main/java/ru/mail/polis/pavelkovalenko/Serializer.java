@@ -158,14 +158,11 @@ public final class Serializer {
 
     private Path addFile(String filename, int priority) throws IOException {
         Path file = config.basePath().resolve(filename + priority + Utils.FILE_EXTENSION);
-        createFile(file);
-        return file;
+        return createFile(file);
     }
 
-    private void createFile(Path file) throws IOException {
-        if (!Files.exists(file)) {
-            Files.createFile(file);
-        }
+    private Path createFile(Path file) throws IOException {
+        return Files.createFile(file);
     }
 
 }
