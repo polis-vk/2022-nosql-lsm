@@ -1,7 +1,7 @@
 package ru.mail.polis.pavelkovalenko.visitors;
 
-import ru.mail.polis.pavelkovalenko.comparators.PathComparator;
 import ru.mail.polis.pavelkovalenko.PairedFiles;
+import ru.mail.polis.pavelkovalenko.comparators.PathComparator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;

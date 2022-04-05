@@ -4,6 +4,8 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.iterators.MergeIterator;
+import ru.mail.polis.pavelkovalenko.visitors.CompactVisitor;
+import ru.mail.polis.pavelkovalenko.visitors.ConfigVisitor;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -13,8 +15,6 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import ru.mail.polis.pavelkovalenko.visitors.CompactVisitor;
-import ru.mail.polis.pavelkovalenko.visitors.ConfigVisitor;
 
 public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
