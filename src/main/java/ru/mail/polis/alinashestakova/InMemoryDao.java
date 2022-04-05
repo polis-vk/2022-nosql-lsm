@@ -58,7 +58,6 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
                 while (delegate.hasNext() && delegate.peek().value() == null) {
                     delegate.next();
                 }
-
                 return delegate.hasNext();
             }
 
@@ -67,7 +66,6 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
                 if (!hasNext()) {
                     throw new NoSuchElementException("...");
                 }
-
                 return delegate.next();
             }
         };
@@ -79,7 +77,6 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             if (to == null) {
                 return memory.tailMap(from).values().iterator();
             }
-
             return memory.subMap(from, to).values().iterator();
         } finally {
             lock.readLock().unlock();
