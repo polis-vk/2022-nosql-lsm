@@ -20,7 +20,21 @@ public class DBReader implements AutoCloseable {
 
     public DBReader(Path dbDirectoryPath) throws IOException {
         this.dbDirectoryPath = dbDirectoryPath;
-        fileReaders = getFileDBReaders(dbDirectoryPath);
+        updateReadersList();
+    }
+
+    private static List<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
+        List<FileDBReader> fileDBReaderList = new ArrayList<>();
+        try (Stream<Path> files = Files.list(dbDirectoryPath)) {
+            List<Path> paths = files
+                    .filter(path -> path.toString().endsWith(DB_FILES_EXTENSION))
+                    .toList();
+            for (Path path : paths) {
+                fileDBReaderList.add(new FileDBReader(path));
+            }
+        }
+        fileDBReaderList.sort(Comparator.comparing(FileDBReader::getFileID));
+        return fileDBReaderList;
     }
 
     public void updateReadersList() throws IOException {
@@ -42,20 +56,6 @@ public class DBReader implements AutoCloseable {
             }
         }
         return max;
-    }
-
-    private List<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
-        List<FileDBReader> fileDBReaderList = new ArrayList<>();
-        try (Stream<Path> files = Files.list(this.dbDirectoryPath)) {
-            List<Path> paths = files
-                    .filter(path -> path.toString().endsWith(DB_FILES_EXTENSION))
-                    .toList();
-            for (Path path : paths) {
-                fileDBReaderList.add(new FileDBReader(path));
-            }
-        }
-        fileDBReaderList.sort(Comparator.comparing(FileDBReader::getFileID));
-        return fileDBReaderList;
     }
 
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
