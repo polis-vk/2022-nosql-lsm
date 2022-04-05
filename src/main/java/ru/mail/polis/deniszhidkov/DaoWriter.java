@@ -42,12 +42,13 @@ public class DaoWriter {
             offsetsWriter.writeInt(map.size());
             offsetsWriter.writeLong(dataWriter.size());
             for (BaseEntry<String> entry : map.values()) {
-                dataWriter.writeUTF(entry.key());
+                dataWriter.writeInt(entry.key().length());
+                dataWriter.writeChars(entry.key());
                 if (entry.value() == null) {
-                    dataWriter.writeBoolean(false);
+                    dataWriter.writeInt(-1);
                 } else {
-                    dataWriter.writeBoolean(true);
-                    dataWriter.writeUTF(entry.value());
+                    dataWriter.writeInt(entry.value().length());
+                    dataWriter.writeChars(entry.value());
                 }
                 offsetsWriter.writeLong(dataWriter.size());
             }
@@ -75,11 +76,12 @@ public class DaoWriter {
             offsetsWriter.writeInt(size);
             offsetsWriter.writeLong(dataWriter.size());
             while (iterator.hasNext()) {
-                BaseEntry<String> nextEntry = iterator.next();
-                if (nextEntry != null) {
-                    dataWriter.writeUTF(nextEntry.key());
-                    dataWriter.writeBoolean(true);
-                    dataWriter.writeUTF(nextEntry.value());
+                BaseEntry<String> entry = iterator.next();
+                if (entry != null) {
+                    dataWriter.writeInt(entry.key().length());
+                    dataWriter.writeChars(entry.key());
+                    dataWriter.writeInt(entry.value().length());
+                    dataWriter.writeChars(entry.value());
                     offsetsWriter.writeLong(dataWriter.size());
                 }
             }

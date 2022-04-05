@@ -7,6 +7,7 @@ import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -32,16 +33,16 @@ public class DaoReader implements Closeable {
                 return null;
             }
             reader.seek(offsets[middle]);
-            String currentKey = reader.readUTF();
+            String currentKey = readNextString();
             int comparison = currentKey.compareTo(key);
             if (comparison < 0) {
                 start = middle + 1;
             } else if (comparison == 0) {
-                boolean hasValue = reader.readBoolean();
-                if (!hasValue) {
+                String value = readNextString();
+                if (value == null) {
                     return new BaseEntry<>(currentKey, null);
                 }
-                return new BaseEntry<>(currentKey, reader.readUTF());
+                return new BaseEntry<>(currentKey, value);
             } else {
                 finish = middle - 1;
             }
@@ -53,15 +54,15 @@ public class DaoReader implements Closeable {
         if (startReadIndex < offsets.length && startReadIndex != -1) {
             reader.seek(offsets[startReadIndex]);
             startReadIndex += 1;
-            String currentKey = reader.readUTF();
+            String currentKey = readNextString();
             if (endReadFactor != null && currentKey.compareTo(endReadFactor) >= 0) {
                 return null;
             } else {
-                boolean hasValue = reader.readBoolean();
-                if (!hasValue) {
+                String value = readNextString();
+                if (value == null) {
                     return new BaseEntry<>(currentKey, null);
                 }
-                return new BaseEntry<>(currentKey, reader.readUTF());
+                return new BaseEntry<>(currentKey, value);
             }
         } else {
             return null;
@@ -78,7 +79,7 @@ public class DaoReader implements Closeable {
                 return resultIndex;
             }
             reader.seek(offsets[middle]);
-            String currentKey = reader.readUTF();
+            String currentKey = readNextString();
             int comparisonWithFrom = currentKey.compareTo(from);
             if (comparisonWithFrom < 0) {
                 start = middle + 1;
@@ -122,5 +123,15 @@ public class DaoReader implements Closeable {
             }
         }
         return fileOffsets;
+    }
+
+    private String readNextString() throws IOException {
+        int stringLength = reader.readInt();
+        if (stringLength == -1) {
+            return null;
+        }
+        byte[] buffer = new byte[stringLength * Character.BYTES];
+        reader.readFully(buffer);
+        return new String(buffer, StandardCharsets.UTF_16);
     }
 }
