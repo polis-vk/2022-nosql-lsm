@@ -6,6 +6,7 @@ import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -21,7 +22,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> memory =
             new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
 
-    private final Storage storage;
+    private Storage storage;
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Config config;
@@ -37,37 +38,16 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (from == null) {
             copyFrom = VERY_FIRST_KEY;
         }
-        Iterator<Entry<MemorySegment>> memoryIterator = getMemoryIterator(copyFrom, to);
-        Iterator<Entry<MemorySegment>> iterator = storage.iterate(copyFrom, to);
 
-        Iterator<Entry<MemorySegment>> mergeIterator = MergeIterator.of(
-                List.of(
-                        new IndexedPeekIterator<>(0, memoryIterator),
-                        new IndexedPeekIterator<>(1, iterator)
-                ),
-                EntryKeyComparator.INSTANCE
-        );
+        List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>();
+        iterators.add(getMemoryIterator(copyFrom, to));
+        iterators.addAll(storage.iterate(copyFrom, to));
 
-        IndexedPeekIterator<Entry<MemorySegment>> delegate = new IndexedPeekIterator<>(0, mergeIterator);
+        Iterator<Entry<MemorySegment>> mergeIterator = MergeIterator.of(iterators, EntryKeyComparator.INSTANCE);
 
-        return new Iterator<>() {
-            @Override
-            public boolean hasNext() {
-                while (delegate.hasNext() && delegate.peek().value() == null) {
-                    delegate.next();
-                }
-                return delegate.hasNext();
-            }
-
-            @Override
-            public Entry<MemorySegment> next() {
-                if (!hasNext()) {
-                    throw new NoSuchElementException("...");
-                }
-                return delegate.next();
-            }
-        };
+        return new TombstoneFilteringIterator(mergeIterator);
     }
+
 
     private Iterator<Entry<MemorySegment>> getMemoryIterator(MemorySegment from, MemorySegment to) {
         lock.readLock().lock();
@@ -85,15 +65,12 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) {
-        Iterator<Entry<MemorySegment>> iterator = get(key, null);
-        if (!iterator.hasNext()) {
-            return null;
+        Entry<MemorySegment> result = memory.get(key);
+        if (result == null) {
+            result = storage.get(key);
         }
-        Entry<MemorySegment> next = iterator.next();
-        if (MemorySegmentComparator.INSTANCE.compare(key, next.key()) == 0) {
-            return next;
-        }
-        return null;
+
+        return  (result == null || result.value() == null) ? null : result;
     }
 
     @Override
@@ -107,8 +84,14 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     }
 
     @Override
-    public void flush() throws IOException {
-        throw new UnsupportedOperationException("Not supported");
+    public void compact() throws IOException {
+
+        lock.writeLock();
+        try {
+            Storage.save(config, storage, get(null, null), memory);
+        } finally {
+            lock.writeLock().lock();
+        }
     }
 
     @Override
@@ -120,9 +103,49 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         storage.close();
         lock.writeLock().lock();
         try {
+            if (!storage.isClosed()) {
+                throw new IllegalStateException("Previous storage is open for write");
+            }
             Storage.save(config, storage, memory.values());
         } finally {
             lock.writeLock().unlock();
+        }
+
+    }
+
+    private static class TombstoneFilteringIterator implements Iterator<Entry<MemorySegment>> {
+        private final Iterator<Entry<MemorySegment>> iterator;
+        private Entry<MemorySegment> current;
+
+        public TombstoneFilteringIterator(Iterator<Entry<MemorySegment>> mergeIterator) {
+            this.iterator = mergeIterator;
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (current != null) {
+                return true;
+            }
+
+            while (iterator.hasNext()) {
+                Entry<MemorySegment> entry = iterator.next();
+                if (entry.value() != null) {
+                    current = entry;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        @Override
+        public Entry<MemorySegment> next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            Entry<MemorySegment> next = current;
+            current = null;
+            return next;
         }
     }
 }

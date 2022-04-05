@@ -14,11 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.stream.Stream;
 
 final class Storage implements Closeable {
@@ -58,14 +55,51 @@ final class Storage implements Closeable {
         return new Storage(scope, sstables);
     }
 
+    static void save(Config config,
+                     Storage previousState,
+                     Iterator<Entry<MemorySegment>> entriesIterator,
+                     ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> memory) throws IOException {
+
+        List<Entry<MemorySegment>> entries = new ArrayList<>();
+        while (entriesIterator.hasNext()) {
+            entries.add(entriesIterator.next());
+        }
+
+        save(config, previousState, entries);
+        memory.clear();
+        Path sstablePath = config.basePath().resolve(FILE_NAME + previousState.sstables.size() + FILE_EXT);
+        try (Stream<Path> listFiles = Files.list(config.basePath())){
+            listFiles.filter(path -> !path.equals(sstablePath))
+                    .forEach(path -> {
+                        try {
+                            Files.delete(path);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    });
+
+        }
+//        try (Stream<Path> stream = Files.list(config.basePath())) {
+//            stream.filter(file -> !file.toString().contains(FILE_EXT_TMP))
+//                    .forEach(f -> {
+//                        try {
+//                            Files.delete(f);
+//                        } catch (IOException e) {
+//                            throw new UncheckedIOException(e);
+//                        }
+//                    });
+//        }
+    }
+
     // it is supposed that entries can not be changed externally during this method call
     static void save(
             Config config,
             Storage previousState,
             Collection<Entry<MemorySegment>> entries) throws IOException {
-        if (previousState.scope.isAlive()) {
-            throw new IllegalStateException("Previous storage is open for write");
+        if (entries.isEmpty()) {
+            return;
         }
+
         int nextSSTableIndex = previousState.sstables.size();
         long entriesCount = entries.size();
         long dataStart = INDEX_HEADER_SIZE + INDEX_RECORD_SIZE * entriesCount;
@@ -109,7 +143,6 @@ final class Storage implements Closeable {
 
             nextSSTable.force();
         }
-
         Path sstablePath = config.basePath().resolve(FILE_NAME + nextSSTableIndex + FILE_EXT);
         Files.move(sstableTmpPath, sstablePath, StandardCopyOption.ATOMIC_MOVE);
     }
@@ -137,9 +170,17 @@ final class Storage implements Closeable {
         this.sstables = sstables;
     }
 
+    private long greaterOrEqualEntryIndex(MemorySegment sstable, MemorySegment key) {
+        long index = entryIndex(sstable, key);
+        if (index < 0) {
+            return ~index;
+        }
+        return index;
+    }
+
     // file structure:
     // (fileVersion)(entryCount)((entryPosition)...)|((keySize/key/valueSize/value)...)
-    private long greaterOrEqualEntryIndex(MemorySegment sstable, MemorySegment key) {
+    private long entryIndex(MemorySegment sstable, MemorySegment key) {
         long fileVersion = MemoryAccess.getLongAtOffset(sstable, 0);
         if (fileVersion != 0) {
             throw new IllegalStateException("Unknown file version: " + fileVersion);
@@ -169,7 +210,7 @@ final class Storage implements Closeable {
             }
         }
 
-        return left;
+        return ~left;
     }
 
     private Entry<MemorySegment> entryAt(MemorySegment sstable, long keyIndex) {
@@ -204,15 +245,23 @@ final class Storage implements Closeable {
         };
     }
 
-    public Iterator<Entry<MemorySegment>> iterate(MemorySegment keyFrom, MemorySegment keyTo) {
-        List<IndexedPeekIterator<Entry<MemorySegment>>> peekIterators = new ArrayList<>();
-        int index = 0;
+    public Entry<MemorySegment> get(MemorySegment key) {
+        long keyFromPos;
         for (MemorySegment sstable : sstables) {
-            Iterator<Entry<MemorySegment>> iterator = iterate(sstable, keyFrom, keyTo);
-            peekIterators.add(new IndexedPeekIterator<>(index, iterator));
-            index++;
+            keyFromPos = entryIndex(sstable, key);
+            if (keyFromPos >= 0) {
+                return entryAt(sstable, keyFromPos);
+            }
         }
-        return MergeIterator.of(peekIterators, EntryKeyComparator.INSTANCE);
+        return null;
+    }
+
+    public List<Iterator<Entry<MemorySegment>>> iterate(MemorySegment keyFrom, MemorySegment keyTo) {
+        List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(sstables.size());
+        for (MemorySegment sstable : sstables) {
+            iterators.add(iterate(sstable, keyFrom, keyTo));
+        }
+        return iterators;
     }
 
     @Override
@@ -225,4 +274,87 @@ final class Storage implements Closeable {
     public boolean isClosed() {
         return !scope.isAlive();
     }
+
+//    static Path save(
+//            Config config,
+//            Storage previousState,
+//            Iterator<Entry<MemorySegment>> entries) throws IOException {
+//        if (!entries.hasNext()) {
+//            return null;
+//        }
+//
+//        int sstablesCount = previousState.sstables.size();
+//        Path sstableTmpPath = config.basePath().resolve(FILE_NAME + sstablesCount + FILE_EXT_TMP);
+//
+//        Files.deleteIfExists(sstableTmpPath);
+//        Files.createFile(sstableTmpPath);
+//
+//        List<Entry<MemorySegment>> entriesList = new ArrayList<>();
+//
+//        try (ResourceScope writeScope = ResourceScope.newConfinedScope()) {
+//            long size = 0;
+//            long entriesCount = 0;
+//
+//            while (entries.hasNext()) {
+//                Entry<MemorySegment> entry = entries.next();
+//                entriesList.add(entry);
+//
+//                if (entry.value() == null) {
+//                    size += Long.BYTES + entry.key().byteSize() + Long.BYTES;
+//                } else {
+//                    size += Long.BYTES + entry.value().byteSize() + entry.key().byteSize() + Long.BYTES;
+//                }
+//
+//                entriesCount++;
+//            }
+//
+//            long dataStart = INDEX_HEADER_SIZE + INDEX_RECORD_SIZE * entriesCount;
+//
+//            MemorySegment nextSSTable = MemorySegment.mapFile(
+//                    sstableTmpPath,
+//                    0,
+//                    dataStart + size,
+//                    FileChannel.MapMode.READ_WRITE,
+//                    writeScope
+//            );
+//
+//            long index = 0;
+//            long offset = dataStart;
+//            for (Entry<MemorySegment> entry : entriesList) {
+//                MemoryAccess.setLongAtOffset(nextSSTable, INDEX_HEADER_SIZE + index * INDEX_RECORD_SIZE, offset);
+//
+//                offset += writeRecord(nextSSTable, offset, entry.key());
+//                offset += writeRecord(nextSSTable, offset, entry.value());
+//
+//                index++;
+//            }
+//
+//            MemoryAccess.setLongAtOffset(nextSSTable, 0, VERSION);
+//            MemoryAccess.setLongAtOffset(nextSSTable, 8, entriesCount);
+//
+//            nextSSTable.force();
+//        }
+//
+//        return sstableTmpPath;
+//    }
+//
+//    public static void deleteFiles(Config config) throws IOException {
+//        try (Stream<Path> stream = Files.list(config.basePath())) {
+//            stream
+//                    .filter(file -> !file.toString().contains(FILE_EXT_TMP))
+//                    .forEach(f -> {
+//                        try {
+//                            Files.delete(f);
+//                        } catch (IOException e) {
+//                            throw new UncheckedIOException(e);
+//                        }
+//                    });
+//        }
+//    }
+//
+//    public static void moveFile(Config config, Path source, long index) throws IOException {
+//        Path sstablePath = config.basePath().resolve(FILE_NAME + index + FILE_EXT);
+//        Files.move(source, sstablePath, StandardCopyOption.ATOMIC_MOVE);
+//    }
+
 }
