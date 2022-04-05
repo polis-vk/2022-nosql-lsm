@@ -124,7 +124,6 @@ final class Storage implements Closeable {
 
             nextSSTable.force();
         }
-
         return sstableTmpPath;
     }
 
