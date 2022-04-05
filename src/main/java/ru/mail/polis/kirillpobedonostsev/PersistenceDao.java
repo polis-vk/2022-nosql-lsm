@@ -224,6 +224,9 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public void compact() throws IOException {
         lock.writeLock().lock();
         try {
+            if (map.isEmpty() && files.size() <= 1) {
+                return;
+            }
             Path tmpFileName = getTmpFilePath(COMPACTED_TMP_FILE_NUMBER);
             MappedByteBuffer dataPage = save(() -> {
                 try {
