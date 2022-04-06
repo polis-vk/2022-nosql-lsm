@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.CharBuffer;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
@@ -25,7 +26,7 @@ public class Storage {
     private static final String DATA_FILE = "data";
     private static final String META_FILE = "meta";
     private static final String FILE_EXTENSION = ".txt";
-    private static final int COMPACTED_INDEX = -1;
+    private static final String COMPACTED = "compacted_";
     private static final OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
 
     private final Map<Thread, EntryReadWriter> entryReadWriter;
@@ -36,10 +37,11 @@ public class Storage {
     Storage(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
         File[] files = pathToDirectory.toFile().listFiles();
-        int daoFilesCount = files == null ? 0 : files.length / 2;
-        resolveCompactionIfNeeded(daoFilesCount);
-        this.daoFiles = new ArrayList<>(daoFilesCount);
-        this.bufferSize = initFiles(daoFilesCount);
+        int filesCount = files == null ? 0 : files.length;
+        boolean compactionResolved = resolveCompactionIfNeeded(filesCount);
+        int daoFiles = compactionResolved ? 1 : filesCount / 2;
+        this.daoFiles = new ArrayList<>(daoFiles);
+        this.bufferSize = initFiles(daoFiles);
         this.entryReadWriter = Collections.synchronizedMap(new WeakHashMap<>());
     }
 
@@ -72,13 +74,14 @@ public class Storage {
     }
 
     void compact(Iterator<BaseEntry<String>> mergeIterator) throws IOException {
-        savaData(mergeIterator, pathToData(COMPACTED_INDEX), pathToMeta(COMPACTED_INDEX));
+        Path compactedData = pathToFile(COMPACTED + DATA_FILE);
+        Path compactedMeta = pathToFile(COMPACTED + META_FILE);
+        savaData(mergeIterator, compactedData, compactedMeta);
         closeFiles();
-        int filesBefore = daoFiles.size();
         daoFiles.clear();
-        retainOnlyCompactedFile(filesBefore);
-        Files.move(pathToData(COMPACTED_INDEX), pathToData(0), StandardCopyOption.ATOMIC_MOVE);
-        Files.move(pathToMeta(COMPACTED_INDEX), pathToMeta(0), StandardCopyOption.ATOMIC_MOVE);
+        retainOnlyCompactedFiles();
+        Files.move(compactedData, pathToData(0), StandardCopyOption.ATOMIC_MOVE);
+        Files.move(compactedMeta, pathToMeta(0), StandardCopyOption.ATOMIC_MOVE);
     }
 
     void flush(Iterator<BaseEntry<String>> dataIterator) throws IOException {
@@ -162,34 +165,47 @@ public class Storage {
         return maxSize;
     }
 
-    private void resolveCompactionIfNeeded(int daoFilesCount) throws IOException {
-        boolean incorrectDataFileExists = Files.exists(pathToData(COMPACTED_INDEX));
-        boolean incorrectMetaFileExists = Files.exists(pathToMeta(COMPACTED_INDEX));
+    private boolean resolveCompactionIfNeeded(int filesInDirectory) throws IOException {
+        Path compactedData = pathToFile(COMPACTED + DATA_FILE);
+        Path compactedMeta = pathToFile(COMPACTED + META_FILE);
+        boolean incorrectDataFileExists = Files.exists(compactedData);
+        boolean incorrectMetaFileExists = Files.exists(compactedMeta);
         if (!incorrectDataFileExists && !incorrectMetaFileExists) {
-            return;
+            return false;
         }
-        retainOnlyCompactedFile(daoFilesCount - 1);
+        if (filesInDirectory > 2) {
+            retainOnlyCompactedFiles();
+        }
         if (incorrectDataFileExists) {
-            Files.move(pathToData(COMPACTED_INDEX), pathToData(0));
+            Files.move(compactedData, pathToData(0));
         }
         if (incorrectMetaFileExists) {
-            Files.move(pathToMeta(COMPACTED_INDEX), pathToMeta(0));
+            Files.move(compactedMeta, pathToMeta(0));
         }
+        return true;
     }
 
-    private void retainOnlyCompactedFile(int daoFilesCount) throws IOException {
-        for (int i = 0; i < daoFilesCount; i++) {
-            Files.delete(pathToData(i));
-            Files.delete(pathToMeta(i));
+    private void retainOnlyCompactedFiles() throws IOException {
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(pathToDirectory)) {
+            for (Path path : directoryStream) {
+                String fileName = path.getFileName().toString();
+                if (fileName.startsWith(DATA_FILE) || fileName.startsWith(META_FILE)) {
+                    Files.delete(path);
+                }
+            }
         }
     }
 
     private Path pathToMeta(int fileNumber) {
-        return pathToDirectory.resolve(META_FILE + fileNumber + FILE_EXTENSION);
+        return pathToFile(META_FILE + fileNumber);
     }
 
     private Path pathToData(int fileNumber) {
-        return pathToDirectory.resolve(DATA_FILE + fileNumber + FILE_EXTENSION);
+        return pathToFile(DATA_FILE + fileNumber);
+    }
+
+    private Path pathToFile(String fileName) {
+        return pathToDirectory.resolve(fileName + FILE_EXTENSION);
     }
 
     private class FileIterator implements Iterator<BaseEntry<String>> {
@@ -235,5 +251,4 @@ public class Storage {
             return entry;
         }
     }
-
 }
