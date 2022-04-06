@@ -50,6 +50,10 @@ public class DBReader implements AutoCloseable {
         return fileReaders.size();
     }
 
+    public boolean hasReaders() {
+        return fileReaders.isEmpty();
+    }
+
     public long getBiggestFileId() {
         if (fileReaders.isEmpty()) {
             return -1;
