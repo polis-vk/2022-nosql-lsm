@@ -4,7 +4,7 @@ import java.nio.file.Path;
 
 public class CompactDirectoryAlreadyExistsException extends IllegalStateException {
     // Note: not meant to serialize this exception
-    private transient final Path directory;
+    private final transient Path directory;
 
     public CompactDirectoryAlreadyExistsException(Path directory) {
         super();

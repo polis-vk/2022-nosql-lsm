@@ -33,7 +33,7 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     private final ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map =
             new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
 
-    private final static String COMPACT_NAME = "compacted";
+    private static final String COMPACT_NAME = "compacted";
 
     public FilesBackedDao(Config config) throws IOException {
         basePath = config.basePath();
