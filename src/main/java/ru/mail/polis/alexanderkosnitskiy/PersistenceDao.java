@@ -80,6 +80,13 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void compact() throws IOException {
+        if (amountOfFiles == 0) {
+            if (memory.isEmpty()) {
+                return;
+            }
+            flush();
+            return;
+        }
         int count = 0;
         int size = 0;
         Iterator<BaseEntry<ByteBuffer>> iter = get(null, null);
