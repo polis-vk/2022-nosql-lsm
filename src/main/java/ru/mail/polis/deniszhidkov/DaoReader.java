@@ -34,6 +34,9 @@ public class DaoReader implements Closeable {
             }
             reader.seek(offsets[middle]);
             String currentKey = readNextString();
+            if (currentKey == null) {
+                return null;
+            }
             int comparison = currentKey.compareTo(key);
             if (comparison < 0) {
                 start = middle + 1;
@@ -55,6 +58,9 @@ public class DaoReader implements Closeable {
             reader.seek(offsets[startReadIndex]);
             startReadIndex += 1;
             String currentKey = readNextString();
+            if (currentKey == null) {
+                return null;
+            }
             if (endReadFactor != null && currentKey.compareTo(endReadFactor) >= 0) {
                 return null;
             } else {
@@ -80,6 +86,9 @@ public class DaoReader implements Closeable {
             }
             reader.seek(offsets[middle]);
             String currentKey = readNextString();
+            if (currentKey == null) {
+                return -1;
+            }
             int comparisonWithFrom = currentKey.compareTo(from);
             if (comparisonWithFrom < 0) {
                 start = middle + 1;

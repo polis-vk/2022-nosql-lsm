@@ -47,7 +47,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     Files.delete(file);
                 }
             }
-        } // Удаляем файлы из директории и параллельно считаем количество storage, не относящиеся к нашей DAO
+        } // Удаляем файлы из директории, не относящиеся к нашей DAO, и считаем количество storage
         this.filesCounter = numberOfStorages;
         this.readers = initDaoReaders();
         this.writer = new DaoWriter(
@@ -160,11 +160,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             );
             tmpWriter.writeTmp(allData, allDataSize);
             /* Этап 2: Упадём здесь - при переоткрытии сработает метод finishCompactIfNecessary(),
-            *  который должен закончить compact(), удалив все старые файлы и переименовав tmp файлы */
+             *  который должен закончить compact(), удалив все старые файлы и переименовав tmp файлы */
             closeReaders();
             removeOldFiles();
             /* Этап 3: Упадём здесь - при переоткрытии сработает метод finishCompactIfNecessary(),
-            *  который должен закончить compact(), переименовав оставшийся/оба tmp файла */
+             *  который должен закончить compact(), переименовав оставшийся/оба tmp файла */
             Files.move(
                     pathToTmpDataFile,
                     directoryPath.resolve(DATA_FILE_NAME + 0 + FILE_EXTENSION),
