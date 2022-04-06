@@ -136,7 +136,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     public void compact() throws IOException {
         if (readers.size() <= 1 && storage.isEmpty()) {
             return;
-        } else if (readers.size() == 0) {
+        } else if (readers.isEmpty()) {
             flush();
             storage.clear();
             return;
@@ -189,7 +189,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (!isDataTmpExist && !isOffsetsTmpExist) {
             // Было прервано, когда в файлы ещё не началась запись
             return;
-        } else if (isDataTmpExist && isOffsetsTmpExist) {
+        }
+        if (isDataTmpExist && isOffsetsTmpExist) {
             // Было прервано во время записи или после неё, но до первого переименования файла
             if (!checkAllDataSaved()) {
                 // Показатель того, что все данные были записаны, хотя бы один удалённый storage или offsets файл
