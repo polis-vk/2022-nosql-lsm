@@ -39,9 +39,9 @@ public class Storage {
         File[] files = pathToDirectory.toFile().listFiles();
         int filesCount = files == null ? 0 : files.length;
         boolean compactionResolved = resolveCompactionIfNeeded(filesCount);
-        int daoFiles = compactionResolved ? 1 : filesCount / 2;
-        this.daoFiles = new ArrayList<>(daoFiles);
-        this.bufferSize = initFiles(daoFiles);
+        int daoFilesCount = compactionResolved ? 1 : filesCount / 2;
+        this.daoFiles = new ArrayList<>(daoFilesCount);
+        this.bufferSize = initFiles(daoFilesCount);
         this.entryReadWriter = Collections.synchronizedMap(new WeakHashMap<>());
     }
 
