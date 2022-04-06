@@ -187,10 +187,17 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         boolean isDataTmpExist = Files.exists(pathToTmpDataFile);
         boolean isOffsetsTmpExist = Files.exists(pathToTmpOffsetsFile);
         if (!isDataTmpExist && !isOffsetsTmpExist) {
+            // Было прервано, когда в файлы ещё не началась запись
             return;
+        } else if (isDataTmpExist && isOffsetsTmpExist) {
+            // Было прервано во время записи или после неё, но до первого переименования файла
+            if (!checkAllDataSaved()) {
+                // Показатель того, что все данные были записаны, хотя бы один удалённый storage или offsets файл
+                return;
+            }
+            removeOldFiles();
         }
-        // Нужна проверка на то дописали ли мы файл
-        removeOldFiles();
+        // Было прервано после записи после или до первого переименования
         if (isDataTmpExist) {
             Files.move(
                     pathToTmpOffsetsFile,
@@ -204,6 +211,25 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 directoryPath.resolve(DATA_FILE_NAME + 0 + FILE_EXTENSION),
                 StandardCopyOption.ATOMIC_MOVE
         );
+    }
+
+    private boolean checkAllDataSaved() throws IOException {
+        int numberOfStorages = 0;
+        int numberOfOffsets = 0;
+        int allFiles = 0;
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directoryPath)) {
+            for (Path file : directoryStream) {
+                String fileName = file.getFileName().toString().split("\\.")[0];
+                if (fileName.startsWith(DATA_FILE_NAME)) {
+                    numberOfStorages++;
+                    allFiles++;
+                } else if (fileName.startsWith(OFFSETS_FILE_NAME)) {
+                    numberOfOffsets++;
+                    allFiles++;
+                }
+            }
+        }
+        return numberOfStorages == allFiles / 2 && numberOfOffsets == allFiles / 2;
     }
 
     private void removeOldFiles() throws IOException {
