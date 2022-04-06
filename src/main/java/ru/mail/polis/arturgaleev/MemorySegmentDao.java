@@ -30,11 +30,11 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     // При канкарент если сделать с начала get а затем compose, то есть шанс, что все упадет,
     // тк у файлы по которым entryIterator ходит - исчезнут
+    private static Iterator<Entry<MemorySegment>> dataBaseIterator;
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         lock.readLock().lock();
         try {
-            Iterator<Entry<MemorySegment>> dataBaseIterator;
             if (from == null && to == null) {
                 dataBaseIterator = dataBase.values().iterator();
             } else if (from != null && to == null) {
@@ -44,11 +44,16 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             } else {
                 dataBaseIterator = dataBase.subMap(from, to).values().iterator();
             }
-            return new MergeIterator<>(
-                    new PriorityPeekingIterator<>(0, reader.get(from, to)),
-                    new PriorityPeekingIterator<>(1, dataBaseIterator),
-                    MemorySegmentComparator.INSTANCE
-            );
+
+            if (reader.getReadersCount() == 0) {
+                return dataBaseIterator;
+            } else {
+                return new MergeIterator<>(
+                        new PriorityPeekingIterator<>(0, reader.get(from, to)),
+                        new PriorityPeekingIterator<>(1, dataBaseIterator),
+                        MemorySegmentComparator.INSTANCE
+                );
+            }
         } finally {
             lock.readLock().unlock();
         }
