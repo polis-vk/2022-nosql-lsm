@@ -166,7 +166,7 @@ public final class SSTable implements Closeable {
 
     /**
      * record Sizes contains tableSize-size of SSTable,
-     * indexSize-size of indexTable
+     * indexSize-size of indexTable.
      */
     public record Sizes(long tableSize, long indexSize) {
         //empty
