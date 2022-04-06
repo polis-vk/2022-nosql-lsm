@@ -6,6 +6,7 @@ import ru.mail.polis.Dao;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.NoSuchFileException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.SortedMap;
@@ -29,7 +30,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
+    public Iterator<BaseEntry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) {
         lock.readLock().lock();
         try {
             List<PeekIterator> iterators = storage.getListOfOnDiskIterators(from, to);
@@ -69,18 +70,14 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        storage.store(inMemoryData.values().iterator(),
-                Storage.getDataAndIndexBufferSize(inMemoryData.values().iterator()), false);
-        storage.mapNextStorageUnit();
-        inMemoryData.clear();
-    }
-
-    @Override
-    public void close() throws IOException {
         lock.writeLock().lock();
         try {
-            storage.store(inMemoryData.values().iterator(),
-                    Storage.getDataAndIndexBufferSize(inMemoryData.values().iterator()), false);
+            if (inMemoryData.isEmpty()) {
+                return;
+            }
+            storage.storeToTempFile(inMemoryData.values());
+            storage.renameTempFile();
+            storage.mapNextStorageUnit();
             inMemoryData.clear();
         } finally {
             lock.writeLock().unlock();
@@ -88,14 +85,25 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     }
 
     @Override
+    public void close() throws IOException {
+        flush();
+    }
+
+    @Override
     public void compact() throws IOException {
-        storage.store(get(null, null), Storage.getDataAndIndexBufferSize(get(null, null)), true);
-        inMemoryData.clear();
+        flush();
+        if (storage.getMappedDataSize() == 1) {
+            return;
+        }
+        Iterator<BaseEntry<ByteBuffer>> mergeIter = get(null, null);
+        if (!mergeIter.hasNext()){
+            return;
+        }
+        storage.storeToTempFile(() -> get(null, null));
 
         Storage.cleanDiskExceptTempFile(storage.getBasePath());
         storage.cleanMappedData();
-        if (Storage.renameTempFile(storage.getBasePath())) {
-            storage.mapNextStorageUnit();
-        }
+        storage.renameTempFile();
+        storage.mapNextStorageUnit();
     }
 }

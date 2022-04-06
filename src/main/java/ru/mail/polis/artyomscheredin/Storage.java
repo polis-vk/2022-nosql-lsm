@@ -24,7 +24,7 @@ public class Storage {
     private static final int INDEX_HEADER_SIZE = 1;
 
     private final Path basePath;
-    private final List<Utils.Pair<ByteBuffer>> mappedDiskData;
+    private final List<Utils.BufferPair> mappedDiskData;
 
     public Storage(Path storagePath) throws IOException {
         this.basePath = storagePath;
@@ -33,16 +33,16 @@ public class Storage {
         ByteBuffer tempBuffer = mapTempFileIfExists();
         if ((tempBuffer != null) && !isDamaged(tempBuffer)) {
             cleanDiskExceptTempFile(basePath);
-            renameTempFile(basePath);
+            renameTempFile();
         }
-        Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
-        Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
-        Utils.Pair<ByteBuffer> mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
-        while (mappedUnit != null) {
-            mappedDiskData.add(mappedUnit);
-            nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
-            nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
-            mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
+        while (true) {
+            Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
+            Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
+            try {
+                mappedDiskData.add(mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath));
+            } catch (NoSuchFileException e) {
+                break;
+            }
         }
         mappedDiskData.forEach(e -> {
             if (isDamaged(e.index())) {
@@ -69,45 +69,30 @@ public class Storage {
     public void mapNextStorageUnit() throws IOException {
         Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
         Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
-        Utils.Pair<ByteBuffer> mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
-        if (mappedUnit != null) {
-            mappedDiskData.add(mappedUnit);
-        }
+        Utils.BufferPair mappedUnit = mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath);
+        mappedDiskData.add(mappedUnit);
     }
 
-    private static Utils.Pair<ByteBuffer> mapOnDiskStorageUnit(Path dataPath, Path indexPath) throws IOException {
+    private static Utils.BufferPair mapOnDiskStorageUnit(Path dataPath, Path indexPath) throws IOException {
         try (FileChannel dataChannel = FileChannel.open(dataPath);
              FileChannel indexChannel = FileChannel.open(indexPath)) {
-            if ((dataChannel.size() == 0) || (indexChannel.size() == 0)) {
-                return null;
-            }
             ByteBuffer indexBuffer = indexChannel.map(FileChannel.MapMode.READ_ONLY,
                     0, indexChannel.size());
             ByteBuffer dataBuffer = dataChannel.map(FileChannel.MapMode.READ_ONLY,
                     0, dataChannel.size());
-            return new Utils.Pair<>(dataBuffer, indexBuffer);
-        } catch (NoSuchFileException e) {
-            return null;
+            return new Utils.BufferPair(dataBuffer, indexBuffer);
         }
     }
 
-    public void store(Iterator<BaseEntry<ByteBuffer>> entryIterator,
-                      Utils.Pair<Integer> bufferSizes,
-                      boolean isTemp) throws IOException {
-        if (!entryIterator.hasNext()) {
+    public void storeToTempFile(Iterable<BaseEntry<ByteBuffer>> collection) throws IOException {
+        if (!collection.iterator().hasNext()) {
             return;
         }
 
         Path dataPath;
         Path indexPath;
-        if (isTemp) {
-            dataPath = basePath.resolve(DATA_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
-            indexPath = basePath.resolve(INDEXES_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
-        } else {
-            int index = mappedDiskData.size() + 1;
-            dataPath = basePath.resolve(DATA_FILE_NAME + index + EXTENSION);
-            indexPath = basePath.resolve(INDEXES_FILE_NAME + index + EXTENSION);
-        }
+        dataPath = basePath.resolve(DATA_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
+        indexPath = basePath.resolve(INDEXES_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
 
         ByteBuffer writeDataBuffer;
         ByteBuffer writeIndexBuffer;
@@ -121,12 +106,16 @@ public class Storage {
                      StandardOpenOption.READ,
                      StandardOpenOption.WRITE,
                      StandardOpenOption.TRUNCATE_EXISTING)) {
-            writeDataBuffer = dataChannel.map(FileChannel.MapMode.READ_WRITE, 0, bufferSizes.data());
-            writeIndexBuffer = indexChannel.map(FileChannel.MapMode.READ_WRITE, 0, bufferSizes.index());
+            Utils.BufferSizePair dataAndIndexInputBufferSize = getDataAndIndexBufferSize(collection.iterator());
+            Iterator<BaseEntry<ByteBuffer>> entryIterator = collection.iterator();
+            writeDataBuffer = dataChannel
+                    .map(FileChannel.MapMode.READ_WRITE, 0, dataAndIndexInputBufferSize.dataBufferSize());
+            writeIndexBuffer = indexChannel
+                    .map(FileChannel.MapMode.READ_WRITE, 0, dataAndIndexInputBufferSize.indexBufferSize());
 
             //index file: entities_number=n, offset_1...offset_n
             //data file: key_size, key, value_size, value
-            writeIndexBuffer.putInt(bufferSizes.index() / Integer.BYTES - 1);
+            writeIndexBuffer.putInt(dataAndIndexInputBufferSize.indexBufferSize() / Integer.BYTES - 1);
             while (entryIterator.hasNext()) {
                 BaseEntry<ByteBuffer> el = entryIterator.next();
                 writeIndexBuffer.putInt(writeDataBuffer.position());
@@ -143,7 +132,7 @@ public class Storage {
         }
     }
 
-    public static Utils.Pair<Integer> getDataAndIndexBufferSize(Iterator<BaseEntry<ByteBuffer>> it) {
+    private static Utils.BufferSizePair getDataAndIndexBufferSize(Iterator<BaseEntry<ByteBuffer>> it) {
         int size = 0;
         int count = 0;
         while (it.hasNext()) {
@@ -156,13 +145,13 @@ public class Storage {
             }
         }
         size += 2 * count * Integer.BYTES;
-        return new Utils.Pair<>(size, (INDEX_HEADER_SIZE + count) * Integer.BYTES);
+        return new Utils.BufferSizePair(size, (INDEX_HEADER_SIZE + count) * Integer.BYTES);
     }
 
     public List<PeekIterator> getListOfOnDiskIterators(ByteBuffer from, ByteBuffer to) {
         List<PeekIterator> iterators = new ArrayList<>();
         int priority = 0;
-        for (Utils.Pair<ByteBuffer> pair : mappedDiskData) {
+        for (Utils.BufferPair pair : mappedDiskData) {
             iterators.add(new PeekIterator(new FileIterator(pair.data(),
                     pair.index(), from, to), priority++));
         }
@@ -173,28 +162,29 @@ public class Storage {
         for (int i = 1; ; i++) {
             Path curIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + i + EXTENSION);
             Path curDataFilePath = basePath.resolve(DATA_FILE_NAME + i + EXTENSION);
-            if (!Files.deleteIfExists(curIndexFilePath) || !Files.deleteIfExists(curDataFilePath)) {
+            boolean isDataFileDeleted = !Files.deleteIfExists(curIndexFilePath);
+            boolean isIndexFileDeleted = !Files.deleteIfExists(curDataFilePath);
+            if (isDataFileDeleted && isIndexFileDeleted) {
                 break;
+            } else if (isDataFileDeleted || isIndexFileDeleted) {
+                throw new RuntimeException("Storage has been corrupted");
             }
         }
     }
 
-    @SuppressWarnings("EmptyCatchBlock")
-    public static boolean renameTempFile(Path basePath) throws IOException {
-        try {
-            Path tempDataPath = basePath.resolve(DATA_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
-            Path tempIndexPath = basePath.resolve(INDEXES_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
-            Files.move(tempDataPath, basePath.resolve(DATA_FILE_NAME + 1 + EXTENSION));
-            Files.move(tempIndexPath, basePath.resolve(INDEXES_FILE_NAME + 1 + EXTENSION));
-        } catch (NoSuchFileException e) {
-            //Dao was empty, temp file hasn't created
-            return false;
-        }
-        return true;
+    public final void renameTempFile() throws IOException {
+        Path tempDataPath = basePath.resolve(DATA_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
+        Path tempIndexPath = basePath.resolve(INDEXES_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
+        Files.move(tempDataPath, basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION));
+        Files.move(tempIndexPath, basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION));
     }
 
     public static int getIndexHeaderSize() {
         return INDEX_HEADER_SIZE;
+    }
+
+    public int getMappedDataSize() {
+        return mappedDiskData.size();
     }
 
     public Path getBasePath() {
