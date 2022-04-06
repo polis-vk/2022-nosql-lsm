@@ -4,6 +4,7 @@ import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -25,7 +26,11 @@ public class DBReader implements AutoCloseable {
                     .filter(path -> path.toString().endsWith(DB_FILES_EXTENSION))
                     .toList();
             for (Path path : paths) {
-                fileDBReaderList.add(new FileDBReader(path));
+                FileDBReader fileDBReader = new FileDBReader(path);
+                if (fileDBReader.checkIfFileCorrupted()) {
+                    throw new FileSystemException("File with path: " + path + " is corrupted");
+                }
+                fileDBReaderList.add(fileDBReader);
             }
         }
         fileDBReaderList.sort(Comparator.comparing(FileDBReader::getFileID));

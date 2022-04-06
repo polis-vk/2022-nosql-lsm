@@ -79,11 +79,9 @@ public class FileDBWriter implements Closeable {
         return offset;
     }
 
-    private static MemorySegment createTmpMemorySegmentPage(
-            long mapByteSize,
-            Path tmpPath,
-            ResourceScope writeScope
-    ) throws IOException {
+    private static MemorySegment createTmpMemorySegmentPage(long mapByteSize,
+                                                            Path tmpPath,
+                                                            ResourceScope writeScope) throws IOException {
         Files.deleteIfExists(tmpPath);
         Files.createFile(tmpPath);
         return MemorySegment.mapFile(
@@ -112,11 +110,9 @@ public class FileDBWriter implements Closeable {
         long dataWriteOffset = 0;
         while (iterator.hasNext()) {
             Entry<MemorySegment> entry = iterator.next();
-            MemoryAccess.setLongAtOffset(page, Long.BYTES + Long.BYTES * i, dataWriteOffset);
+            MemoryAccess.setLongAtOffset(page, Long.BYTES + Long.BYTES * i++, dataWriteOffset);
 
             dataWriteOffset += writeEntry(page, dataBeingOffset + dataWriteOffset, entry);
-
-            i++;
         }
 
         MemoryAccess.setLongAtOffset(page, Long.BYTES + Long.BYTES * i++, sha256.length);
@@ -143,7 +139,7 @@ public class FileDBWriter implements Closeable {
         Path tmpPath = path.getParent().resolve(FILE_TMP);
 
         MemorySegment page = createTmpMemorySegmentPage(
-                iteratorData.byteArraySize() + sha256.length + Long.BYTES,
+                iteratorData.dataArraySize() + sha256.length + Long.BYTES,
                 tmpPath, writeScope);
 
         writeIterable(page, iteratorData.numberOfEntries(), iterator, sha256);
@@ -161,8 +157,7 @@ public class FileDBWriter implements Closeable {
         writeScope.close();
     }
 
-    @SuppressWarnings("UnusedVariable")
-    private record IteratorData(long numberOfEntries, long byteArraySize, byte[] sha256) {
-
+    @SuppressWarnings("all")
+    private record IteratorData(long numberOfEntries, long dataArraySize, byte[] sha256) {
     }
 }

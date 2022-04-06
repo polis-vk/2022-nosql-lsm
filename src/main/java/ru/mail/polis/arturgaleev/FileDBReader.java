@@ -8,7 +8,6 @@ import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -37,10 +36,6 @@ public class FileDBReader implements AutoCloseable {
 
         pageData = page.asSlice(Long.BYTES * (2 + size) + hashSize);
         pageLinks = page.asSlice(Long.BYTES, Long.BYTES * size);
-
-        if (checkIfFileCorrupted()) {
-            throw new FileSystemException("File with path: " + path + " is corrupted");
-        }
     }
 
     //It may open corrupted files. Very dangerous to use
