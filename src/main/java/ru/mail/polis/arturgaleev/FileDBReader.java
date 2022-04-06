@@ -52,6 +52,7 @@ public class FileDBReader implements AutoCloseable {
         pageLinks = page.asSlice(Long.BYTES, Long.BYTES * size);
     }
 
+    // Checks file's hash
     boolean checkIfFileCorrupted() {
         MessageDigest md;
         try {
