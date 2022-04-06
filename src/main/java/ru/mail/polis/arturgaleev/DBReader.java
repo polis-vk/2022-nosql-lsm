@@ -50,7 +50,7 @@ public class DBReader implements AutoCloseable {
         return fileReaders.size();
     }
 
-    public boolean hasReaders() {
+    public boolean hasNoReaders() {
         return fileReaders.isEmpty();
     }
 
