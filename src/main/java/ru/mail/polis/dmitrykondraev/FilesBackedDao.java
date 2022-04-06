@@ -53,12 +53,12 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
         if (from == null) {
             return get(MemorySegmentComparator.MINIMAL, to);
         }
-        Iterator<MemorySegmentEntry> inMemoryIterator = inMemoryGet(from, to);
+        PeekIterator<MemorySegmentEntry> inMemoryIterator = new PeekIterator<>(inMemoryGet(from, to));
         if (sortedStringTables.isEmpty()) {
-            return withoutTomStones(new PeekIterator<>(inMemoryIterator));
+            return withoutTomStones(inMemoryIterator);
         }
         List<PeekIterator<MemorySegmentEntry>> iterators = new ArrayList<>(1 + sortedStringTables.size());
-        iterators.add(new PeekIterator<>(inMemoryIterator));
+        iterators.add(inMemoryIterator);
         for (SortedStringTable table : sortedStringTables) {
             iterators.add(new PeekIterator<>(table.get(from, to)));
         }
