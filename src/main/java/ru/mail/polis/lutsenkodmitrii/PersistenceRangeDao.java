@@ -112,7 +112,6 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         writeMemoryToFile(generateNextFilePath());
     }
 
-
     @Override
     public void close() throws IOException {
         if (isClosed) {
@@ -175,8 +174,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
             Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
             writeMemoryToFile(tempMemoryFilePath);
             Files.move(tempMemoryFilePath, reserveMemoryFilePath);
-        }
-        finally {
+        } finally {
             lock.writeLock().unlock();
         }
     }
