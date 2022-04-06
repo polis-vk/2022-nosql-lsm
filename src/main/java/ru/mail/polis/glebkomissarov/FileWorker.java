@@ -23,24 +23,15 @@ public class FileWorker {
     private static final String CMP_DIR = "COMPACT DIRECTORY";
     private static final Logger log = Logger.getLogger(FileWorker.class.getName());
 
-    private final List<BaseEntry<MemorySegment>> files = new ArrayList<>();
+    private List<BaseEntry<MemorySegment>> files;
     private Path[] paths;
 
     public void load(Path basePath) {
         try {
             paths = getPaths(basePath);
-
-            int count = paths.length / 2;
-            for (int i = 0; i < count; i++) {
-                MemorySegment offsets = createMappedSegment(paths[i], Files.size(paths[i]),
-                        FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
-                MemorySegment entries = createMappedSegment(paths[i + count], Files.size(paths[i + count]),
-                        FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
-                files.add(new BaseEntry<>(offsets, entries));
-            }
+            files = getMappedFiles();
         } catch (IOException e) {
             log.log(Level.SEVERE, "Broken files. Exception: ", e);
-            paths = new Path[]{};
         }
     }
 
@@ -92,7 +83,16 @@ public class FileWorker {
             }
         }
         if (compacted) {
-             load(basePath);
+            paths = getPathArray(basePath);
+            if (paths[0].toString().contains(IS_COMPACT)) {
+                CollapseTogether.moveFile(paths[0],
+                        basePath.resolve(FileName.OFFSETS.getName() + LOWEST_PRIORITY));
+                CollapseTogether.moveFile(paths[1],
+                        basePath.resolve(FileName.SAVED_DATA.getName() + LOWEST_PRIORITY));
+
+                paths = getPathArray(basePath);
+            }
+            files = getMappedFiles();
         }
     }
 
@@ -169,15 +169,32 @@ public class FileWorker {
     }
 
     private Path[] getPaths(Path basePath) throws IOException {
+        Path[] result = getPathArray(basePath);
+        if (checkCompact(result)) {
+            return recovery(result, basePath);
+        }
+        return result;
+    }
+
+    private Path[] getPathArray(Path basePath) throws IOException {
         try (Stream<Path> str = Files.list(basePath)) {
-            Path[] result = str.filter(i -> !Files.isDirectory(i))
+             return str.filter(i -> !Files.isDirectory(i))
                     .sorted(java.util.Comparator.comparing(Path::toString))
                     .toArray(Path[]::new);
-            if (checkCompact(result)) {
-                return recovery(result, basePath);
-            }
-            return result;
         }
+    }
+
+    private List<BaseEntry<MemorySegment>> getMappedFiles() throws IOException {
+        List<BaseEntry<MemorySegment>> mapped = new ArrayList<>();
+        int count = paths.length / 2;
+        for (int i = 0; i < count; i++) {
+            MemorySegment offsets = createMappedSegment(paths[i], Files.size(paths[i]),
+                    FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
+            MemorySegment entries = createMappedSegment(paths[i + count], Files.size(paths[i + count]),
+                    FileChannel.MapMode.READ_ONLY, ResourceScope.newConfinedScope());
+            mapped.add(new BaseEntry<>(offsets, entries));
+        }
+        return mapped;
     }
 
     private boolean checkCompact(Path[] result) {

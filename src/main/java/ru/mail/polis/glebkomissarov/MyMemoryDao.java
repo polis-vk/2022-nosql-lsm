@@ -120,7 +120,6 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         CollapseTogether.moveFile(savedData, basePath.resolve(FileName.COMPACT_SAVED.getName() + PRIORITY));
         // Удаляет старые файлы, влияет только на то, когда будут удалены старые данные
         CollapseTogether.removeOld(basePath);
-        compacted = false;
     }
 
     @Override
