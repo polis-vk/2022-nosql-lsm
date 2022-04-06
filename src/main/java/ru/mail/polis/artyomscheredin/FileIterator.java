@@ -15,13 +15,12 @@ class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
     public FileIterator(ByteBuffer dataBuffer, ByteBuffer indexBuffer, ByteBuffer from, ByteBuffer to) {
         this.dataBuffer = dataBuffer;
         this.indexBuffer = indexBuffer;
-        cursor = (from == null)
-                ? (Storage.getIndexHeaderSize() * Integer.BYTES) : findOffset(indexBuffer, dataBuffer, from);
+        cursor = (from == null) ? 0 : findOffset(indexBuffer, dataBuffer, from);
         upperBound = (to == null) ? indexBuffer.limit() : findOffset(indexBuffer, dataBuffer, to);
     }
 
     private static int findOffset(ByteBuffer indexBuffer, ByteBuffer dataBuffer, ByteBuffer key) {
-        int low = Storage.getIndexHeaderSize();
+        int low = 0;
         int mid;
         int high = indexBuffer.remaining() / Integer.BYTES - 1;
         while (low <= high) {
