@@ -26,8 +26,8 @@ public class MapSerializeStream implements Closeable {
         int newIndex = (startIndexFile == -1) ? 0 : startIndexFile + dataCount;
         Path mapPath = config.basePath().resolve(DATA_FILE_NAME + newIndex);
         Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + newIndex);
-        Files.deleteIfExists(mapPath);
         Files.deleteIfExists(indexesPath);
+        Files.deleteIfExists(mapPath);
         mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE_NEW));
         indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE_NEW));
     }
@@ -36,8 +36,8 @@ public class MapSerializeStream implements Closeable {
     public MapSerializeStream(Config config, String prefix) throws IOException {
         Path mapPath = config.basePath().resolve(prefix + DATA_FILE_NAME);
         Path indexesPath = config.basePath().resolve(prefix + INDEX_FILE_NAME);
-        Files.deleteIfExists(mapPath);
         Files.deleteIfExists(indexesPath);
+        Files.deleteIfExists(mapPath);
         mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE_NEW));
         indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE_NEW));
     }
