@@ -35,7 +35,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Config config;
     private final List<MemorySegment> logs;
-    private final ResourceScope scope = ResourceScope.newSharedScope();
+    private final ResourceScope scope = ResourceScope.globalScope();
 
     public MemorySegmentDao() throws IOException {
         this(null);
@@ -151,7 +151,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (!scope.isAlive()) {
             return;
         }
-        scope.close();
+//        scope.close();
         lock.writeLock().lock();
         try {
             if (!data.isEmpty()) {
