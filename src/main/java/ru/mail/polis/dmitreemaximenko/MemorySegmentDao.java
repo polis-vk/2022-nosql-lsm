@@ -154,7 +154,9 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         scope.close();
         lock.writeLock().lock();
         try {
-            writeValuesToFile(data.values().iterator(), data.values().iterator(), getLogName());
+            if (!data.isEmpty()) {
+                writeValuesToFile(data.values().iterator(), data.values().iterator(), getLogName());
+            }
         } finally {
             lock.writeLock().unlock();
         }
