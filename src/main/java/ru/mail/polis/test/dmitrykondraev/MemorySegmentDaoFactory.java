@@ -14,7 +14,7 @@ import java.io.IOException;
  * Author: Dmitry Kondraev.
  */
 
-@DaoFactory(stage = 3, week = 3)
+@DaoFactory(stage = 4)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, MemorySegmentEntry> {
 
     @Override

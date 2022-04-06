@@ -13,8 +13,6 @@ import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Iterator;
 
-import static ru.mail.polis.dmitrykondraev.MemorySegmentComparator.INSTANCE;
-
 final class SortedStringTable implements Closeable {
     public static final String INDEX_FILENAME = "index";
     public static final String DATA_FILENAME = "data";
@@ -74,7 +72,7 @@ final class SortedStringTable implements Closeable {
         int high = last;
         while (low < high) {
             int mid = low + (high - low) / 2;
-            int compare = INSTANCE.compare(mappedEntry(mid).key(), key);
+            int compare = MemorySegmentComparator.INSTANCE.compare(mappedEntry(mid).key(), key);
             if (compare < 0) {
                 low = mid + 1;
             } else if (compare > 0) {
