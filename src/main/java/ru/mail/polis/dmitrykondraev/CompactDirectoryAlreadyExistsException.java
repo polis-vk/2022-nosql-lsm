@@ -2,11 +2,9 @@ package ru.mail.polis.dmitrykondraev;
 
 import java.nio.file.Path;
 
-/**
- *
- */
 public class CompactDirectoryAlreadyExistsException extends IllegalStateException {
-    private final Path directory;
+    // Note: not meant to serialize this exception
+    private transient final Path directory;
 
     public CompactDirectoryAlreadyExistsException(Path directory) {
         super();

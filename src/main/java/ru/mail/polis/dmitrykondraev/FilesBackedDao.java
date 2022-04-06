@@ -27,14 +27,13 @@ import java.util.stream.Stream;
  */
 
 public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
-    private final static String COMPACT_NAME = "compacted";
-    private final static String TABLE_PREFIX = "T";
-
-    private final ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map =
-            new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
     private final Deque<SortedStringTable> sortedStringTables = new ArrayDeque<>();
     private final Path basePath;
     private final Path compactDir;
+    private final ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map =
+            new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
+
+    private final static String COMPACT_NAME = "compacted";
 
     public FilesBackedDao(Config config) throws IOException {
         basePath = config.basePath();
@@ -100,10 +99,6 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
         map.clear();
     }
 
-    private Path sortedStringTablePath(int index) {
-        return basePath.resolve(String.format("%010d", index));
-    }
-
     @Override
     public void compact() throws IOException {
         SortedStringTable.of(Files.createDirectory(compactDir))
@@ -122,6 +117,10 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     @Override
     public void close() throws IOException {
         flush();
+    }
+
+    private Path sortedStringTablePath(int index) {
+        return basePath.resolve(String.format("%010d", index));
     }
 
     private static <K, V> Iterator<V> iterator(Map<K, V> map) {
