@@ -62,12 +62,14 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     public void flush() throws IOException {
         if (storageSystem != null) {
             storageSystem.save(entrys);
+            entrys.clear();
         }
     }
 
     @Override
     public void compact() throws IOException {
         storageSystem.compact(entrys);
+        entrys.clear();
     }
 
     @Override

@@ -11,8 +11,8 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
-import java.nio.file.Path;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.EnumSet;
 import java.util.Iterator;
@@ -32,7 +32,8 @@ public class StoragePart implements AutoCloseable {
     private MappedByteBuffer memoryBB;
     private int entrysC;
 
-    private StoragePart(Path indexPath, Path memoryPath, MappedByteBuffer indexBB, MappedByteBuffer memoryBB, int storagePartN) {
+    private StoragePart(Path indexPath, Path memoryPath,
+                        MappedByteBuffer indexBB, MappedByteBuffer memoryBB, int storagePartN) {
         this.indexPath = indexPath;
         this.memoryPath = memoryPath;
         this.storagePartN = storagePartN;
@@ -104,11 +105,10 @@ public class StoragePart implements AutoCloseable {
         memoryBB.force();
     }
 
-    public void delete() throws FileSystemException {
+    public void delete() throws IOException {
         close();
-        if (!indexPath.toFile().delete() || !memoryPath.toFile().delete()) {
-            throw new FileSystemException("Can't delete files for storage part");
-        }
+        Files.delete(indexPath);
+        Files.delete(memoryPath);
     }
 
     private void remapIfNeed(int changedSize) throws IOException {

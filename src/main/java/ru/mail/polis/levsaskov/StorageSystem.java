@@ -8,16 +8,21 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.PriorityQueue;
+import java.util.Comparator;
 import java.util.concurrent.ConcurrentNavigableMap;
 
-public class StorageSystem implements AutoCloseable {
+public final class StorageSystem implements AutoCloseable {
     private static final String COMPACT_PREFIX = "compact.bin";
     private static final String MEM_FILENAME = "daoMem.bin";
     private static final String IND_FILENAME = "daoIndex.bin";
 
     // Order is important, fresh in begin
-    private final ArrayList<StoragePart> storageParts;
+    private final List<StoragePart> storageParts;
     private final Path location;
 
     private StorageSystem(ArrayList<StoragePart> storageParts, Path location) {
@@ -28,7 +33,7 @@ public class StorageSystem implements AutoCloseable {
     public static StorageSystem load(Path location) throws IOException {
         ArrayList<StoragePart> storageParts = new ArrayList<>();
 
-        for (int i = 0; ; i++) {
+        for (int i = 0; i < Integer.MAX_VALUE; i++) {
             Path nextIndFile = getIndexFilePath(location, i);
             Path nextMemFile = getMemFilePath(location, i);
             try {
@@ -62,15 +67,15 @@ public class StorageSystem implements AutoCloseable {
     }
 
     public void compact(ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> localEntrys) throws IOException {
-        if (storageParts.isEmpty()) {
-            save(localEntrys);
+        if (storageParts.size() <= 1 && localEntrys.isEmpty()) {
+            // Compacted already
             return;
         }
 
         Path indCompPath = location.resolve(COMPACT_PREFIX + IND_FILENAME);
         Path memCompPath = location.resolve(COMPACT_PREFIX + MEM_FILENAME);
-        if (!indCompPath.toFile().createNewFile() ||
-                !memCompPath.toFile().createNewFile()) {
+        if (!indCompPath.toFile().createNewFile()
+                || !memCompPath.toFile().createNewFile()) {
             throw new FileAlreadyExistsException("Compaction file already exists.");
         }
 
@@ -87,8 +92,8 @@ public class StorageSystem implements AutoCloseable {
         // Rename compactionPart
         Path indexFP = getIndexFilePath(0);
         Path memFP = getMemFilePath(0);
-        if (!indCompPath.toFile().renameTo(indexFP.toFile()) ||
-                !memCompPath.toFile().renameTo(memFP.toFile())) {
+        if (!indCompPath.toFile().renameTo(indexFP.toFile())
+                || !memCompPath.toFile().renameTo(memFP.toFile())) {
             throw new FileSystemException("Renaming compaction file error.");
         }
         storageParts.add(StoragePart.load(indexFP, memFP, 0));
@@ -115,12 +120,12 @@ public class StorageSystem implements AutoCloseable {
     }
 
     public void save(ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> entrys) throws IOException {
-        if (entrys.size() == 0) {
+        if (entrys.isEmpty()) {
             return;
         }
 
-        if (!getIndexFilePath(storageParts.size()).toFile().createNewFile() ||
-                !getMemFilePath(storageParts.size()).toFile().createNewFile()) {
+        if (!getIndexFilePath(storageParts.size()).toFile().createNewFile()
+                || !getMemFilePath(storageParts.size()).toFile().createNewFile()) {
             throw new FileAlreadyExistsException("Can't create file to save entrys");
         }
 
