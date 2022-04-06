@@ -15,10 +15,9 @@ import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.deleteFiles;
 import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.getFiles;
 import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.mapFile;
-import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.renameFile;
+import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.safelyReplaceUnifiedFile;
 
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
     public static final String FILE = "data";
@@ -100,12 +99,9 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             out.writeIterator(get(null, null), count, size);
         }
 
-        renameFile(config,FILE + IN_PROGRESS_EXTENSION, FILE + COMPOSITE_EXTENSION);
-        renameFile(config,INDEX + IN_PROGRESS_EXTENSION, INDEX + COMPOSITE_EXTENSION);
-        memory.clear();
-        deleteFiles(config, amountOfFiles);
-        renameFile(config,FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
-        renameFile(config,INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
+        safelyReplaceUnifiedFile(memory, config, amountOfFiles,
+                INDEX + IN_PROGRESS_EXTENSION,
+                FILE + IN_PROGRESS_EXTENSION);
         amountOfFiles = 1;
 
     }

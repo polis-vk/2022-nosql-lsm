@@ -1,8 +1,10 @@
 package ru.mail.polis.alexanderkosnitskiy;
 
+import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -10,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.stream.Stream;
 
 public final class DaoUtility {
@@ -47,7 +50,7 @@ public final class DaoUtility {
                     Files.deleteIfExists(config.basePath().resolve(FILE + IN_PROGRESS_EXTENSION));
                     Files.deleteIfExists(config.basePath().resolve(INDEX + IN_PROGRESS_EXTENSION));
                 }
-                numberOfFiles = workWithPaths(files.toList(), config) / 2;
+                numberOfFiles = safelyCountDaoFiles(files.toList(), config) / 2;
             }
         } catch (NoSuchFileException e) {
             numberOfFiles = 0;
@@ -60,22 +63,35 @@ public final class DaoUtility {
         return readers;
     }
 
-    private static long workWithPaths(List<Path> paths, Config config) throws IOException {
-        long numberOfFiles = paths.size();
+    private static long safelyCountDaoFiles(List<Path> paths, Config config) throws IOException {
+        long numberOfFiles = 0;
         for (Path path : paths) {
             if (path.toString().endsWith(INDEX + COMPOSITE_EXTENSION)) {
-                deleteFiles(config, numberOfFiles);
-                if (Files.exists(config.basePath().resolve(FILE + COMPOSITE_EXTENSION))) {
-                    renameFile(config, FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
+                deleteFiles(config, paths.size() / 2);
+                if (!Files.exists(config.basePath().resolve(FILE + COMPOSITE_EXTENSION))) {
+                    throw new IOException("The content file was missing, when expected to be present");
                 }
+                renameFile(config, FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
                 renameFile(config, INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
-                numberOfFiles = 1;
+                numberOfFiles = 2;
                 break;
-            } else if (!path.toString().endsWith(SAFE_EXTENSION)) {
-                --numberOfFiles;
+            } else if (path.toString().endsWith(SAFE_EXTENSION)) {
+                ++numberOfFiles;
             }
         }
         return numberOfFiles;
+    }
+
+    public static void safelyReplaceUnifiedFile(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory,
+                                                 Config config, long amountOfFiles,
+                                                 String indexFileName,
+                                                 String dataFileName) throws IOException {
+        renameFile(config, dataFileName, FILE + COMPOSITE_EXTENSION);
+        renameFile(config, indexFileName, INDEX + COMPOSITE_EXTENSION);
+        memory.clear();
+        deleteFiles(config, amountOfFiles);
+        renameFile(config,FILE + COMPOSITE_EXTENSION, FILE + 0 + SAFE_EXTENSION);
+        renameFile(config,INDEX + COMPOSITE_EXTENSION, INDEX + 0 + SAFE_EXTENSION);
     }
 
     public static void deleteFiles(Config config, long amountOfFiles) throws IOException {
