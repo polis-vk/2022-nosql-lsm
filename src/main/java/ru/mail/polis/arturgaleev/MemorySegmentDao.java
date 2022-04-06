@@ -45,7 +45,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                 dataBaseIterator = dataBase.subMap(from, to).values().iterator();
             }
 
-            if (reader.hasReaders()) {
+            if (!reader.hasReaders()) {
                 return dataBaseIterator;
             } else {
                 return new MergeIterator<>(
