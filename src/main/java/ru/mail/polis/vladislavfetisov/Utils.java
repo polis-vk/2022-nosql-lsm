@@ -11,7 +11,10 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Iterator;
 import java.util.List;
+
+import static ru.mail.polis.vladislavfetisov.LsmDao.logger;
 
 public final class Utils {
 
@@ -19,7 +22,7 @@ public final class Utils {
 
     }
 
-    public static long sizeOfEntry(Entry<MemorySegment> entry) {
+    private static long sizeOfEntry(Entry<MemorySegment> entry) {
         long valueSize = (entry.value() == null) ? 0 : entry.value().byteSize();
         return 2L * Long.BYTES + entry.key().byteSize() + valueSize;
     }
@@ -95,12 +98,11 @@ public final class Utils {
         return Long.BYTES + length;
     }
 
-    public static MemorySegment map(Path table, long length, FileChannel.MapMode mapMode) throws IOException {
-        return MemorySegment.mapFile(table,
-                0,
-                length,
-                mapMode,
-                ResourceScope.globalScope());
+    public static MemorySegment map(Path table,
+                                    long length,
+                                    FileChannel.MapMode mapMode,
+                                    ResourceScope scope) throws IOException {
+        return MemorySegment.mapFile(table, 0, length, mapMode, scope);
     }
 
     public static void rename(Path source, Path target) throws IOException {
@@ -120,5 +122,23 @@ public final class Utils {
             Files.deleteIfExists(table.getTableName());
             Files.deleteIfExists(table.getIndexName());
         }
+    }
+
+    public static SSTable.Sizes getSizes(Iterator<Entry<MemorySegment>> values) {
+        long tableSize = 0;
+        long count = 0;
+        while (values.hasNext()) {
+            tableSize += sizeOfEntry(values.next());
+            count++;
+        }
+        return new SSTable.Sizes(tableSize, count * Long.BYTES);
+    }
+
+    public static void checkMemory() {
+        long usedMemory = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+        logger.info("memory use: {}", usedMemory / 1024L);
+        long free = Runtime.getRuntime().maxMemory() - usedMemory;
+        logger.info("free: {}", free / 1024L);
+        logger.info("all {}", (usedMemory + free) / 1024L);
     }
 }

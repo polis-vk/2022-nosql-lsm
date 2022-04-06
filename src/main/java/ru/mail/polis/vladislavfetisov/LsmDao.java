@@ -1,18 +1,15 @@
 package ru.mail.polis.vladislavfetisov;
 
 import jdk.incubator.foreign.MemorySegment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NavigableMap;
-import java.util.SortedMap;
+import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -21,6 +18,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private List<SSTable> tables;
     private final AtomicLong ssTableNum;
     private NavigableMap<MemorySegment, Entry<MemorySegment>> storage = getNewStorage();
+    public static final Logger logger = LoggerFactory.getLogger(LsmDao.class);
 
     public LsmDao(Config config) {
         this.config = config;
@@ -87,12 +85,12 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     public void compact() throws IOException {
         List<SSTable> fixed = this.tables;
         NavigableMap<MemorySegment, Entry<MemorySegment>> readOnlyStorage = this.storage;
-        Iterator<Entry<MemorySegment>> all = get(null, null, readOnlyStorage, fixed);
+        Iterator<Entry<MemorySegment>> forSize = get(null, null, readOnlyStorage, fixed);
+        Iterator<Entry<MemorySegment>> forWrite = get(null, null, readOnlyStorage, fixed);
 
-        List<Entry<MemorySegment>> list = new ArrayList<>();
-        all.forEachRemaining(list::add);
+        SSTable.Sizes sizes = Utils.getSizes(forSize);
 
-        this.tables = List.of(writeSSTable(list)); //immutable
+        this.tables = List.of(writeSSTable(forWrite, sizes.tableSize(), sizes.indexSize())); //immutable
         this.storage = getNewStorage();
         Utils.deleteTables(fixed);
     }
@@ -120,9 +118,13 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         if (storage.isEmpty()) {
             return;
         }
-        SSTable table = writeSSTable(storage.values());
+
+        NavigableMap<MemorySegment, Entry<MemorySegment>> readOnlyStorage = this.storage;
+        SSTable.Sizes sizes = Utils.getSizes(readOnlyStorage.values().iterator());
+        SSTable table = writeSSTable(readOnlyStorage.values().iterator(), sizes.tableSize(), sizes.indexSize());
+
         tablesAtomicAdd(table); //need for concurrent get
-        storage = getNewStorage();
+        this.storage = getNewStorage();
     }
 
     private void tablesAtomicAdd(SSTable table) {
@@ -132,9 +134,20 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         tables = newTables;
     }
 
-    private SSTable writeSSTable(Collection<Entry<MemorySegment>> values) throws IOException {
+    @Override
+    public void close() throws IOException {
+        flush();
+        for (SSTable table : tables) {
+            table.close();
+        }
+    }
+
+    private SSTable writeSSTable(Iterator<Entry<MemorySegment>> iterator,
+                                 long tableSize,
+                                 long indexSize) throws IOException {
+
         Path tableName = nextTableName();
-        return SSTable.writeTable(tableName, values);
+        return SSTable.writeTable(tableName, iterator, tableSize, indexSize);
     }
 
     private Path nextTableName() {
