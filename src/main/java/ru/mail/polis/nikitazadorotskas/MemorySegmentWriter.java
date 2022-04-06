@@ -17,23 +17,18 @@ class MemorySegmentWriter {
     private final MemorySegment mappedMemorySegmentForIndexes;
     private final ResourceScope scope;
 
-    MemorySegmentWriter(int arraySize, long storageSize, Utils utils, ResourceScope scope) throws IOException {
+    MemorySegmentWriter(int arraySize, long storageSize, Utils utils, ResourceScope scope, int number)
+            throws IOException {
         this.scope = scope;
-        mappedMemorySegmentForStorage = createMappedSegment(utils.getStoragePath(), storageSize);
+        mappedMemorySegmentForStorage = createMappedSegment(utils.getStoragePath(number), storageSize);
         mappedMemorySegmentForIndexes = createMappedSegment(
-                utils.getIndexesPath(),
+                utils.getIndexesPath(number),
                 Long.BYTES * (arraySize * 2L + 1)
         );
     }
 
     private MemorySegment createMappedSegment(Path path, long size) throws IOException {
-        return MemorySegment.mapFile(
-                path,
-                0,
-                size,
-                FileChannel.MapMode.READ_WRITE,
-                scope
-        );
+        return MemorySegment.mapFile(path, 0, size, FileChannel.MapMode.READ_WRITE, scope);
     }
 
     void writeEntry(BaseEntry<MemorySegment> entry) {
@@ -42,6 +37,10 @@ class MemorySegmentWriter {
     }
 
     void writePartOfEntry(MemorySegment data) {
+        if (data == null) {
+            markIndexOfNullValue();
+            return;
+        }
         writeIndex(data.byteSize());
         writeData(data);
     }
@@ -49,8 +48,15 @@ class MemorySegmentWriter {
     private void writeIndex(long size) {
         lastIndex += size;
         lastSize = size;
-        arrayIndex++;
-        MemoryAccess.setLongAtIndex(mappedMemorySegmentForIndexes, arrayIndex, lastIndex);
+        setIndex(lastIndex);
+    }
+
+    private void markIndexOfNullValue() {
+        setIndex(-1);
+    }
+
+    private void setIndex(long index) {
+        MemoryAccess.setLongAtIndex(mappedMemorySegmentForIndexes, ++arrayIndex, index);
     }
 
     private void writeData(MemorySegment other) {
