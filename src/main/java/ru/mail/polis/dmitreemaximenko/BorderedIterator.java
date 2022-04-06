@@ -197,7 +197,6 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             EntryContainer nextEntry = getNextEntry();
             offset += nextEntry.entrySize;
             next = nextEntry.entry;
-            
             return result;
         }
 
