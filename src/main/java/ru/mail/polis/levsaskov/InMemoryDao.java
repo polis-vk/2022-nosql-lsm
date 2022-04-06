@@ -66,6 +66,11 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     }
 
     @Override
+    public void compact() throws IOException {
+        storageSystem.compact(entrys);
+    }
+
+    @Override
     public void close() throws IOException {
         flush();
         storageSystem.close();

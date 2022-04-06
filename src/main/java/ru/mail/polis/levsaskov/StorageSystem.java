@@ -5,14 +5,16 @@ import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileSystemException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public class StorageSystem implements AutoCloseable {
+    private static final String COMPACT_PREFIX = "compact.bin";
     private static final String MEM_FILENAME = "daoMem.bin";
-    private static final String INDEX_FILENAME = "daoIndex.bin";
+    private static final String IND_FILENAME = "daoIndex.bin";
 
     // Order is important, fresh in begin
     private final ArrayList<StoragePart> storageParts;
@@ -57,6 +59,39 @@ public class StorageSystem implements AutoCloseable {
         }
 
         return res;
+    }
+
+    public void compact(ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> localEntrys) throws IOException {
+        if (storageParts.isEmpty()) {
+            save(localEntrys);
+            return;
+        }
+
+        Path indCompPath = location.resolve(COMPACT_PREFIX + IND_FILENAME);
+        Path memCompPath = location.resolve(COMPACT_PREFIX + MEM_FILENAME);
+        if (!indCompPath.toFile().createNewFile() ||
+                !memCompPath.toFile().createNewFile()) {
+            throw new FileAlreadyExistsException("Compaction file already exists.");
+        }
+
+        // Create compaction part and write all entrys there
+        StoragePart compactionPart = StoragePart.load(indCompPath, memCompPath, Integer.MAX_VALUE);
+        compactionPart.write(getMergedEntrys(localEntrys, null, null));
+        compactionPart.close();
+
+        for (StoragePart storagePart : storageParts) {
+            storagePart.delete();
+        }
+        storageParts.clear();
+
+        // Rename compactionPart
+        Path indexFP = getIndexFilePath(0);
+        Path memFP = getMemFilePath(0);
+        if (!indCompPath.toFile().renameTo(indexFP.toFile()) ||
+                !memCompPath.toFile().renameTo(memFP.toFile())) {
+            throw new FileSystemException("Renaming compaction file error.");
+        }
+        storageParts.add(StoragePart.load(indexFP, memFP, 0));
     }
 
     public Iterator<Entry<ByteBuffer>> getMergedEntrys(
@@ -118,6 +153,6 @@ public class StorageSystem implements AutoCloseable {
     }
 
     private static Path getIndexFilePath(Path location, int num) {
-        return location.resolve(num + INDEX_FILENAME);
+        return location.resolve(num + IND_FILENAME);
     }
 }
