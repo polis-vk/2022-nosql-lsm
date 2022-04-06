@@ -56,8 +56,9 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     public static final int DELETED_MARK = 0;
     public static final int EXISTING_MARK = 1;
     public static final String DATA_FILE_NAME = "daoData";
-    public static final String DATA_FILE_EXTENSION = ".txt";
+    public static final String MEMORY_FILE_NAME = "memory";
     public static final String COMPACTION_FILE_NAME = "compaction";
+    public static final String DATA_FILE_EXTENSION = ".txt";
     public static final String TEMP_FILE_EXTENSION = ".tmp";
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private volatile boolean isClosed;
@@ -108,26 +109,9 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         if (data.isEmpty()) {
             return;
         }
-        Path dataFilePath = generateNextFilePath();
-        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(dataFilePath, UTF_8, writeOptions)) {
-            DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
-            for (BaseEntry<String> baseEntry : data.values()) {
-                String key = preprocess(baseEntry.key());
-                writeKey(key, bufferedFileWriter);
-                int keyWrittenSize = DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT + key.length() + 1;
-                // +1 из-за DELETED_MARK или EXISTING_MARK
-                if (baseEntry.value() == null) {
-                    bufferedFileWriter.write(DELETED_MARK + '\n');
-                    DaoUtils.writeUnsignedInt(keyWrittenSize, bufferedFileWriter);
-                    continue;
-                }
-                String value = preprocess(baseEntry.value());
-                writeValue(value, bufferedFileWriter);
-                DaoUtils.writeUnsignedInt(keyWrittenSize + value.length(), bufferedFileWriter);
-            }
-            bufferedFileWriter.flush();
-        }
+        writeMemoryToFile(generateNextFilePath());
     }
+
 
     @Override
     public void close() throws IOException {
@@ -151,7 +135,8 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         if (filesMap.isEmpty() || (filesMap.size() == 1 && data.isEmpty())) {
             return;
         }
-        // Ставим writeLock
+        // Резервируем Path для данных из памяти, куда они будут записаны в случае неудачного удаления файлов,
+        // чтобы при неудаче compact не терять данные в памяти.
         // Начинаем писать compact во временный файл,
         // после переименовываем его в обычный самый приоритетный файл
         // Если что-то пошло не так при создании/записи/переименовании - снимаем lock и прокидываем IOException
@@ -159,12 +144,10 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         // Начинаем удалять старые файлы: все кроме только что созданного. После переименовываем compact-файл в первый
         // При ошибке выше чтение будет из корректного compact-файла, который останется самым приоритетным файлом
         // Независимо от успеха/ошибок в действиях выше, файлы записанные после переоткрытия dao будут приоритетнее
-        // Если compact-файл успешно создан, то независимо от успеха удаления старых файлов данные в памяти очищаются
-        // так как они уже содержаться в compact-файле и flush в последующем close для них будет лишний
+        Path reserveMemoryFilePath = generateNextFilePath();
         Iterator<BaseEntry<String>> allEntriesIterator = get(null, null);
-        Path tempCompactionFilePath = config.basePath().resolve(COMPACTION_FILE_NAME + TEMP_FILE_EXTENSION);
+        Path tempCompactionFilePath = generateTempPath(COMPACTION_FILE_NAME);
         Path lastFilePath = generateNextFilePath();
-        lock.writeLock().lock();
         try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(tempCompactionFilePath, UTF_8, writeOptions)) {
             DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
             while (allEntriesIterator.hasNext()) {
@@ -176,23 +159,24 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                 DaoUtils.writeUnsignedInt(DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT
                         + key.length() + value.length() + 1, bufferedFileWriter); // +1 из-за EXISTING_MARK
             }
-            bufferedFileWriter.flush();
-            Files.move(tempCompactionFilePath, lastFilePath);
-        } catch (IOException e) {
-            lock.writeLock().unlock();
-            throw new IOException(e);
         }
-
+        Files.move(tempCompactionFilePath, lastFilePath);
+        lock.writeLock().lock();
         try {
             for (Map.Entry<Path, FileInputStream> filesMapEntry : filesMap.entrySet()) {
                 filesMapEntry.getValue().close();
                 Files.delete(filesMapEntry.getKey());
             }
+            data.clear();
             filesMap.clear();
             currentFileNumber = 0;
             Files.move(lastFilePath, generateNextFilePath());
-        } finally {
-            data.clear();
+        } catch (IOException e) {
+            Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
+            writeMemoryToFile(tempMemoryFilePath);
+            Files.move(tempMemoryFilePath, reserveMemoryFilePath);
+        }
+        finally {
             lock.writeLock().unlock();
         }
     }
@@ -215,6 +199,26 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         }
     }
 
+    private void writeMemoryToFile(Path dataFilePath) throws IOException {
+        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(dataFilePath, UTF_8, writeOptions)) {
+            DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
+            for (BaseEntry<String> baseEntry : data.values()) {
+                String key = preprocess(baseEntry.key());
+                writeKey(key, bufferedFileWriter);
+                int keyWrittenSize = DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT + key.length() + 1;
+                // +1 из-за DELETED_MARK или EXISTING_MARK
+                if (baseEntry.value() == null) {
+                    bufferedFileWriter.write(DELETED_MARK + '\n');
+                    DaoUtils.writeUnsignedInt(keyWrittenSize, bufferedFileWriter);
+                    continue;
+                }
+                String value = preprocess(baseEntry.value());
+                writeValue(value, bufferedFileWriter);
+                DaoUtils.writeUnsignedInt(keyWrittenSize + value.length(), bufferedFileWriter);
+            }
+        }
+    }
+
     private void writeKey(String key, BufferedWriter bufferedFileWriter) throws IOException {
         DaoUtils.writeUnsignedInt(key.length(), bufferedFileWriter);
         bufferedFileWriter.write(key);
@@ -226,7 +230,11 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     }
 
     private Path generateNextFilePath() {
-        return config.basePath().resolve(DATA_FILE_NAME + currentFileNumber + DATA_FILE_EXTENSION);
+        return config.basePath().resolve(DATA_FILE_NAME + currentFileNumber++ + DATA_FILE_EXTENSION);
+    }
+
+    private Path generateTempPath(String fileName) {
+        return config.basePath().resolve(fileName + TEMP_FILE_EXTENSION);
     }
 
     public Config getConfig() {
