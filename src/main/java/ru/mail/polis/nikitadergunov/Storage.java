@@ -9,6 +9,7 @@ import ru.mail.polis.Entry;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -31,7 +32,7 @@ final class Storage implements Closeable {
     private static final String FILE_NAME = "data";
     private static final String FILE_EXT = ".dat";
     private static final String FILE_EXT_TMP = ".tmp";
-    private static final String LOW_PRIORITY_FILE = "0";
+    private static final int LOW_PRIORITY_FILE = 0;
     private static int maxPriorityFile;
 
     private static final Comparator<Path> fileComparator = Comparator.comparingInt(Storage::getPriorityFile);
@@ -57,7 +58,7 @@ final class Storage implements Closeable {
                 try {
                     sstables.add(mapForRead(scope, path));
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    throw new UncheckedIOException(e);
                 }
             });
         }
@@ -91,9 +92,9 @@ final class Storage implements Closeable {
             listFiles.filter(path -> !path.equals(sstablePathOld))
                     .forEach(path -> {
                         try {
-                            Files.delete(path);
+                            Files.deleteIfExists(path);
                         } catch (IOException e) {
-                            e.printStackTrace();
+                            throw new UncheckedIOException(e);
                         }
                     });
 
@@ -149,7 +150,7 @@ final class Storage implements Closeable {
             }
 
             MemoryAccess.setLongAtOffset(nextSSTable, 0, VERSION);
-            MemoryAccess.setLongAtOffset(nextSSTable, 8, entriesCount);
+            MemoryAccess.setLongAtOffset(nextSSTable, Long.BYTES, entriesCount);
 
             nextSSTable.force();
         }
