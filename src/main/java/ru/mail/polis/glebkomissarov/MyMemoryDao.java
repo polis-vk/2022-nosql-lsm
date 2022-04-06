@@ -7,62 +7,103 @@ import ru.mail.polis.Dao;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Collections;
 import java.util.Iterator;
-import java.util.Map;
+import java.util.List;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
+    private static final MemorySegment FIRST_KEY = MemorySegment.ofArray(new byte[]{});
+
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<>(
-            new SegmentsComparator()
+            Comparator::compare
     );
     private final Path basePath;
-    private final Converter converter = new Converter();
+    private final FileWorker fileWorker;
 
     public MyMemoryDao(Config config) {
         basePath = config.basePath();
+        fileWorker = new FileWorker();
+        fileWorker.load(basePath);
     }
 
     @Override
-    public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
-        if (data.isEmpty()) {
-            return Collections.emptyIterator();
-        }
+    public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
+        lock.readLock().lock();
+        try {
+            MemorySegment newFrom = from;
+            if (from == null) {
+                newFrom = FIRST_KEY;
+            }
 
-        if (from == null) {
-            return to == null ? shell(data) : shell(data.headMap(to));
-        } else {
-            return to == null ? shell(data.tailMap(from)) : shell(data.subMap(from, to));
+            Iterator<BaseEntry<MemorySegment>> memoryIterator;
+            if (to == null) {
+                memoryIterator = data.tailMap(newFrom).values().iterator();
+            } else {
+                memoryIterator = data.subMap(newFrom, to).values().iterator();
+            }
+
+            if (fileWorker.fileCount() <= 0) {
+                return memoryIterator;
+            }
+
+            List<PeekIterator> iterators = fileWorker.findEntries(from, to);
+            iterators.add(new PeekIterator(memoryIterator, fileWorker.fileCount() + 1));
+            return new RangeIterator(iterators);
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
     @Override
     public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
-        BaseEntry<MemorySegment> result = data.get(key);
+         lock.readLock().lock();
+        try {
+            BaseEntry<MemorySegment> result = data.get(key);
+            if (result == null) {
+                result = fileWorker.findEntry(key);
+            }
 
-        if (result == null) {
-            result = converter.searchEntry(basePath, key);
+            if (result != null && result.value() == null) {
+                return null;
+            }
+            return result;
+        } finally {
+            lock.readLock().unlock();
         }
-        return result;
     }
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
-        data.put(entry.key(), entry);
+        lock.writeLock().lock();
+        try {
+            if (fileWorker.fileCount() == 0 && entry.value() == null) {
+                data.remove(entry.key());
+                return;
+            }
+            data.put(entry.key(), entry);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     @Override
-    public void flush() throws IOException {
-        long size = data.values().stream()
-                .mapToLong(entry -> entry.value().byteSize() + entry.key().byteSize()).sum();
-        converter.startSerializeEntries(data.size(), size, basePath);
-        for (BaseEntry<MemorySegment> entry : data.values()) {
-            converter.writeEntries(entry, entry.key().byteSize(), entry.value().byteSize());
-        }
-        converter.writeOffsets(data.size());
+    public void flush() {
+        throw new UnsupportedOperationException("Not implemented");
     }
 
-    private Iterator<BaseEntry<MemorySegment>> shell(Map<MemorySegment, BaseEntry<MemorySegment>> sub) {
-        return sub.values().iterator();
+    @Override
+    public void close() throws IOException {
+        lock.writeLock().lock();
+        try {
+            if (data.isEmpty()) {
+                return;
+            }
+            fileWorker.writeEntries(data.values(), basePath);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 }
