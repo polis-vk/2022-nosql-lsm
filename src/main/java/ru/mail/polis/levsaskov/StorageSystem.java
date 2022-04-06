@@ -8,12 +8,12 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
-import java.util.PriorityQueue;
 import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public final class StorageSystem implements AutoCloseable {
@@ -25,7 +25,7 @@ public final class StorageSystem implements AutoCloseable {
     private final List<StoragePart> storageParts;
     private final Path location;
 
-    private StorageSystem(ArrayList<StoragePart> storageParts, Path location) {
+    private StorageSystem(List<StoragePart> storageParts, Path location) {
         this.storageParts = storageParts;
         this.location = location;
     }

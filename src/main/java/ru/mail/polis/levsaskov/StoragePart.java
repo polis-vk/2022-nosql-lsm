@@ -10,7 +10,6 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -143,7 +142,7 @@ public class StoragePart implements AutoCloseable {
         }
 
         // Граничные случаи
-        if (position + 1 < entrysC && readEntry(position).key().compareTo(key) < 0) {
+        if (position + 1 < entrysC && curEntry.key().compareTo(key) < 0) {
             position++;
         }
 
