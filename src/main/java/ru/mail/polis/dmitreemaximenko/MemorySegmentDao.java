@@ -119,7 +119,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     }
 
     private Path getFirstLogFileName() {
-        return config.basePath().resolve(LOG_NAME + "0");
+        return config.basePath().resolve(LOG_NAME + LOG_INDEX_START);
     }
 
     @Override
