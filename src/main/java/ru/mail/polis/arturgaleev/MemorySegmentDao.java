@@ -46,7 +46,8 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             }
 
             if (reader.hasNoReaders()) {
-                PriorityPeekingIterator<Entry<MemorySegment>> peekingIterator = new PriorityPeekingIterator<>(1, dataBaseIterator);
+                PriorityPeekingIterator<Entry<MemorySegment>> peekingIterator
+                        = new PriorityPeekingIterator<>(1, dataBaseIterator);
                 return new Iterator<Entry<MemorySegment>>() {
                     @Override
                     public boolean hasNext() {
