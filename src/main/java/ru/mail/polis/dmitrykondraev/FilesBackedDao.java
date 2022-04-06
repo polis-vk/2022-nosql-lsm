@@ -7,6 +7,8 @@ import ru.mail.polis.Dao;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
@@ -15,7 +17,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Function;
@@ -26,17 +27,25 @@ import java.util.stream.Stream;
  */
 
 public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
+    private final static String COMPACT_NAME = "compacted";
+    private final static String TABLE_PREFIX = "T";
+
     private final ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map =
             new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
-    private final Deque<SortedStringTable> sortedStringTables = new ConcurrentLinkedDeque<>();
+    private final Deque<SortedStringTable> sortedStringTables = new ArrayDeque<>();
     private final Path basePath;
+    private final Path compactDir;
 
     public FilesBackedDao(Config config) throws IOException {
         basePath = config.basePath();
+        compactDir = basePath.resolve(COMPACT_NAME);
+        if (Files.exists(compactDir)) {
+            throw new CompactDirectoryAlreadyExistsException(compactDir);
+        }
         try (Stream<Path> list = Files.list(basePath)) {
             list.filter(Files::isDirectory)
-                .sorted(Comparator.reverseOrder())
-                .forEachOrdered((Path subDirectory) -> sortedStringTables.add(SortedStringTable.of(subDirectory)));
+                    .sorted(Comparator.reverseOrder())
+                    .forEachOrdered((Path subDirectory) -> sortedStringTables.add(SortedStringTable.of(subDirectory)));
         }
     }
 
@@ -80,13 +89,34 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
 
     @Override
     public void flush() throws IOException {
-        // NOTE consider factor out format string parameter
-        String directoryName = String.format("%010d", sortedStringTables.size());
-        SortedStringTable.of(Files.createDirectory(basePath.resolve(directoryName)))
+        if (map.isEmpty()) {
+            return;
+        }
+        Path tablePath = sortedStringTablePath(sortedStringTables.size());
+        SortedStringTable.of(Files.createDirectory(tablePath))
                 .write(map.values())
                 .close();
-        sortedStringTables.addFirst(SortedStringTable.of(basePath.resolve(directoryName)));
+        sortedStringTables.addFirst(SortedStringTable.of(tablePath));
         map.clear();
+    }
+
+    private Path sortedStringTablePath(int index) {
+        return basePath.resolve(String.format("%010d", index));
+    }
+
+    @Override
+    public void compact() throws IOException {
+        SortedStringTable.of(Files.createDirectory(compactDir))
+                .write(all())
+                .close();
+        map.clear();
+        for (int i = sortedStringTables.size() - 1; i >= 0; i--) {
+            Files.delete(sortedStringTablePath(i).resolve(SortedStringTable.DATA_FILENAME));
+            Files.delete(sortedStringTablePath(i).resolve(SortedStringTable.INDEX_FILENAME));
+            Files.delete(sortedStringTablePath(i));
+        }
+        sortedStringTables.clear();
+        Files.move(compactDir, sortedStringTablePath(0), StandardCopyOption.ATOMIC_MOVE);
     }
 
     @Override
@@ -106,6 +136,7 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     /**
      * Yields entries from multiple iterators of {@link MemorySegmentEntry}. Entries with same keys are merged,
      * leaving one entry from iterator with minimal index.
+     *
      * @param iterators which entries are strict ordered by key: key of subsequent entry is strictly greater than
      *                  key of current entry (using {@link MemorySegmentComparator})
      * @return iterator which entries are <em>also</em> strict ordered by key.

@@ -10,6 +10,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 
@@ -19,7 +20,7 @@ final class SortedStringTable implements Closeable {
 
     private final Path indexFile;
     private final Path dataFile;
-    // Either dataSegment and offsets both null or both non-null
+    // Either dataSegment and indexSegment both null or both non-null
     private MemorySegment dataSegment;
     private MemorySegment indexSegment;
     private final ResourceScope scope;
@@ -55,7 +56,16 @@ final class SortedStringTable implements Closeable {
             entry.copyTo(mappedEntrySegment(i));
             i++;
         }
+        dataSegment = dataSegment.asReadOnly();
         return this;
+    }
+
+    public SortedStringTable write(Iterator<MemorySegmentEntry> iterator) throws IOException {
+        ArrayList<MemorySegmentEntry> entries = new ArrayList<>();
+        while (iterator.hasNext()) {
+            entries.add(iterator.next());
+        }
+        return write(entries);
     }
 
     /**
