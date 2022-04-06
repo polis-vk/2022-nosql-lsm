@@ -28,13 +28,12 @@ final class Storage implements Closeable {
     private static final String FILE_EXT = ".dat";
     private static final String FILE_EXT_TMP = ".tmp";
     private static final String LOW_PRIORITY_FILE = "0";
-    private static int maxPriorityFile = 0;
+    private static int maxPriorityFile;
 
     private static final Comparator<Path> fileComparator = Comparator.comparingInt(Storage::getPriorityFile);
 
     private final ResourceScope scope;
     private final List<MemorySegment> sstables;
-
 
     static Storage load(Config config) throws IOException {
         Path basePath = config.basePath();
@@ -79,7 +78,7 @@ final class Storage implements Closeable {
             return;
         }
 
-        Save(config, previousState, entries);
+        save(config, entries);
         memory.clear();
         Path sstablePathOld = config.basePath().resolve(FILE_NAME + maxPriorityFile + FILE_EXT);
         Path sstablePathNew = config.basePath().resolve(FILE_NAME + LOW_PRIORITY_FILE + FILE_EXT);
@@ -100,9 +99,8 @@ final class Storage implements Closeable {
     }
 
     // it is supposed that entries can not be changed externally during this method call
-    static void Save(
+    static void save(
             Config config,
-            Storage previousState,
             Collection<Entry<MemorySegment>> entries) throws IOException {
         if (entries.isEmpty()) {
             return;
@@ -290,6 +288,5 @@ final class Storage implements Closeable {
     public boolean isClosed() {
         return !scope.isAlive();
     }
-
 
 }

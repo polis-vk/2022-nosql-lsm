@@ -48,7 +48,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         return new TombstoneFilteringIterator(mergeIterator);
     }
 
-
     private Iterator<Entry<MemorySegment>> getMemoryIterator(MemorySegment from, MemorySegment to) {
         lock.readLock().lock();
         try {
@@ -70,7 +69,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             result = storage.get(key);
         }
 
-        return  (result == null || result.value() == null) ? null : result;
+        return (result == null || result.value() == null) ? null : result;
     }
 
     @Override
@@ -106,7 +105,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             if (!storage.isClosed()) {
                 throw new IllegalStateException("Previous storage is open for write");
             }
-            Storage.Save(config, storage, memory.values());
+            Storage.save(config, memory.values());
         } finally {
             lock.writeLock().unlock();
         }
