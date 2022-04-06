@@ -138,7 +138,6 @@ public final class SSTable implements Closeable {
         }
         long finalLi = li;
         long finalRi = ri;
-
         return new Iterator<>() {
             long pos = finalLi;
 
