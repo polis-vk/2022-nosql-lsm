@@ -151,7 +151,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (!scope.isAlive()) {
             return;
         }
-//        scope.close();
+
         lock.writeLock().lock();
         try {
             if (!data.isEmpty()) {
