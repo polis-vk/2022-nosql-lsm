@@ -8,8 +8,13 @@ import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+import static ru.mail.polis.arturgaleev.FileDBWriter.updateHash;
 
 public class FileDBReader implements AutoCloseable {
 
@@ -18,6 +23,7 @@ public class FileDBReader implements AutoCloseable {
     private final ResourceScope scope;
     private final MemorySegment pageData;
     private final MemorySegment pageLinks;
+    private final byte[] sha256;
 
     public FileDBReader(Path path) throws IOException {
         scope = ResourceScope.newConfinedScope();
@@ -25,8 +31,45 @@ public class FileDBReader implements AutoCloseable {
         fileID = Long.parseLong(fileName.substring(0, fileName.length() - 4));
         MemorySegment page = MemorySegment.mapFile(path, 0, Files.size(path), FileChannel.MapMode.READ_ONLY, scope);
         size = MemoryAccess.getLongAtOffset(page, 0);
-        pageData = page.asSlice(Long.BYTES * (1 + size));
+
+        long hashSize = MemoryAccess.getLongAtOffset(page, Long.BYTES * (size + 1));
+        sha256 = page.asSlice(Long.BYTES * (size + 2), hashSize).toByteArray();
+
+        pageData = page.asSlice(Long.BYTES * (2 + size) + hashSize);
         pageLinks = page.asSlice(Long.BYTES, Long.BYTES * size);
+
+        if (checkIfFileCorrupted()) {
+            throw new FileSystemException("File with path: " + path + " is corrupted");
+        }
+    }
+
+    //It may open corrupted files. Very dangerous to use
+    FileDBReader(MemorySegment page) throws IOException {
+        scope = null;
+        fileID = -1;
+
+        size = MemoryAccess.getLongAtOffset(page, 0);
+
+        long hashSize = MemoryAccess.getLongAtOffset(page, Long.BYTES * (size + 1));
+        sha256 = page.asSlice(Long.BYTES * (size + 2), hashSize).toByteArray();
+
+        pageData = page.asSlice(Long.BYTES * (2 + size) + hashSize);
+        pageLinks = page.asSlice(Long.BYTES, Long.BYTES * size);
+    }
+
+    boolean checkIfFileCorrupted() {
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("System does not found SHA-256 algorithm", e);
+        }
+        FileIterator iterator = getIteratorByPos(0);
+        while (iterator.hasNext()) {
+            updateHash(md, iterator.next());
+        }
+        byte[] digest = md.digest();
+        return !MessageDigest.isEqual(sha256, digest);
     }
 
     public long getFileID() {
@@ -109,7 +152,9 @@ public class FileDBReader implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
-        scope.close();
+        if (scope != null) {
+            scope.close();
+        }
     }
 
     public class FileIterator implements java.util.Iterator<Entry<MemorySegment>> {

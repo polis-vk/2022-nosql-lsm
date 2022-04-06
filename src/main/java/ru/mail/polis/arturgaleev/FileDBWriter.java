@@ -8,14 +8,17 @@ import ru.mail.polis.Entry;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Iterator;
-import java.util.concurrent.ConcurrentNavigableMap;
 
 public class FileDBWriter implements Closeable {
     public static final String FILE_TMP = "file.tmp";
+    public static final byte VALUE_FOR_HASH_NULL = (byte) -1;
     private final Path path;
     private final ResourceScope writeScope;
 
@@ -24,21 +27,33 @@ public class FileDBWriter implements Closeable {
         this.path = path;
     }
 
-    private static long getMapByteSize(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map) {
-        return getIteratorLengthData(map.values().iterator()).second;
-    }
-
     // first value is number of entries, second is byte size
-    private static Pair<Long, Long> getIteratorLengthData(Iterator<Entry<MemorySegment>> iterator) {
+    private static IteratorData getIteratorData(Iterator<Entry<MemorySegment>> iterator) {
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("System does not found SHA-256 algorithm", e);
+        }
         long numberOfElements = 0;
         long byteSize = 0;
         while (iterator.hasNext()) {
-            numberOfElements++;
             Entry<MemorySegment> entry = iterator.next();
             byteSize += getEntryLength(entry);
+            updateHash(md, entry);
+            numberOfElements++;
         }
         byteSize += Long.BYTES + numberOfElements * Long.BYTES;
-        return new Pair<>(numberOfElements, byteSize);
+        return new IteratorData(numberOfElements, byteSize, md.digest());
+    }
+
+    static void updateHash(MessageDigest md, Entry<MemorySegment> entry) {
+        md.update(entry.key().asReadOnly().asByteBuffer());
+        if (entry.value() == null) {
+            md.update(VALUE_FOR_HASH_NULL);
+        } else {
+            md.update(entry.value().asReadOnly().asByteBuffer());
+        }
     }
 
     private static long getEntryLength(Entry<MemorySegment> entry) {
@@ -80,14 +95,19 @@ public class FileDBWriter implements Closeable {
         );
     }
 
-    private static void writeIterator(
+    private static void writeIterable(
             MemorySegment page,
             long numberOfEntries,
-            Iterator<Entry<MemorySegment>> iterator
-    ) {
+            Iterator<Entry<MemorySegment>> iterator,
+            byte[] sha256) {
         MemoryAccess.setLongAtOffset(page, 0, numberOfEntries);
 
+        // offset for data
         long dataBeingOffset = Long.BYTES + (long) Long.BYTES * numberOfEntries;
+
+        //offset for hash
+        dataBeingOffset += Long.BYTES + sha256.length;
+
         long i = 0;
         long dataWriteOffset = 0;
         while (iterator.hasNext()) {
@@ -98,44 +118,40 @@ public class FileDBWriter implements Closeable {
 
             i++;
         }
+
+        MemoryAccess.setLongAtOffset(page, Long.BYTES + Long.BYTES * i++, sha256.length);
+        page.asSlice(Long.BYTES + Long.BYTES * i, sha256.length).copyFrom(MemorySegment.ofArray(sha256));
     }
 
-    public void writeMap(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> map) throws IOException {
-        if (map.isEmpty()) {
+    public void writeIterable(
+            Iterable<Entry<MemorySegment>> iterableCollection
+    ) throws IOException {
+        Iterator<Entry<MemorySegment>> iterator = iterableCollection.iterator();
+
+        if (!iterator.hasNext()) {
             return;
         }
+        IteratorData iteratorData = getIteratorData(iterator);
 
-        Iterator<Entry<MemorySegment>> iterator = map.values().iterator();
-        long numberOfEntries = map.size();
-        long mapByteSize = getMapByteSize(map);
-
-        writeIteratorWithTempFile(iterator, numberOfEntries, mapByteSize);
+        iterator = iterableCollection.iterator();
+        writeIteratorWithTempFile(iterator, iteratorData);
     }
 
-    // First iterator uses to count length and second to write data
-
-    public void writeIterator(
-            Iterator<Entry<MemorySegment>> iterator1,
-            Iterator<Entry<MemorySegment>> iterator2
-    ) throws IOException {
-        if (!iterator1.hasNext()) {
-            return;
-        }
-        Pair<Long, Long> iteratorLengthData = getIteratorLengthData(iterator1);
-
-        writeIteratorWithTempFile(iterator2, iteratorLengthData.first, iteratorLengthData.second);
-    }
-
-    private void writeIteratorWithTempFile(
-            Iterator<Entry<MemorySegment>> iterator,
-            long numberOfEntries,
-            long mapByteSize
-    ) throws IOException {
+    private void writeIteratorWithTempFile(Iterator<Entry<MemorySegment>> iterator,
+                                           IteratorData iteratorData) throws IOException {
+        byte[] sha256 = iteratorData.sha256();
         Path tmpPath = path.getParent().resolve(FILE_TMP);
 
-        MemorySegment page = createTmpMemorySegmentPage(mapByteSize, tmpPath, writeScope);
+        MemorySegment page = createTmpMemorySegmentPage(
+                iteratorData.byteArraySize() + sha256.length + Long.BYTES,
+                tmpPath, writeScope);
 
-        writeIterator(page, numberOfEntries, iterator);
+        writeIterable(page, iteratorData.numberOfEntries(), iterator, sha256);
+
+        FileDBReader reader = new FileDBReader(page);
+        if (reader.checkIfFileCorrupted()) {
+            throw new FileSystemException("File with path: " + path + " has written incorrectly");
+        }
 
         Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
     }
@@ -146,6 +162,7 @@ public class FileDBWriter implements Closeable {
     }
 
     @SuppressWarnings("UnusedVariable")
-    private record Pair<K, V>(K first, V second) {
+    private record IteratorData(long numberOfEntries, long byteArraySize, byte[] sha256) {
+
     }
 }

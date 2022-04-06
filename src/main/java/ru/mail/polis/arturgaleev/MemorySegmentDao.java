@@ -82,14 +82,14 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     public void compact() throws IOException {
         lock.writeLock().lock();
         if (!dataBase.isEmpty() || reader.getReadersCount() > 1) {
-            Path tmpPath = config.basePath().resolve((reader.getBiggestFileId() + 1) + ".txt");
+            Path compactionPath = config.basePath().resolve((reader.getBiggestFileId() + 1) + ".txt");
             try (FileDBWriter writer =
-                         new FileDBWriter(tmpPath)) {
-                writer.writeIterator(get(null, null), get(null, null));
+                         new FileDBWriter(compactionPath)) {
+                writer.writeIterable(() -> get(null, null));
                 dataBase.clear();
                 try (Stream<Path> files = Files.list(config.basePath())) {
                     for (Path path : files.toList()) {
-                        if (!path.equals(tmpPath)) {
+                        if (!path.equals(compactionPath)) {
                             try {
                                 Files.deleteIfExists(path);
                             } catch (IOException e) {
@@ -111,7 +111,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (!dataBase.isEmpty()) {
             try (FileDBWriter writer =
                          new FileDBWriter(config.basePath().resolve((reader.getBiggestFileId() + 1) + ".txt"))) {
-                writer.writeMap(dataBase);
+                writer.writeIterable(dataBase.values());
             } finally {
                 reader.updateReadersList();
                 lock.writeLock().unlock();
