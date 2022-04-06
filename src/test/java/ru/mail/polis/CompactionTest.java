@@ -124,14 +124,11 @@ class CompactionTest extends BaseTest {
             dao.compact();
             dao.close();
             dao = DaoFactory.Factory.reopen(dao);
-            System.out.println(sizePersistentData(dao));
             sizes.add(sizePersistentData(dao));
         }
 
         LongSummaryStatistics stats = sizes.stream().mapToLong(k -> k).summaryStatistics();
         // Heuristic
-        System.out.println(stats.getMax());
-        System.out.println(stats.getMin());
         assertTrue(stats.getMax() - stats.getMin() < 1024);
     }
 
