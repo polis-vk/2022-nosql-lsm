@@ -95,7 +95,7 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             return;
         }
         Iterator<BaseEntry<ByteBuffer>> mergeIterator = get(null, null);
-        if (!mergeIterator.hasNext()){
+        if (!mergeIterator.hasNext()) {
             return;
         }
         storage.storeToTempFile(() -> get(null, null));

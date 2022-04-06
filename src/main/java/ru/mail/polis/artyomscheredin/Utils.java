@@ -9,8 +9,13 @@ public final class Utils {
     private Utils() {
     }
 
-    public record BufferPair(ByteBuffer data, ByteBuffer index) {}
-    public record BufferSizePair(int dataBufferSize, int indexBufferSize) {}
+    public record BufferPair(ByteBuffer data, ByteBuffer index) {
+        //empty body
+    }
+
+    public record BufferSizePair(int dataBufferSize, int indexBufferSize) {
+        //empty body
+    }
 
     public static BaseEntry<ByteBuffer> readEntry(ByteBuffer dataBuffer, int sourceOffset) {
         int offset = sourceOffset;

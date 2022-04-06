@@ -71,7 +71,6 @@ public class Storage {
             return;
         }
 
-
         ByteBuffer writeDataBuffer;
         ByteBuffer writeIndexBuffer;
         try (FileChannel dataChannel = FileChannel.open(tempFileDataPath,
