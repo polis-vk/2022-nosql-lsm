@@ -88,7 +88,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
         lock.writeLock();
         try {
-            Storage.save(config, storage, get(null, null), memory);
+            Storage.compact(config, storage, get(null, null), memory);
         } finally {
             lock.writeLock().lock();
         }
@@ -106,14 +106,14 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             if (!storage.isClosed()) {
                 throw new IllegalStateException("Previous storage is open for write");
             }
-            Storage.save(config, storage, memory.values());
+            Storage.Save(config, storage, memory.values());
         } finally {
             lock.writeLock().unlock();
         }
 
     }
 
-    private static class TombstoneFilteringIterator implements Iterator<Entry<MemorySegment>> {
+    static class TombstoneFilteringIterator implements Iterator<Entry<MemorySegment>> {
         private final Iterator<Entry<MemorySegment>> iterator;
         private Entry<MemorySegment> current;
 

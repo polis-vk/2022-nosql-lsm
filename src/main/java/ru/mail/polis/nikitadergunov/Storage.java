@@ -27,9 +27,14 @@ final class Storage implements Closeable {
     private static final String FILE_NAME = "data";
     private static final String FILE_EXT = ".dat";
     private static final String FILE_EXT_TMP = ".tmp";
+    private static final String LOW_PRIORITY_FILE = "0";
+    private static int maxPriorityFile = 0;
+
+    private static final Comparator<Path> fileComparator = Comparator.comparingInt(Storage::getPriorityFile);
 
     private final ResourceScope scope;
     private final List<MemorySegment> sstables;
+
 
     static Storage load(Config config) throws IOException {
         Path basePath = config.basePath();
@@ -37,28 +42,34 @@ final class Storage implements Closeable {
         List<MemorySegment> sstables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
 
-        try (Stream<Path> listFiles = Files.list(basePath)) {
-            long maxCountFiles = listFiles.count();
-            maxCountFiles = maxCountFiles > Integer.MAX_VALUE ? Integer.MAX_VALUE : maxCountFiles;
-            for (int i = 0; i < maxCountFiles; ++i) {
-                Path nextFile = basePath.resolve(FILE_NAME + i + FILE_EXT);
-                try {
-                    sstables.add(mapForRead(scope, nextFile));
-                } catch (NoSuchFileException e) {
-                    break;
-                }
-            }
-        }
+        try (Stream<Path> streamFiles = Files.list(basePath)) {
+            List<Path> listFiles = streamFiles
+                    .filter(path -> path.toString().endsWith(FILE_EXT))
+                    .sorted(fileComparator.reversed()).toList();
 
-        Collections.reverse(sstables);
+            if (!listFiles.isEmpty()) {
+                maxPriorityFile = getPriorityFile(listFiles.get(0));
+            }
+            listFiles.forEach(path -> {
+                try {
+                    sstables.add(mapForRead(scope, path));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+        }
 
         return new Storage(scope, sstables);
     }
 
-    static void save(Config config,
-                     Storage previousState,
-                     Iterator<Entry<MemorySegment>> entriesIterator,
-                     ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> memory) throws IOException {
+    static void compact(Config config,
+                        Storage previousState,
+                        Iterator<Entry<MemorySegment>> entriesIterator,
+                        ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> memory) throws IOException {
+
+        if (memory.isEmpty() && previousState.sstables.size() < 2) {
+            return;
+        }
 
         List<Entry<MemorySegment>> entries = new ArrayList<>();
         while (entriesIterator.hasNext()) {
@@ -68,15 +79,13 @@ final class Storage implements Closeable {
             return;
         }
 
-        save(config, previousState, entries);
+        Save(config, previousState, entries);
         memory.clear();
-        Path sstablePathOld = config.basePath().resolve(FILE_NAME + previousState.sstables.size() + FILE_EXT);
+        Path sstablePathOld = config.basePath().resolve(FILE_NAME + maxPriorityFile + FILE_EXT);
+        Path sstablePathNew = config.basePath().resolve(FILE_NAME + LOW_PRIORITY_FILE + FILE_EXT);
 
-
-        Path sstablePathNew = config.basePath().resolve(FILE_NAME + "0" + FILE_EXT);
-        Files.move(sstablePathOld, sstablePathNew, StandardCopyOption.ATOMIC_MOVE);
-        try (Stream<Path> listFiles = Files.list(config.basePath())){
-            listFiles.filter(path -> !path.equals(sstablePathNew))
+        try (Stream<Path> listFiles = Files.list(config.basePath())) {
+            listFiles.filter(path -> !path.equals(sstablePathOld))
                     .forEach(path -> {
                         try {
                             Files.delete(path);
@@ -86,10 +95,12 @@ final class Storage implements Closeable {
                     });
 
         }
+
+        Files.move(sstablePathOld, sstablePathNew, StandardCopyOption.ATOMIC_MOVE);
     }
 
     // it is supposed that entries can not be changed externally during this method call
-    static void save(
+    static void Save(
             Config config,
             Storage previousState,
             Collection<Entry<MemorySegment>> entries) throws IOException {
@@ -97,7 +108,7 @@ final class Storage implements Closeable {
             return;
         }
 
-        int nextSSTableIndex = previousState.sstables.size();
+        int nextSSTableIndex = maxPriorityFile + 1;
         long entriesCount = entries.size();
         long dataStart = INDEX_HEADER_SIZE + INDEX_RECORD_SIZE * entriesCount;
 
@@ -142,6 +153,7 @@ final class Storage implements Closeable {
         }
         Path sstablePath = config.basePath().resolve(FILE_NAME + nextSSTableIndex + FILE_EXT);
         Files.move(sstableTmpPath, sstablePath, StandardCopyOption.ATOMIC_MOVE);
+        maxPriorityFile++;
     }
 
     private static long writeRecord(MemorySegment nextSSTable, long offset, MemorySegment record) {
@@ -160,6 +172,13 @@ final class Storage implements Closeable {
         long size = Files.size(file);
 
         return MemorySegment.mapFile(file, 0, size, FileChannel.MapMode.READ_ONLY, scope);
+    }
+
+    private static int getPriorityFile(Path path) {
+        String file = path.getFileName().toString();
+        return Integer.parseInt(file.substring(
+                FILE_NAME.length(),
+                file.length() - FILE_EXT.length()));
     }
 
     private Storage(ResourceScope scope, List<MemorySegment> sstables) {
