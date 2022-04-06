@@ -10,7 +10,6 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
-import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -19,23 +18,18 @@ import java.util.stream.Stream;
 public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> dataBase
+    private final ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> dataBase
             = new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
     private final Config config;
     private final DBReader reader;
 
-    // по факту неправильно, но необходимо для прохождения в таймаута
-    private static boolean hasBeenWritten = false;
-
     public MemorySegmentDao(Config config) throws IOException {
         this.config = config;
-        if (hasBeenWritten) {
-            reader = new DBReader(config.basePath());
-        } else {
-            reader = null;
-        }
+        reader = new DBReader(config.basePath());
     }
 
+    // При канкарент если сделать с начала get а затем compose, то есть шанс, что все упадет,
+    // тк у файлы по которым entryIterator ходит - исчезнут
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         lock.readLock().lock();
@@ -50,15 +44,11 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             } else {
                 dataBaseIterator = dataBase.subMap(from, to).values().iterator();
             }
-            if (hasBeenWritten) {
-                return new MergeIterator<>(
-                        new PriorityPeekingIterator<>(0, reader.get(from, to)),
-                        new PriorityPeekingIterator<>(1, dataBaseIterator),
-                        MemorySegmentComparator.INSTANCE
-                );
-            } else {
-                return new PriorityPeekingIterator<>(0, reader.get(from, to));
-            }
+            return new MergeIterator<>(
+                    new PriorityPeekingIterator<>(0, reader.get(from, to)),
+                    new PriorityPeekingIterator<>(1, dataBaseIterator),
+                    MemorySegmentComparator.INSTANCE
+            );
         } finally {
             lock.readLock().unlock();
         }
@@ -92,7 +82,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     @Override
     public void compact() throws IOException {
         lock.writeLock().lock();
-        hasBeenWritten = true;
         if (!dataBase.isEmpty() || reader.getReadersCount() > 1) {
             Path compactionPath = config.basePath().resolve((reader.getBiggestFileId() + 1) + ".txt");
             try (FileDBWriter writer =
@@ -120,7 +109,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     @Override
     public void flush() throws IOException {
         lock.writeLock().lock();
-        hasBeenWritten = true;
         if (!dataBase.isEmpty()) {
             try (FileDBWriter writer =
                          new FileDBWriter(config.basePath().resolve((reader.getBiggestFileId() + 1) + ".txt"))) {
