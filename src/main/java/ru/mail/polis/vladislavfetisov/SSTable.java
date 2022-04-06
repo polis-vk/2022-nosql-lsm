@@ -20,7 +20,7 @@ import java.util.stream.Stream;
 
 import static ru.mail.polis.vladislavfetisov.LsmDao.logger;
 
-public class SSTable implements Closeable {
+public final class SSTable implements Closeable {
     public static final int NULL_VALUE = -1;
     public static final String TEMP = "_tmp";
     public static final String INDEX = "_i";
@@ -45,7 +45,6 @@ public class SSTable implements Closeable {
         mapIndex = Utils.map(indexName, indexSize, FileChannel.MapMode.READ_ONLY, sharedScope);
         this.indexName = indexName;
     }
-
 
     public static List<SSTable> getAllTables(Path dir) {
         try (Stream<Path> files = Files.list(dir)) {
@@ -165,7 +164,11 @@ public class SSTable implements Closeable {
         sharedScope.close();
     }
 
+    /**
+     * record Sizes contains tableSize-size of SSTable,
+     * indexSize-size of indexTable
+     */
     public record Sizes(long tableSize, long indexSize) {
-
+        //empty
     }
 }
