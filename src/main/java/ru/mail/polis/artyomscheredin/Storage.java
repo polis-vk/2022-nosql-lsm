@@ -36,13 +36,14 @@ public class Storage {
         if (Files.exists(tempFileIndexPath) && Files.exists(tempFileDataPath)) {
             throw new RuntimeException("Storage has been corrupted");
         }
-        while (true) {
+        boolean fileExist = true;
+        while (fileExist) {
             Path nextDataFilePath = basePath.resolve(DATA_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
             Path nextIndexFilePath = basePath.resolve(INDEXES_FILE_NAME + (mappedDiskData.size() + 1) + EXTENSION);
             try {
                 mappedDiskData.add(mapOnDiskStorageUnit(nextDataFilePath, nextIndexFilePath));
             } catch (NoSuchFileException e) {
-                break;
+                fileExist = false;
             }
         }
     }

@@ -6,7 +6,6 @@ import ru.mail.polis.Dao;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.NoSuchFileException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.SortedMap;
@@ -95,8 +94,8 @@ public class PersistentDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         if (storage.getMappedDataSize() == 1) {
             return;
         }
-        Iterator<BaseEntry<ByteBuffer>> mergeIter = get(null, null);
-        if (!mergeIter.hasNext()){
+        Iterator<BaseEntry<ByteBuffer>> mergeIterator = get(null, null);
+        if (!mergeIterator.hasNext()){
             return;
         }
         storage.storeToTempFile(() -> get(null, null));
