@@ -52,7 +52,7 @@ public class FileOperations {
         getDataInfo();
         compactOperations = new CompactOperations(fileNames);
         if (Files.exists(basePath.resolve(FILE_TMP_NAME + FILE_TMP_EXTENSION))) {
-            compact(new SkipNullValuesIterator(new IndexedPeekIterator(0, diskIterator(null, null))));
+            compact(new SkipNullValuesIterator(new IndexedPeekIterator(0, diskIterator(null, null))), false);
             getDataInfo();
         }
     }
@@ -113,7 +113,10 @@ public class FileOperations {
         return low;
     }
 
-    void compact(Iterator<BaseEntry<byte[]>> iterator) throws IOException {
+    void compact(Iterator<BaseEntry<byte[]>> iterator, boolean hasPairs) throws IOException {
+        if (filesCount <= 1 && !hasPairs) {
+            return;
+        }
         compactOperations.createCompactedFiles(basePath);
         compactOperations.saveDataAndIndexesCompact(iterator);
         compactOperations.clearFileIterators(fileIterators);

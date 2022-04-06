@@ -37,9 +37,6 @@ public class CompactOperations {
     }
 
     void saveDataAndIndexesCompact(Iterator<BaseEntry<byte[]>> iterator) throws IOException {
-        if (!iterator.hasNext()) {
-            return;
-        }
         long elementsCount = 0;
         long offset = 0;
         try (RandomAccessFile rafFile = new RandomAccessFile(String.valueOf(compactedFile), "rw");
