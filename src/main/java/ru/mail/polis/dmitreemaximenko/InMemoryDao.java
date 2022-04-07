@@ -116,9 +116,9 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             return temp;
         }
 
-        private static Integer simpleHashCode(byte[] last) {
-            return Integer.valueOf(last[0]) + Integer.valueOf(last[last.length / 2])
-                    + Integer.valueOf(last[last.length - 1]);
+        private static int simpleHashCode(byte[] last) {
+            return (int)last[0] + (int) last[last.length / 2]
+                    + (int) last[last.length - 1];
         }
     }
 
