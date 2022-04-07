@@ -15,7 +15,14 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.*;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_INDEX;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_INDEX;
 
 public class CompactOperations {
     private Path compactedFile;
@@ -42,23 +49,20 @@ public class CompactOperations {
     }
 
     private void checkStartCompactConflicts(Path basePath, Path file, List<Path> files) throws IOException {
-        if (file == basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION)) {
-            if (files.contains(basePath.resolve(FILE_START_COMPACT_INDEX_NAME
-                    + FILE_START_COMPACT_INDEX_EXTENSION))) {
-                Files.delete(basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION));
-                Files.delete(basePath.resolve(FILE_START_COMPACT_INDEX_NAME
-                        + FILE_START_COMPACT_INDEX_EXTENSION));
+        if (file == basePath.resolve(FILE_START_COMPACT)) {
+            if (files.contains(basePath.resolve(FILE_START_COMPACT_INDEX))) {
+                Files.delete(basePath.resolve(FILE_START_COMPACT));
+                Files.delete(basePath.resolve(FILE_START_COMPACT_INDEX));
             } else {
-                Files.delete(basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION));
+                Files.delete(basePath.resolve(FILE_START_COMPACT));
                 throw new NoSuchFileException(noSuchFile);
             }
         }
     }
 
     private void checkContinueCompactionConflicts(Path basePath, Path file, List<Path> files) throws IOException {
-        if (file == basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION)) {
-            if (files.contains(basePath.resolve(FILE_CONTINUE_COMPACT_INDEX_NAME
-                    + FILE_CONTINUE_COMPACT_INDEX_EXTENSION))) {
+        if (file == basePath.resolve(FILE_CONTINUE_COMPACT)) {
+            if (files.contains(basePath.resolve(FILE_CONTINUE_COMPACT_INDEX))) {
                 List<Path> ssTables = files
                         .stream().toList().stream()
                         .filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME))
@@ -72,7 +76,7 @@ public class CompactOperations {
                 deleteFiles(ssTables);
                 deleteFiles(ssIndexes);
             } else {
-                Files.delete(basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION));
+                Files.delete(basePath.resolve(FILE_CONTINUE_COMPACT));
                 throw new NoSuchFileException(noSuchFile);
             }
         }
@@ -87,8 +91,8 @@ public class CompactOperations {
     void saveDataAndIndexesCompact(Iterator<BaseEntry<byte[]>> iterator, Path basePath) throws IOException {
         long elementsCount = 0;
         long offset = 0;
-        compactedFile = basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION);
-        compactedIndex = basePath.resolve(FILE_START_COMPACT_INDEX_NAME + FILE_START_COMPACT_INDEX_EXTENSION);
+        compactedFile = basePath.resolve(FILE_START_COMPACT);
+        compactedIndex = basePath.resolve(FILE_START_COMPACT_INDEX);
         if (!Files.exists(compactedFile)) {
             Files.createFile(compactedFile);
         }
@@ -107,13 +111,11 @@ public class CompactOperations {
             }
             writeIndexSize(elementsCount, writerFile.getIndexChannel());
         }
-        Files.move(compactedFile, basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION),
+        Files.move(compactedFile, basePath.resolve(FILE_CONTINUE_COMPACT),
                 ATOMIC_MOVE);
-        Files.move(compactedIndex, basePath.resolve(FILE_CONTINUE_COMPACT_INDEX_NAME
-                + FILE_CONTINUE_COMPACT_INDEX_EXTENSION), ATOMIC_MOVE);
-        compactedFile = basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION);
-        compactedIndex = basePath.resolve(FILE_CONTINUE_COMPACT_INDEX_NAME
-                + FILE_CONTINUE_COMPACT_INDEX_EXTENSION);
+        Files.move(compactedIndex, basePath.resolve(FILE_CONTINUE_COMPACT), ATOMIC_MOVE);
+        compactedFile = basePath.resolve(FILE_CONTINUE_COMPACT);
+        compactedIndex = basePath.resolve(FILE_CONTINUE_COMPACT_INDEX);
     }
 
     private static void writeIndexInitialPosition(FileChannel channel) throws IOException {

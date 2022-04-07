@@ -76,7 +76,6 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             return;
         }
         fileOperations.compact(iterator, pairs.size() != 0);
-        pairs.clear();
     }
 
     @Override
