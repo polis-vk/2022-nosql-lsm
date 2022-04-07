@@ -14,6 +14,8 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.stream.Stream;
 
+import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
+
 public class Storage implements Closeable {
 
     public static final String DATA_FILE_NAME = "myData";
@@ -49,9 +51,9 @@ public class Storage implements Closeable {
         Path basePath = config.basePath();
         int newFileIndex = (startIndexFile == -1) ? 0 : startIndexFile + numOfFiles;
         Files.move(basePath.resolve(COMPACT_TMP_PREFIX + DATA_FILE_NAME),
-                basePath.resolve(DATA_FILE_NAME + newFileIndex));
+                basePath.resolve(DATA_FILE_NAME + newFileIndex), ATOMIC_MOVE);
         Files.move(basePath.resolve(COMPACT_TMP_PREFIX + INDEX_FILE_NAME),
-                basePath.resolve(INDEX_FILE_NAME + newFileIndex));
+                basePath.resolve(INDEX_FILE_NAME + newFileIndex), ATOMIC_MOVE);
         if (startIndexFile == -1) {
             startIndexFile = 0;
             numOfFiles = 1;
@@ -65,7 +67,7 @@ public class Storage implements Closeable {
         }
 
         Files.copy(basePath.resolve(DATA_FILE_NAME + newFileIndex), basePath.resolve(DATA_FILE_NAME + 0));
-        Files.move(basePath.resolve(INDEX_FILE_NAME + newFileIndex), basePath.resolve(INDEX_FILE_NAME + 0));
+        Files.move(basePath.resolve(INDEX_FILE_NAME + newFileIndex), basePath.resolve(INDEX_FILE_NAME + 0), ATOMIC_MOVE);
         Files.delete(basePath.resolve(DATA_FILE_NAME + newFileIndex));
         startIndexFile = 0;
         numOfFiles = 1;
