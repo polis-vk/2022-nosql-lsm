@@ -37,16 +37,28 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
     @Override
     public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
         if (dataFiles.size() != indexesFiles.size()) {
-            return FileVisitResult.TERMINATE;
+            throw new IllegalStateException("Mismatch in the number of data-files and indexes-files (must be equal)");
         }
 
         Iterator<Path> dataIterator = dataFiles.iterator();
         Iterator<Path> indexesIterator = indexesFiles.iterator();
         for (int priority = 1; priority <= dataFiles.size(); ++priority) {
-            sstables.put(priority, new PairedFiles(dataIterator.next(), indexesIterator.next()));
+            Path dataFile = dataIterator.next();
+            Path indexesFile = indexesIterator.next();
+            if (!isPairedFiles(dataFile, indexesFile, priority)) {
+                throw new IllegalStateException("Illegal order of data- and indexes-files");
+            }
+
+            sstables.put(priority, new PairedFiles(dataFile, indexesFile));
         }
 
         return FileVisitResult.CONTINUE;
+    }
+
+    private boolean isPairedFiles(Path dataFile, Path indexesFile, int priority) {
+        int dataFileNumber = Utils.getFileNumber(dataFile);
+        int indexesFileNumber = Utils.getFileNumber(indexesFile);
+        return dataFileNumber == priority && dataFileNumber == indexesFileNumber;
     }
 
 }

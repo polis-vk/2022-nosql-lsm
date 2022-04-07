@@ -26,7 +26,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     public LSMDao(Config config) throws IOException {
         this.config = config;
         this.serializer = new Serializer(sstables, config);
-        
+
         Files.walkFileTree(config.basePath(), new ConfigVisitor(sstables));
     }
 
@@ -47,18 +47,26 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void close() throws IOException {
+        if (memorySSTable.isEmpty()) {
+            return;
+        }
+
         flush();
         memorySSTable.clear();
     }
 
     @Override
     public void compact() throws IOException {
+        if (memorySSTable.isEmpty() && sstables.isEmpty()) {
+            return;
+        }
+
         Iterator<Entry<ByteBuffer>> mergeIterator = get(null, null);
         if (!mergeIterator.hasNext()) {
             return;
         }
         serializer.write(mergeIterator);
-        Files.walkFileTree(config.basePath(), new CompactVisitor(sstables.lastEntry().getValue()));
+        Files.walkFileTree(config.basePath(), new CompactVisitor(sstables.lastEntry().getValue(), config));
         memorySSTable.clear();
     }
 

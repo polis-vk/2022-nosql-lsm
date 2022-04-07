@@ -8,6 +8,8 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class Utils {
 
@@ -20,6 +22,9 @@ public final class Utils {
     public static final Byte NORMAL_VALUE = 1;
     public static final Byte TOMBSTONE_VALUE = -1;
     public static final EntryComparator entryComparator = EntryComparator.INSTANSE;
+
+    private static final Pattern PATTERN = Pattern.compile("[a-zA-Z/.]+");
+    private static final String REPLACEMENT = "";
 
     private Utils() {
     }
@@ -47,6 +52,11 @@ public final class Utils {
 
     public static boolean isIndexesFile(Path file) {
         return file.getFileName().toString().startsWith(INDEXES_FILENAME);
+    }
+
+    public static Integer getFileNumber(Path file) {
+        Matcher matcher = PATTERN.matcher(file.getFileName().toString());
+        return Integer.parseInt(matcher.replaceAll(REPLACEMENT));
     }
 
 }
