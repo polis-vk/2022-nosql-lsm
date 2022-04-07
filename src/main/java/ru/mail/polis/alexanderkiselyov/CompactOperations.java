@@ -15,18 +15,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_EXTENSION;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_INDEX_EXTENSION;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_INDEX_NAME;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_NAME;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_EXTENSION;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_EXTENSION;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_NAME;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_NAME;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_EXTENSION;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_INDEX_EXTENSION;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_INDEX_NAME;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.*;
 
 public class CompactOperations {
     private Path compactedFile;
