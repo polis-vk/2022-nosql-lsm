@@ -28,10 +28,10 @@ public class FileOperations {
     private final Map<Path, Long> tablesSizes;
     private final List<FileIterator> fileIterators = new ArrayList<>();
     private final CompactOperations compactOperations;
-    public static final String FILE_NAME = "myData";
-    public static final String FILE_EXTENSION = ".dat";
-    public static final String FILE_INDEX_NAME = "myIndex";
-    public static final String FILE_INDEX_EXTENSION = ".idx";
+    private static final String FILE_NAME = "myData";
+    private static final String FILE_EXTENSION = ".dat";
+    private static final String FILE_INDEX_NAME = "myIndex";
+    private static final String FILE_INDEX_EXTENSION = ".idx";
 
     public FileOperations(Config config) throws IOException {
         basePath = config.basePath();

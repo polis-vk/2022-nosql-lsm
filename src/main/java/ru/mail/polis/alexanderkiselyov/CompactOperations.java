@@ -24,16 +24,16 @@ public class CompactOperations {
     private static final String FILE_START_COMPACT_INDEX = "startCompactIndex.sdx";
     private static final String FILE_CONTINUE_COMPACT = "continueCompact.cc";
     private static final String FILE_CONTINUE_COMPACT_INDEX = "continueCompactIndex.cdx";
-    private final String FILE_NAME;
-    private final String FILE_EXTENSION;
-    private final String FILE_INDEX_NAME;
-    private final String FILE_INDEX_EXTENSION;
+    private final String fileName;
+    private final String fileExtension;
+    private final String fileIndexName;
+    private final String fileIndexExtension;
 
     public CompactOperations(String fileName, String fileExtension, String fileIndexName, String fileIndexExtension) {
-        FILE_NAME = fileName;
-        FILE_EXTENSION = fileExtension;
-        FILE_INDEX_NAME = fileIndexName;
-        FILE_INDEX_EXTENSION = fileIndexExtension;
+        this.fileName = fileName;
+        this.fileExtension = fileExtension;
+        this.fileIndexName = fileIndexName;
+        this.fileIndexExtension = fileIndexExtension;
         noSuchFile = "No index file associated with the data file!";
     }
 
@@ -43,9 +43,9 @@ public class CompactOperations {
             for (Path file : files) {
                 checkStartCompactConflicts(basePath, file, files);
                 checkContinueCompactionConflicts(basePath, file, files);
-                if (file == basePath.resolve(FILE_NAME + "0" + FILE_EXTENSION)
-                        && !files.contains(basePath.resolve(FILE_INDEX_NAME + "0" + FILE_INDEX_EXTENSION))) {
-                    Files.delete(basePath.resolve(FILE_NAME + "0" + FILE_EXTENSION));
+                if (file == basePath.resolve(fileName + "0" + fileExtension)
+                        && !files.contains(basePath.resolve(fileIndexName + "0" + fileIndexExtension))) {
+                    Files.delete(basePath.resolve(fileName + "0" + fileExtension));
                     throw new NoSuchFileException(noSuchFile);
                 }
             }
@@ -69,13 +69,13 @@ public class CompactOperations {
             if (files.contains(basePath.resolve(FILE_CONTINUE_COMPACT_INDEX))) {
                 List<Path> ssTables = files
                         .stream().toList().stream()
-                        .filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME))
-                        .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
+                        .filter(f -> String.valueOf(f.getFileName()).contains(fileName))
+                        .sorted(new PathsComparator(fileName, fileExtension))
                         .collect(Collectors.toList());
                 List<Path> ssIndexes = files
                         .stream().toList().stream()
-                        .filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME))
-                        .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
+                        .filter(f -> String.valueOf(f.getFileName()).contains(fileIndexName))
+                        .sorted(new PathsComparator(fileIndexName, fileIndexExtension))
                         .collect(Collectors.toList());
                 deleteFiles(ssTables);
                 deleteFiles(ssIndexes);
@@ -140,10 +140,10 @@ public class CompactOperations {
 
     void renameCompactedFile(Path basePath) throws IOException {
         if (compactedFile != null) {
-            Files.move(compactedFile, basePath.resolve(FILE_NAME + "0" + FILE_EXTENSION), ATOMIC_MOVE);
+            Files.move(compactedFile, basePath.resolve(fileName + "0" + fileExtension), ATOMIC_MOVE);
         }
         if (compactedIndex != null) {
-            Files.move(compactedIndex, basePath.resolve(FILE_INDEX_NAME + "0" + FILE_INDEX_EXTENSION), ATOMIC_MOVE);
+            Files.move(compactedIndex, basePath.resolve(fileIndexName + "0" + fileIndexExtension), ATOMIC_MOVE);
         }
     }
 
