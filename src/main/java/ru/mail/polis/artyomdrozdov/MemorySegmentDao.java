@@ -1,20 +1,13 @@
 package ru.mail.polis.artyomdrozdov;
 
-import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
-import jdk.incubator.foreign.ResourceScope;
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
-import java.nio.channels.FileChannel;
-import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -43,36 +36,13 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (from == null) {
             from = VERY_FIRST_KEY;
         }
-        Iterator<Entry<MemorySegment>> memoryIterator = getMemoryIterator(from, to);
-        Iterator<Entry<MemorySegment>> iterator = storage.iterate(from, to);
 
-        Iterator<Entry<MemorySegment>> mergeIterator = MergeIterator.of(
-                List.of(
-                        new IndexedPeekIterator<>(0, memoryIterator),
-                        new IndexedPeekIterator<>(1, iterator)
-                ),
-                EntryKeyComparator.INSTANCE
-        );
+        ArrayList<Iterator<Entry<MemorySegment>>> iterators = storage.iterate(from, to);
+        iterators.add(getMemoryIterator(from, to));
 
-        IndexedPeekIterator<Entry<MemorySegment>> delegate = new IndexedPeekIterator<>(0, mergeIterator);
+        Iterator<Entry<MemorySegment>> mergeIterator = MergeIterator.of(iterators, EntryKeyComparator.INSTANCE);
 
-        return new Iterator<>() {
-            @Override
-            public boolean hasNext() {
-                while (delegate.hasNext() && delegate.peek().value() == null) {
-                    delegate.next();
-                }
-                return delegate.hasNext();
-            }
-
-            @Override
-            public Entry<MemorySegment> next() {
-                if (!hasNext()) {
-                    throw new NoSuchElementException("...");
-                }
-                return delegate.next();
-            }
-        };
+        return new TombstoneFilteringIterator(mergeIterator);
     }
 
     private Iterator<Entry<MemorySegment>> getMemoryIterator(MemorySegment from, MemorySegment to) {
@@ -91,15 +61,12 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) {
-        Iterator<Entry<MemorySegment>> iterator = get(key, null);
-        if (!iterator.hasNext()) {
-            return null;
+        Entry<MemorySegment> result = memory.get(key);
+        if (result == null) {
+            result = storage.get(key);
         }
-        Entry<MemorySegment> next = iterator.next();
-        if (MemorySegmentComparator.INSTANCE.compare(key, next.key()) == 0) {
-            return next;
-        }
-        return null;
+
+        return (result == null || result.isTombstone()) ? null : result;
     }
 
     @Override
@@ -129,6 +96,42 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             Storage.save(config, storage, memory.values());
         } finally {
             lock.writeLock().unlock();
+        }
+    }
+
+    private static class TombstoneFilteringIterator implements Iterator<Entry<MemorySegment>> {
+        private final Iterator<Entry<MemorySegment>> iterator;
+        private Entry<MemorySegment> current;
+
+        public TombstoneFilteringIterator(Iterator<Entry<MemorySegment>> iterator) {
+            this.iterator = iterator;
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (current != null) {
+                return true;
+            }
+
+            while (iterator.hasNext()) {
+                Entry<MemorySegment> entry = iterator.next();
+                if (!entry.isTombstone()) {
+                    this.current = entry;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        @Override
+        public Entry<MemorySegment> next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException("...");
+            }
+            Entry<MemorySegment> next = current;
+            current = null;
+            return next;
         }
     }
 }

@@ -1,20 +1,14 @@
-package ru.mail.polis.artyomdrozdov;
+package ru.mail.polis.nikitadergunov;
 
 import java.util.Iterator;
 
-public class IndexedPeekIterator<E> implements Iterator<E> {
+public class PeekIterator<E> implements Iterator<E> {
 
-    private final int index;
-    protected final Iterator<E> delegate;
-    protected E peek;
+    private final Iterator<E> delegate;
+    private E peek;
 
-    public IndexedPeekIterator(int index, Iterator<E> delegate) {
-        this.index = index;
+    public PeekIterator(Iterator<E> delegate) {
         this.delegate = delegate;
-    }
-
-    public int index() {
-        return index;
     }
 
     public E peek() {
