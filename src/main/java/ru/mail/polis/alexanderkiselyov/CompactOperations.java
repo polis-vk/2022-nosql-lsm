@@ -3,88 +3,139 @@ package ru.mail.polis.alexanderkiselyov;
 import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
+
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_INDEX_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_INDEX_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_INDEX_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_INDEX_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_NAME;
 
 public class CompactOperations {
     private Path compactedFile;
     private Path compactedIndex;
-    private final String fileName;
-    private final String fileExtension;
-    private final String fileIndexName;
-    private final String fileIndexExtension;
-    private final String fileTmpName;
-    private final String fileTmpExtension;
-    private final String fileIndexTmpName;
-    private final String fileIndexTmpExtension;
 
-    public CompactOperations(Map<String, String> fileNames) {
-        fileName = fileNames.get("fileName");
-        fileExtension = fileNames.get("fileExtension");
-        fileIndexName = fileNames.get("fileIndexName");
-        fileIndexExtension = fileNames.get("fileIndexExtension");
-        fileTmpName = fileNames.get("fileTmpName");
-        fileTmpExtension = fileNames.get("fileTmpExtension");
-        fileIndexTmpName = fileNames.get("fileIndexTmpName");
-        fileIndexTmpExtension = fileNames.get("fileIndexTmpExtension");
+    public CompactOperations() {
+
     }
 
-    void saveDataAndIndexesCompact(Iterator<BaseEntry<byte[]>> iterator) throws IOException {
-        long elementsCount = 0;
-        long offset = 0;
-        try (RandomAccessFile rafFile = new RandomAccessFile(String.valueOf(compactedFile), "rw");
-             RandomAccessFile rafIndex = new RandomAccessFile(String.valueOf(compactedIndex), "rw")) {
-            writeIndexInitialPosition(rafIndex);
-            while (iterator.hasNext()) {
-                BaseEntry<byte[]> current = iterator.next();
-                Map.Entry<byte[], BaseEntry<byte[]>> currentBaseEntry =
-                        Map.entry(current.key(), new BaseEntry<>(current.key(), current.value()));
-                FileOperations.writePair(rafFile, currentBaseEntry);
-                offset = FileOperations.writeEntryPosition(rafIndex, currentBaseEntry, offset);
-                elementsCount++;
+    void checkFiles(Path basePath) throws IOException {
+        List<Path> files = Files.list(basePath).toList();
+        for (Path file : files) {
+            if (file == basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION)) {
+                if (files.contains(basePath.resolve(FILE_START_COMPACT_INDEX_NAME + FILE_START_COMPACT_INDEX_EXTENSION))) {
+                    Files.delete(basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION));
+                    Files.delete(basePath.resolve(FILE_START_COMPACT_INDEX_NAME + FILE_START_COMPACT_INDEX_EXTENSION));
+                } else {
+                    Files.delete(basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION));
+                    throw new NoSuchFileException("No index file associated with the data file!");
+                }
             }
-            writeIndexSize(elementsCount, rafIndex);
+            if (file == basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION)) {
+                if (files.contains(basePath.resolve(FILE_CONTINUE_COMPACT_INDEX_NAME
+                        + FILE_CONTINUE_COMPACT_INDEX_EXTENSION))) {
+                    List<Path> ssTables = files
+                            .stream()
+                            .filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME))
+                            .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
+                            .collect(Collectors.toList());
+                    List<Path> ssIndexes = files
+                            .stream()
+                            .filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME))
+                            .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
+                            .collect(Collectors.toList());
+                    deleteFiles(ssTables);
+                    deleteFiles(ssIndexes);
+                } else {
+                    Files.delete(basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION));
+                    throw new NoSuchFileException("No index file associated with the data file!");
+                }
+            }
+            if (file == basePath.resolve(FILE_NAME + "0" + FILE_EXTENSION)
+                    && !files.contains(basePath.resolve(FILE_INDEX_NAME + "0" + FILE_INDEX_EXTENSION))) {
+                Files.delete(basePath.resolve(FILE_NAME + "0" + FILE_EXTENSION));
+                throw new NoSuchFileException("No index file associated with the data file!");
+            }
         }
     }
 
-    private static void writeIndexInitialPosition(RandomAccessFile raf) throws IOException {
-        ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
-        raf.seek(Long.BYTES);
-        longBuffer.putLong(0);
-        raf.write(longBuffer.array());
+    private void deleteFiles(List<Path> filePaths) throws IOException {
+        for (Path filePath : filePaths) {
+            Files.delete(filePath);
+        }
     }
 
-    private static void writeIndexSize(long elementsCount, RandomAccessFile raf) throws IOException {
-        ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
-        raf.seek(0);
-        longBuffer.putLong(elementsCount);
-        raf.write(longBuffer.array());
-    }
-
-    void createCompactedFiles(Path basePath) throws IOException {
-        compactedFile = basePath.resolve(fileTmpName + fileTmpExtension);
-        compactedIndex = basePath.resolve(fileIndexTmpName + fileIndexTmpExtension);
+    void saveDataAndIndexesCompact(Iterator<BaseEntry<byte[]>> iterator, Path basePath) throws IOException {
+        long elementsCount = 0;
+        long offset = 0;
+        compactedFile = basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION);
+        compactedIndex = basePath.resolve(FILE_START_COMPACT_INDEX_NAME + FILE_START_COMPACT_INDEX_EXTENSION);
         if (!Files.exists(compactedFile)) {
             Files.createFile(compactedFile);
         }
         if (!Files.exists(compactedIndex)) {
             Files.createFile(compactedIndex);
         }
+        try (FileReaderWriter writerFile = new FileReaderWriter(compactedFile, compactedIndex)) {
+            writeIndexInitialPosition(writerFile.getIndexChannel());
+            while (iterator.hasNext()) {
+                BaseEntry<byte[]> current = iterator.next();
+                Map.Entry<byte[], BaseEntry<byte[]>> currentBaseEntry =
+                        Map.entry(current.key(), new BaseEntry<>(current.key(), current.value()));
+                FileOperations.writePair(writerFile.getFileChannel(), currentBaseEntry);
+                offset = FileOperations.writeEntryPosition(writerFile.getIndexChannel(), currentBaseEntry, offset);
+                elementsCount++;
+            }
+            writeIndexSize(elementsCount, writerFile.getIndexChannel());
+        }
+        Files.move(compactedFile, basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION),
+                ATOMIC_MOVE);
+        Files.move(compactedIndex, basePath.resolve(FILE_CONTINUE_COMPACT_INDEX_NAME
+                + FILE_CONTINUE_COMPACT_INDEX_EXTENSION), ATOMIC_MOVE);
+        compactedFile = basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION);
+        compactedIndex = basePath.resolve(FILE_CONTINUE_COMPACT_INDEX_NAME
+                + FILE_CONTINUE_COMPACT_INDEX_EXTENSION);
+    }
+
+    private static void writeIndexInitialPosition(FileChannel channel) throws IOException {
+        ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
+        channel.position(Long.BYTES);
+        longBuffer.putLong(0);
+        longBuffer.flip();
+        channel.write(longBuffer);
+    }
+
+    private static void writeIndexSize(long elementsCount, FileChannel channel) throws IOException {
+        ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
+        channel.position(0);
+        longBuffer.putLong(elementsCount);
+        longBuffer.flip();
+        channel.write(longBuffer);
     }
 
     void renameCompactedFile(Path basePath) throws IOException {
         if (compactedFile != null) {
-            Files.move(compactedFile, basePath.resolve(fileName + "0" + fileExtension), ATOMIC_MOVE);
+            Files.move(compactedFile, basePath.resolve(FILE_NAME + "0" + FILE_EXTENSION), ATOMIC_MOVE);
         }
         if (compactedIndex != null) {
-            Files.move(compactedIndex, basePath.resolve(fileIndexName + "0" + fileIndexExtension), ATOMIC_MOVE);
+            Files.move(compactedIndex, basePath.resolve(FILE_INDEX_NAME + "0" + FILE_INDEX_EXTENSION), ATOMIC_MOVE);
         }
     }
 
@@ -97,10 +148,12 @@ public class CompactOperations {
         fileIterators.clear();
     }
 
-    void deleteAllFiles(List<Path> ssTables, List<Path> ssIndexes, long filesCount) throws IOException {
-        for (int i = 0; i < filesCount; i++) {
-            Files.delete(ssTables.get(i));
-            Files.delete(ssIndexes.get(i));
+    void deleteAllFiles(List<Path> ssTables, List<Path> ssIndexes) throws IOException {
+        for (Path ssTable : ssTables) {
+            Files.delete(ssTable);
+        }
+        for (Path ssIndex : ssIndexes) {
+            Files.delete(ssIndex);
         }
     }
 }

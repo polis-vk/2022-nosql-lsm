@@ -8,10 +8,10 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -20,16 +20,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_NAME;
+
+
 public class FileOperations {
     private long filesCount;
-    private static final String FILE_NAME = "myData";
-    private static final String FILE_EXTENSION = ".dat";
-    private static final String FILE_INDEX_NAME = "myIndex";
-    private static final String FILE_INDEX_EXTENSION = ".idx";
-    private static final String FILE_TMP_NAME = "tmp";
-    private static final String FILE_TMP_EXTENSION = ".dat";
-    private static final String FILE_INDEX_TMP_NAME = "tmpIndex";
-    private static final String FILE_INDEX_TMP_EXTENSION = ".idx";
     private final Path basePath;
     private List<Path> ssTables;
     private List<Path> ssIndexes;
@@ -40,21 +38,9 @@ public class FileOperations {
     public FileOperations(Config config) throws IOException {
         basePath = config.basePath();
         tablesSizes = new ConcurrentHashMap<>();
-        Map<String, String> fileNames = new HashMap<>();
-        fileNames.put("fileName", FILE_NAME);
-        fileNames.put("fileExtension", FILE_EXTENSION);
-        fileNames.put("fileIndexName", FILE_INDEX_NAME);
-        fileNames.put("fileIndexExtension", FILE_INDEX_EXTENSION);
-        fileNames.put("fileTmpName", FILE_TMP_NAME);
-        fileNames.put("fileTmpExtension", FILE_TMP_EXTENSION);
-        fileNames.put("fileIndexTmpName", FILE_INDEX_TMP_NAME);
-        fileNames.put("fileIndexTmpExtension", FILE_INDEX_TMP_EXTENSION);
+        compactOperations = new CompactOperations();
+        compactOperations.checkFiles(basePath);
         getDataInfo();
-        compactOperations = new CompactOperations(fileNames);
-        if (Files.exists(basePath.resolve(FILE_TMP_NAME + FILE_TMP_EXTENSION))) {
-            compact(new SkipNullValuesIterator(new IndexedPeekIterator(0, diskIterator(null, null))), false);
-            getDataInfo();
-        }
     }
 
     private void getDataInfo() throws IOException {
@@ -71,6 +57,9 @@ public class FileOperations {
                     .collect(Collectors.toList());
         }
         filesCount = ssTables.size();
+        if (filesCount != ssIndexes.size()) {
+            throw new NoSuchFileException("Not each index file is associated with the data file!");
+        }
         for (int i = 0; i < filesCount; i++) {
             tablesSizes.put(ssIndexes.get(i), indexSize(ssIndexes.get(i)));
         }
@@ -117,10 +106,9 @@ public class FileOperations {
         if (filesCount <= 1 && !hasPairs) {
             return;
         }
-        compactOperations.createCompactedFiles(basePath);
-        compactOperations.saveDataAndIndexesCompact(iterator);
+        compactOperations.saveDataAndIndexesCompact(iterator, basePath);
         compactOperations.clearFileIterators(fileIterators);
-        compactOperations.deleteAllFiles(ssTables, ssIndexes, filesCount);
+        compactOperations.deleteAllFiles(ssTables, ssIndexes);
         compactOperations.renameCompactedFile(basePath);
         ssTables.clear();
         ssIndexes.clear();
@@ -129,72 +117,66 @@ public class FileOperations {
     }
 
     void flush(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
-        saveData(pairs);
-        saveIndexes(pairs);
+        saveDataAndIndexes(pairs);
         filesCount++;
     }
 
-    private void saveData(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
+    private void saveDataAndIndexes(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
         if (sortedPairs == null) {
             return;
         }
         Path newFilePath = basePath.resolve(FILE_NAME + filesCount + FILE_EXTENSION);
+        Path newIndexPath = basePath.resolve(FILE_INDEX_NAME + filesCount + FILE_INDEX_EXTENSION);
         if (!Files.exists(newFilePath)) {
             Files.createFile(newFilePath);
         }
-        try (RandomAccessFile raf = new RandomAccessFile(String.valueOf(newFilePath), "rw")) {
-            for (var pair : sortedPairs.entrySet()) {
-                writePair(raf, pair);
-            }
-        }
-    }
-
-    private void saveIndexes(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
-        if (sortedPairs == null) {
-            return;
-        }
-        Path newIndexPath = basePath.resolve(FILE_INDEX_NAME + filesCount + FILE_INDEX_EXTENSION);
         if (!Files.exists(newIndexPath)) {
             Files.createFile(newIndexPath);
         }
         long offset = 0;
-        try (RandomAccessFile raf = new RandomAccessFile(String.valueOf(newIndexPath), "rw")) {
-            writeFileSizeAndInitialPosition(raf, sortedPairs.size());
+        try (FileReaderWriter writer = new FileReaderWriter(newFilePath, newIndexPath)) {
+            writeFileSizeAndInitialPosition(writer.getIndexChannel(), sortedPairs.size());
             for (var pair : sortedPairs.entrySet()) {
-                offset = writeEntryPosition(raf, pair, offset);
+                writePair(writer.getFileChannel(), pair);
+                offset = writeEntryPosition(writer.getIndexChannel(), pair, offset);
             }
         }
     }
 
-    static void writePair(RandomAccessFile raf, Map.Entry<byte[], BaseEntry<byte[]>> pair) throws IOException {
+    static void writePair(FileChannel channel, Map.Entry<byte[], BaseEntry<byte[]>> pair) throws IOException {
         ByteBuffer intBuffer = ByteBuffer.allocate(Integer.BYTES);
         intBuffer.putInt(pair.getKey().length);
-        raf.write(intBuffer.array());
+        intBuffer.flip();
+        channel.write(intBuffer);
         intBuffer.clear();
-        raf.write(pair.getKey());
+        channel.write(ByteBuffer.wrap(pair.getKey()));
         if (pair.getValue().value() == null) {
             intBuffer.putInt(-1);
-            raf.write(intBuffer.array());
+            intBuffer.flip();
+            channel.write(intBuffer);
             intBuffer.clear();
         } else {
             intBuffer.putInt(pair.getValue().value().length);
-            raf.write(intBuffer.array());
+            intBuffer.flip();
+            channel.write(intBuffer);
             intBuffer.clear();
-            raf.write(pair.getValue().value());
+            channel.write(ByteBuffer.wrap(pair.getValue().value()));
         }
     }
 
-    private void writeFileSizeAndInitialPosition(RandomAccessFile raf, long pairsSize) throws IOException {
+    private void writeFileSizeAndInitialPosition(FileChannel channel, long pairsSize) throws IOException {
         ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
         longBuffer.putLong(pairsSize);
-        raf.write(longBuffer.array());
+        longBuffer.flip();
+        channel.write(longBuffer);
         longBuffer.clear();
         longBuffer.putLong(0);
-        raf.write(longBuffer.array());
+        longBuffer.flip();
+        channel.write(longBuffer);
         longBuffer.clear();
     }
 
-    static long writeEntryPosition(RandomAccessFile raf, Map.Entry<byte[],
+    static long writeEntryPosition(FileChannel channel, Map.Entry<byte[],
             BaseEntry<byte[]>> pair, long size) throws IOException {
         ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
         long result = size;
@@ -204,7 +186,8 @@ public class FileOperations {
             result += 2 * Integer.BYTES + pair.getKey().length + pair.getValue().value().length;
         }
         longBuffer.putLong(result);
-        raf.write(longBuffer.array());
+        longBuffer.flip();
+        channel.write(longBuffer);
         longBuffer.clear();
         return result;
     }
