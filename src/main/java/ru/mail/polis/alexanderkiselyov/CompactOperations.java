@@ -15,66 +15,76 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
-
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_INDEX_EXTENSION;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_INDEX_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_NAME;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_EXTENSION;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_EXTENSION;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_NAME;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_NAME;
+import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_EXTENSION;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_INDEX_EXTENSION;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_INDEX_NAME;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_EXTENSION;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_NAME;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_INDEX_EXTENSION;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_INDEX_NAME;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_EXTENSION;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_NAME;
 
 public class CompactOperations {
     private Path compactedFile;
     private Path compactedIndex;
+    private final String noSuchFile;
 
     public CompactOperations() {
-
+        noSuchFile = "No index file associated with the data file!";
     }
 
     void checkFiles(Path basePath) throws IOException {
         try (Stream<Path> filesStream = Files.list(basePath)) {
             List<Path> files = filesStream.toList();
             for (Path file : files) {
-                if (file == basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION)) {
-                    if (files.contains(basePath.resolve(FILE_START_COMPACT_INDEX_NAME + FILE_START_COMPACT_INDEX_EXTENSION))) {
-                        Files.delete(basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION));
-                        Files.delete(basePath.resolve(FILE_START_COMPACT_INDEX_NAME + FILE_START_COMPACT_INDEX_EXTENSION));
-                    } else {
-                        Files.delete(basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION));
-                        throw new NoSuchFileException("No index file associated with the data file!");
-                    }
-                }
-                if (file == basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION)) {
-                    if (files.contains(basePath.resolve(FILE_CONTINUE_COMPACT_INDEX_NAME
-                            + FILE_CONTINUE_COMPACT_INDEX_EXTENSION))) {
-                        List<Path> ssTables = files
-                                .stream()
-                                .filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME))
-                                .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
-                                .collect(Collectors.toList());
-                        List<Path> ssIndexes = files
-                                .stream()
-                                .filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME))
-                                .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
-                                .collect(Collectors.toList());
-                        deleteFiles(ssTables);
-                        deleteFiles(ssIndexes);
-                    } else {
-                        Files.delete(basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION));
-                        throw new NoSuchFileException("No index file associated with the data file!");
-                    }
-                }
+                checkStartCompactConflicts(basePath, file, files);
+                checkContinueCompactionConflicts(basePath, file, files);
                 if (file == basePath.resolve(FILE_NAME + "0" + FILE_EXTENSION)
                         && !files.contains(basePath.resolve(FILE_INDEX_NAME + "0" + FILE_INDEX_EXTENSION))) {
                     Files.delete(basePath.resolve(FILE_NAME + "0" + FILE_EXTENSION));
-                    throw new NoSuchFileException("No index file associated with the data file!");
+                    throw new NoSuchFileException(noSuchFile);
                 }
+            }
+        }
+    }
+
+    private void checkStartCompactConflicts(Path basePath, Path file, List<Path> files) throws IOException {
+        if (file == basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION)) {
+            if (files.contains(basePath.resolve(FILE_START_COMPACT_INDEX_NAME
+                    + FILE_START_COMPACT_INDEX_EXTENSION))) {
+                Files.delete(basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION));
+                Files.delete(basePath.resolve(FILE_START_COMPACT_INDEX_NAME
+                        + FILE_START_COMPACT_INDEX_EXTENSION));
+            } else {
+                Files.delete(basePath.resolve(FILE_START_COMPACT_NAME + FILE_START_COMPACT_EXTENSION));
+                throw new NoSuchFileException(noSuchFile);
+            }
+        }
+    }
+
+    private void checkContinueCompactionConflicts(Path basePath, Path file, List<Path> files) throws IOException {
+        if (file == basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION)) {
+            if (files.contains(basePath.resolve(FILE_CONTINUE_COMPACT_INDEX_NAME
+                    + FILE_CONTINUE_COMPACT_INDEX_EXTENSION))) {
+                List<Path> ssTables = files
+                        .stream().toList().stream()
+                        .filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME))
+                        .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
+                        .collect(Collectors.toList());
+                List<Path> ssIndexes = files
+                        .stream().toList().stream()
+                        .filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME))
+                        .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
+                        .collect(Collectors.toList());
+                deleteFiles(ssTables);
+                deleteFiles(ssIndexes);
+            } else {
+                Files.delete(basePath.resolve(FILE_CONTINUE_COMPACT_NAME + FILE_CONTINUE_COMPACT_EXTENSION));
+                throw new NoSuchFileException(noSuchFile);
             }
         }
     }

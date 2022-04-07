@@ -1,6 +1,10 @@
 package ru.mail.polis.alexanderkiselyov;
 
 public class FileConstants {
+    private FileConstants() {
+
+    }
+
     public static final String FILE_NAME = "myData";
     public static final String FILE_EXTENSION = ".dat";
     public static final String FILE_INDEX_NAME = "myIndex";

@@ -25,7 +25,6 @@ import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_EXTENSION
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_NAME;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_NAME;
 
-
 public class FileOperations {
     private long filesCount;
     private final Path basePath;
