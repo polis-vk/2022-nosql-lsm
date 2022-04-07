@@ -16,9 +16,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
-import java.util.List;
 
 class Storage implements Closeable {
 
@@ -33,7 +31,7 @@ class Storage implements Closeable {
     static Storage load(Config config) throws IOException {
         Path basePath = config.basePath();
 
-        List<MemorySegment> sstables = new ArrayList<>();
+        ArrayList<MemorySegment> sstables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
 
         // FIXME check existing files
@@ -45,8 +43,6 @@ class Storage implements Closeable {
                 break;
             }
         }
-
-        Collections.reverse(sstables);
 
         return new Storage(scope, sstables);
     }
@@ -128,16 +124,24 @@ class Storage implements Closeable {
     // supposed to have fresh files first
 
     private final ResourceScope scope;
-    private final List<MemorySegment> sstables;
+    private final ArrayList<MemorySegment> sstables;
 
-    private Storage(ResourceScope scope, List<MemorySegment> sstables) {
+    private Storage(ResourceScope scope, ArrayList<MemorySegment> sstables) {
         this.scope = scope;
         this.sstables = sstables;
     }
 
+    private long greaterOrEqualEntryIndex(MemorySegment sstable, MemorySegment key) {
+        long index = entryIndex(sstable, key);
+        if (index < 0) {
+            return ~index;
+        }
+        return index;
+    }
+
     // file structure:
     // (fileVersion)(entryCount)((entryPosition)...)|((keySize/key/valueSize/value)...)
-    private long greaterOrEqualEntryIndex(MemorySegment sstable, MemorySegment key) {
+    private long entryIndex(MemorySegment sstable, MemorySegment key) {
         long fileVersion = MemoryAccess.getLongAtOffset(sstable, 0);
         if (fileVersion != 0) {
             throw new IllegalStateException("Unknown file version: " + fileVersion);
@@ -168,7 +172,7 @@ class Storage implements Closeable {
             }
         }
 
-        return left;
+        return ~left;
     }
 
     private Entry<MemorySegment> entryAt(MemorySegment sstable, long keyIndex) {
@@ -180,6 +184,17 @@ class Storage implements Closeable {
                 sstable.asSlice(offset + Long.BYTES, keySize),
                 valueSize == -1 ? null : sstable.asSlice(valueOffset + Long.BYTES, valueSize)
         );
+    }
+
+    public Entry<MemorySegment> get(MemorySegment key) {
+        for (int i = sstables.size() - 1; i >= 0; i--) {
+            MemorySegment sstable = sstables.get(i);
+            long keyFromPos = entryIndex(sstable, key);
+            if (keyFromPos >= 0) {
+                return entryAt(sstable, keyFromPos);
+            }
+        }
+        return null;
     }
 
     private Iterator<Entry<MemorySegment>> iterate(MemorySegment sstable, MemorySegment keyFrom, MemorySegment keyTo) {
@@ -203,15 +218,14 @@ class Storage implements Closeable {
         };
     }
 
-    public Iterator<Entry<MemorySegment>> iterate(MemorySegment keyFrom, MemorySegment keyTo) {
-        List<IndexedPeekIterator<Entry<MemorySegment>>> peekIterators = new ArrayList<>();
-        int index = 0;
+    // last is newer
+    // it is ok to mutate list after
+    public ArrayList<Iterator<Entry<MemorySegment>>> iterate(MemorySegment keyFrom, MemorySegment keyTo) {
+        ArrayList<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(sstables.size());
         for (MemorySegment sstable : sstables) {
-            Iterator<Entry<MemorySegment>> iterator = iterate(sstable, keyFrom, keyTo);
-            peekIterators.add(new IndexedPeekIterator<>(index, iterator));
-            index++;
+            iterators.add(iterate(sstable, keyFrom, keyTo));
         }
-        return MergeIterator.of(peekIterators, EntryKeyComparator.INSTANCE);
+        return iterators;
     }
 
     @Override
