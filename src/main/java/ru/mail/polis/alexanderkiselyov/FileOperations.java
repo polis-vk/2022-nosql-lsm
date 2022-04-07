@@ -20,11 +20,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_EXTENSION;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_EXTENSION;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_NAME;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_NAME;
-
 public class FileOperations {
     private long filesCount;
     private final Path basePath;
@@ -33,11 +28,15 @@ public class FileOperations {
     private final Map<Path, Long> tablesSizes;
     private final List<FileIterator> fileIterators = new ArrayList<>();
     private final CompactOperations compactOperations;
+    public static final String FILE_NAME = "myData";
+    public static final String FILE_EXTENSION = ".dat";
+    public static final String FILE_INDEX_NAME = "myIndex";
+    public static final String FILE_INDEX_EXTENSION = ".idx";
 
     public FileOperations(Config config) throws IOException {
         basePath = config.basePath();
         tablesSizes = new ConcurrentHashMap<>();
-        compactOperations = new CompactOperations();
+        compactOperations = new CompactOperations(FILE_NAME, FILE_EXTENSION, FILE_INDEX_NAME, FILE_INDEX_EXTENSION);
         compactOperations.checkFiles(basePath);
         getDataInfo();
     }
