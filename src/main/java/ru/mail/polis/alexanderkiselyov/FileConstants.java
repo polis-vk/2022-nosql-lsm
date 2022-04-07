@@ -1,10 +1,6 @@
 package ru.mail.polis.alexanderkiselyov;
 
-public class FileConstants {
-    private FileConstants() {
-
-    }
-
+public final class FileConstants {
     public static final String FILE_NAME = "myData";
     public static final String FILE_EXTENSION = ".dat";
     public static final String FILE_INDEX_NAME = "myIndex";
@@ -19,4 +15,8 @@ public class FileConstants {
     public static final String FILE_CONTINUE_COMPACT_EXTENSION = ".cc";
     public static final String FILE_CONTINUE_COMPACT_INDEX_NAME = "continueCompactIndex";
     public static final String FILE_CONTINUE_COMPACT_INDEX_EXTENSION = ".cdx";
+
+    private FileConstants() {
+
+    }
 }
