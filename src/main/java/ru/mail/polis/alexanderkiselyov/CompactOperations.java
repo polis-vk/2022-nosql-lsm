@@ -15,19 +15,19 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_CONTINUE_COMPACT_INDEX;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_EXTENSION;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_EXTENSION;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_INDEX_NAME;
 import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_NAME;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT;
-import static ru.mail.polis.alexanderkiselyov.FileConstants.FILE_START_COMPACT_INDEX;
 
 public class CompactOperations {
     private Path compactedFile;
     private Path compactedIndex;
     private final String noSuchFile;
+    public static final String FILE_START_COMPACT = "startCompact.sc";
+    public static final String FILE_START_COMPACT_INDEX = "startCompactIndex.sdx";
+    public static final String FILE_CONTINUE_COMPACT = "continueCompact.cc";
+    public static final String FILE_CONTINUE_COMPACT_INDEX = "continueCompactIndex.cdx";
 
     public CompactOperations() {
         noSuchFile = "No index file associated with the data file!";
