@@ -24,10 +24,10 @@ public class CompactOperations {
     private Path compactedFile;
     private Path compactedIndex;
     private final String noSuchFile;
-    public static final String FILE_START_COMPACT = "startCompact.sc";
-    public static final String FILE_START_COMPACT_INDEX = "startCompactIndex.sdx";
-    public static final String FILE_CONTINUE_COMPACT = "continueCompact.cc";
-    public static final String FILE_CONTINUE_COMPACT_INDEX = "continueCompactIndex.cdx";
+    private static final String FILE_START_COMPACT = "startCompact.sc";
+    private static final String FILE_START_COMPACT_INDEX = "startCompactIndex.sdx";
+    private static final String FILE_CONTINUE_COMPACT = "continueCompact.cc";
+    private static final String FILE_CONTINUE_COMPACT_INDEX = "continueCompactIndex.cdx";
 
     public CompactOperations() {
         noSuchFile = "No index file associated with the data file!";
