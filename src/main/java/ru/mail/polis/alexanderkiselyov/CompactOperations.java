@@ -117,7 +117,7 @@ public class CompactOperations {
         }
         Files.move(compactedFile, basePath.resolve(FILE_CONTINUE_COMPACT),
                 ATOMIC_MOVE);
-        Files.move(compactedIndex, basePath.resolve(FILE_CONTINUE_COMPACT), ATOMIC_MOVE);
+        Files.move(compactedIndex, basePath.resolve(FILE_CONTINUE_COMPACT_INDEX), ATOMIC_MOVE);
         compactedFile = basePath.resolve(FILE_CONTINUE_COMPACT);
         compactedIndex = basePath.resolve(FILE_CONTINUE_COMPACT_INDEX);
     }
