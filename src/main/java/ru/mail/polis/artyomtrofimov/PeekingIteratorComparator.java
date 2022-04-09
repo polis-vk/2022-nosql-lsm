@@ -2,7 +2,7 @@ package ru.mail.polis.artyomtrofimov;
 
 import java.util.Comparator;
 
-public class PeekingIteratorComparator implements Comparator<PeekingIterator> {
+public final class PeekingIteratorComparator implements Comparator<PeekingIterator> {
     public static final PeekingIteratorComparator INSTANCE = new PeekingIteratorComparator();
 
     private PeekingIteratorComparator() {
