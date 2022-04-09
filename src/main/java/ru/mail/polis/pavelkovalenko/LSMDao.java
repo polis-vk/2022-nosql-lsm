@@ -27,7 +27,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         this.config = config;
         this.serializer = new Serializer(sstables, config);
 
-        Files.walkFileTree(config.basePath(), new ConfigVisitor(sstables));
+        Files.walkFileTree(config.basePath(), new ConfigVisitor(sstables, serializer));
     }
 
     @Override
@@ -66,7 +66,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             return;
         }
         serializer.write(mergeIterator);
-        Files.walkFileTree(config.basePath(), new CompactVisitor(sstables.lastEntry().getValue(), config));
+        Files.walkFileTree(config.basePath(), new CompactVisitor(sstables.lastEntry().getValue()));
         memorySSTable.clear();
     }
 

@@ -43,18 +43,31 @@ public final class Serializer {
             return;
         }
 
-        PairedFiles lastPairedFiles = addPairedFiles();
+        PairedFiles lastPairedFiles = null;
+        try {
+            lastPairedFiles = addPairedFiles();
 
-        try (RandomAccessFile dataFile = new RandomAccessFile(lastPairedFiles.dataFile().toString(), "rw");
-             RandomAccessFile indexesFile = new RandomAccessFile(lastPairedFiles.indexesFile().toString(), "rw")) {
-            int curOffset = 0;
-            int bbSize = 0;
-            ByteBuffer offset = ByteBuffer.allocate(Utils.INDEX_OFFSET);
-            while (sstable.hasNext()) {
-                curOffset += bbSize;
-                writeOffset(curOffset, offset, indexesFile);
-                bbSize = writePair(sstable.next(), dataFile);
+            try (RandomAccessFile dataFile = new RandomAccessFile(lastPairedFiles.dataFile().toString(), "rw");
+                 RandomAccessFile indexesFile = new RandomAccessFile(lastPairedFiles.indexesFile().toString(), "rw")) {
+                writeMeta(new FileMeta(FileMeta.unfinishedWrite), dataFile);
+
+                int curOffset = (int) dataFile.getFilePointer();
+                int bbSize = 0;
+                ByteBuffer offset = ByteBuffer.allocate(Utils.INDEX_OFFSET);
+                while (sstable.hasNext()) {
+                    curOffset += bbSize;
+                    writeOffset(curOffset, offset, indexesFile);
+                    bbSize = writePair(sstable.next(), dataFile);
+                }
+
+                writeMeta(new FileMeta(FileMeta.finishedWrite), dataFile);
             }
+        } catch (Exception ex) {
+            if (lastPairedFiles != null) {
+                Files.deleteIfExists(lastPairedFiles.dataFile());
+                Files.deleteIfExists(lastPairedFiles.indexesFile());
+            }
+            throw new RuntimeException(ex);
         }
     }
 
@@ -77,6 +90,22 @@ public final class Serializer {
         return size;
     }
 
+    public FileMeta readMeta(MappedByteBuffer file) {
+        byte wasWritten = file.get(0);
+        file.getChar(1);
+        return new FileMeta(wasWritten);
+    }
+
+    private void writeMeta(FileMeta meta, RandomAccessFile file) throws IOException {
+        file.seek(0);
+        file.write(meta.wasWritten());
+        file.write(Utils.LINE_SEPARATOR);
+    }
+
+    public boolean hasSuccessMeta(RandomAccessFile file) throws IOException {
+        return file.readByte() == FileMeta.finishedWrite;
+    }
+
     private int readDataFileOffset(MappedByteBuffer indexesFile, int indexesPos) {
         return indexesFile.getInt(indexesPos);
     }
@@ -84,13 +113,15 @@ public final class Serializer {
     private void mapSSTables() throws IOException {
         int priority = 1;
 
-        for (PairedFiles filePair: sstables.values()) {
+        for (PairedFiles filePair : sstables.values()) {
             try (FileChannel dataFile = FileChannel.open(filePair.dataFile());
                  FileChannel indexesFile = FileChannel.open(filePair.indexesFile())) {
                 MappedByteBuffer mappedDataFile = Utils.mapFile(dataFile,
                         FileChannel.MapMode.READ_ONLY, dataFile.size());
                 MappedByteBuffer mappedIndexesFile = Utils.mapFile(indexesFile,
                         FileChannel.MapMode.READ_ONLY, indexesFile.size());
+                FileMeta dataMeta = readMeta(mappedDataFile);
+                mappedDataFile.position(dataMeta.size());
                 mappedSSTables.put(priority++, new MappedPairedFiles(mappedDataFile, mappedIndexesFile));
             }
         }

@@ -1,10 +1,8 @@
 package ru.mail.polis.pavelkovalenko.visitors;
 
-import ru.mail.polis.Config;
 import ru.mail.polis.pavelkovalenko.PairedFiles;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -15,11 +13,9 @@ import java.nio.file.attribute.BasicFileAttributes;
 public class CompactVisitor extends SimpleFileVisitor<Path> {
 
     private final PairedFiles compactFiles;
-    private final Config config;
 
-    public CompactVisitor(PairedFiles compactFiles, Config config) {
+    public CompactVisitor(PairedFiles compactFiles) {
         this.compactFiles = compactFiles;
-        this.config = config;
     }
 
     @Override
@@ -31,18 +27,17 @@ public class CompactVisitor extends SimpleFileVisitor<Path> {
     }
 
     @Override
-    public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
-        renameFile(compactFiles.dataFile(), Utils.DATA_FILENAME + 1 + Utils.FILE_EXTENSION);
-        renameFile(compactFiles.indexesFile(), Utils.INDEXES_FILENAME + 1 + Utils.FILE_EXTENSION);
-        return FileVisitResult.CONTINUE;
-    }
+    public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+        Path newDataFile = Path.of(Utils.DATA_FILENAME + 1 + Utils.FILE_EXTENSION);
+        Path newIndexesFile = Path.of(Utils.INDEXES_FILENAME + 1 + Utils.FILE_EXTENSION);
 
-    private void renameFile(Path pathToFile, String newFilename) {
-        File file = new File(pathToFile.toString());
-        File newFile = new File(config.basePath().resolve(newFilename).toString());
-        if (!file.renameTo(newFile)) {
-            throw new RuntimeException("Problems with renaming file occurred");
+        if (compactFiles.dataFile().getFileName().toString().equals(newDataFile.toString())) {
+            return FileVisitResult.CONTINUE;
         }
+
+        Files.move(compactFiles.dataFile(), newDataFile);
+        Files.move(compactFiles.indexesFile(), newIndexesFile);
+        return FileVisitResult.CONTINUE;
     }
 
     private boolean isTargetFile(Path file) {

@@ -91,7 +91,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private void fallEntry(Entry<ByteBuffer> entry) {
-        for (PeekIterator<Entry<ByteBuffer>> iterator: iterators) {
+        for (PeekIterator<Entry<ByteBuffer>> iterator : iterators) {
             if (iterator.peek() != null && iterator.peek().key().equals(entry.key())) {
                 iterator.next();
             }

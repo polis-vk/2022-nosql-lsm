@@ -71,14 +71,14 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
     private boolean canContinue() throws IOException {
         return (peek() != null && peek().key().compareTo(from) >= 0)
                 && ((to == null && peek() != null)
-                    || (peek() != null && Utils.entryComparator.compare(peek(), toEntry) < 0));
+                || (peek() != null && Utils.entryComparator.compare(peek(), toEntry) < 0));
     }
 
     private boolean isEOFReached() {
         return curIndexesPos >= mappedFilePair.indexesFile().limit();
     }
 
-    private void binarySearchInFile() throws IOException {
+    private void binarySearchInFile() {
         Entry<ByteBuffer> ceilEntry = getLast();
         int a = 0;
         int b = getIndexesFileLength() / Utils.INDEX_OFFSET;

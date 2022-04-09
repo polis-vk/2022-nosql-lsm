@@ -10,7 +10,7 @@ public final class Timer {
         double times;
         String result = TIME_PATTERN;
 
-        for (Time time: Time.times) {
+        for (Time time : Time.times) {
             if (elapse * time.getFactor() > 0) {
                 times = Math.floor(elapse * time.getFactor());
                 elapse -= times * time.getFactor();
