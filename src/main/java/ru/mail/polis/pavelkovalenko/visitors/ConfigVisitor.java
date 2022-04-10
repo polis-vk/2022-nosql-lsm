@@ -1,14 +1,11 @@
 package ru.mail.polis.pavelkovalenko.visitors;
 
 import ru.mail.polis.pavelkovalenko.PairedFiles;
-import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.comparators.PathComparator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
