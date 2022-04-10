@@ -4,7 +4,6 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
-import sun.misc.Unsafe;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -25,7 +24,7 @@ public final class Serializer {
     private final NavigableMap<Integer, MappedPairedFiles> mappedSSTables = new TreeMap<>();
     private final Config config;
     private static final Method unmap;
-    private static final Unsafe unsafe;
+    private static final Object unsafe;
 
     static {
         try {
@@ -34,7 +33,7 @@ public final class Serializer {
             unmap.setAccessible(true);
             Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
             theUnsafeField.setAccessible(true);
-            unsafe = (Unsafe) theUnsafeField.get(null);
+            unsafe = theUnsafeField.get(null); // 'sun.misc.Unsafe' instance
         } catch (ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
         }
@@ -62,25 +61,21 @@ public final class Serializer {
             return;
         }
 
-        PairedFiles lastPairedFiles = null;
-        try {
-            lastPairedFiles = addPairedFiles();
+        PairedFiles lastPairedFiles = addPairedFiles();
+        try (RandomAccessFile dataFile = new RandomAccessFile(lastPairedFiles.dataFile().toString(), "rw");
+             RandomAccessFile indexesFile = new RandomAccessFile(lastPairedFiles.indexesFile().toString(), "rw")) {
+            writeMeta(new FileMeta(FileMeta.unfinishedWrite), dataFile);
 
-            try (RandomAccessFile dataFile = new RandomAccessFile(lastPairedFiles.dataFile().toString(), "rw");
-                 RandomAccessFile indexesFile = new RandomAccessFile(lastPairedFiles.indexesFile().toString(), "rw")) {
-                writeMeta(new FileMeta(FileMeta.unfinishedWrite), dataFile);
-
-                int curOffset = (int) dataFile.getFilePointer();
-                int bbSize = 0;
-                ByteBuffer offset = ByteBuffer.allocate(Utils.INDEX_OFFSET);
-                while (sstable.hasNext()) {
-                    curOffset += bbSize;
-                    writeOffset(curOffset, offset, indexesFile);
-                    bbSize = writePair(sstable.next(), dataFile);
-                }
-
-                writeMeta(new FileMeta(FileMeta.finishedWrite), dataFile);
+            int curOffset = (int) dataFile.getFilePointer();
+            int bbSize = 0;
+            ByteBuffer offset = ByteBuffer.allocate(Utils.INDEX_OFFSET);
+            while (sstable.hasNext()) {
+                curOffset += bbSize;
+                writeOffset(curOffset, offset, indexesFile);
+                bbSize = writePair(sstable.next(), dataFile);
             }
+
+            writeMeta(new FileMeta(FileMeta.finishedWrite), dataFile);
         } catch (Exception ex) {
             if (lastPairedFiles != null) {
                 Files.deleteIfExists(lastPairedFiles.dataFile());
