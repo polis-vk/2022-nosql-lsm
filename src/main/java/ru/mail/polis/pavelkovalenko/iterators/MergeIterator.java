@@ -1,9 +1,9 @@
 package ru.mail.polis.pavelkovalenko.iterators;
 
 import ru.mail.polis.Entry;
-import ru.mail.polis.pavelkovalenko.dto.PairedFiles;
 import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
+import ru.mail.polis.pavelkovalenko.dto.PairedFiles;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
