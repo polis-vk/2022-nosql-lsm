@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -19,7 +20,6 @@ import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 public class CompactOperations {
     private Path compactedFile;
     private Path compactedIndex;
-    private final String noSuchFile;
     private static final String FILE_START_COMPACT = "startCompact.sc";
     private static final String FILE_START_COMPACT_INDEX = "startCompactIndex.sdx";
     private static final String FILE_CONTINUE_COMPACT = "continueCompact.cc";
@@ -34,56 +34,83 @@ public class CompactOperations {
         this.fileExtension = fileExtension;
         this.fileIndexName = fileIndexName;
         this.fileIndexExtension = fileIndexExtension;
-        noSuchFile = "No index file associated with the data file!";
     }
 
-    void checkFiles(Path basePath) throws IOException {
+    Map<Path, Path> checkFiles(Path basePath) throws IOException {
+        Map<Path, Path> allData = new LinkedHashMap<>();
         try (Stream<Path> filesStream = Files.list(basePath)) {
             List<Path> files = filesStream.toList();
-            for (Path file : files) {
-                checkStartCompactConflicts(basePath, file, files);
-                checkContinueCompactionConflicts(basePath, file, files);
-                if (file == basePath.resolve(fileName + "0" + fileExtension)
-                        && !files.contains(basePath.resolve(fileIndexName + "0" + fileIndexExtension))) {
-                    Files.delete(basePath.resolve(fileName + "0" + fileExtension));
-                    throw new NoSuchFileException(noSuchFile);
-                }
+            checkCompactConflicts(basePath, files);
+            List<Path> ssTables = files
+                    .stream()
+                    .filter(f -> String.valueOf(f.getFileName()).startsWith(fileName))
+                    .sorted(new PathsComparator(fileName, fileExtension))
+                    .toList();
+            List<Path> ssIndexes = files
+                    .stream()
+                    .filter(f -> String.valueOf(f.getFileName()).startsWith(fileIndexName))
+                    .sorted(new PathsComparator(fileIndexName, fileIndexExtension))
+                    .toList();
+            if (ssTables.size() != ssIndexes.size()) {
+                throw new NoSuchFileException("Not all files found!");
+            }
+            for (int i = 0; i < ssTables.size(); i++) {
+                Path data = ssTables.get(i);
+                Path index = ssIndexes.get(i);
+                checkDataAndIndexCompliance(data, index);
+                allData.put(data, index);
+            }
+        }
+        return allData;
+    }
+
+    private void checkCompactConflicts(Path basePath, List<Path> files) throws IOException {
+        for (Path file : files) {
+            if (checkStartCompactConflicts(basePath, file, files)) {
+                break;
+            }
+            if (checkContinueCompactionConflicts(basePath, file, files)) {
+                break;
             }
         }
     }
 
-    private void checkStartCompactConflicts(Path basePath, Path file, List<Path> files) throws IOException {
+    private boolean checkStartCompactConflicts(Path basePath, Path file, List<Path> files) throws IOException {
         if (file == basePath.resolve(FILE_START_COMPACT)) {
+            Files.delete(basePath.resolve(FILE_START_COMPACT));
             if (files.contains(basePath.resolve(FILE_START_COMPACT_INDEX))) {
-                Files.delete(basePath.resolve(FILE_START_COMPACT));
                 Files.delete(basePath.resolve(FILE_START_COMPACT_INDEX));
-            } else {
-                Files.delete(basePath.resolve(FILE_START_COMPACT));
-                throw new NoSuchFileException(noSuchFile);
             }
+            return true;
         }
+        return false;
     }
 
-    private void checkContinueCompactionConflicts(Path basePath, Path file, List<Path> files) throws IOException {
+    private boolean checkContinueCompactionConflicts(Path basePath, Path file, List<Path> files) throws IOException {
         if (file == basePath.resolve(FILE_CONTINUE_COMPACT)) {
             if (files.contains(basePath.resolve(FILE_CONTINUE_COMPACT_INDEX))) {
                 List<Path> ssTables = files
                         .stream().toList().stream()
-                        .filter(f -> String.valueOf(f.getFileName()).contains(fileName))
+                        .filter(f -> f.getFileName().toString().startsWith(fileName))
                         .sorted(new PathsComparator(fileName, fileExtension))
                         .collect(Collectors.toList());
                 List<Path> ssIndexes = files
                         .stream().toList().stream()
-                        .filter(f -> String.valueOf(f.getFileName()).contains(fileIndexName))
+                        .filter(f -> f.getFileName().toString().startsWith(fileIndexName))
                         .sorted(new PathsComparator(fileIndexName, fileIndexExtension))
                         .collect(Collectors.toList());
                 deleteFiles(ssTables);
                 deleteFiles(ssIndexes);
+                Files.move(basePath.resolve(FILE_CONTINUE_COMPACT),
+                        basePath.resolve(fileName + "0" + fileExtension), ATOMIC_MOVE);
+                Files.move(basePath.resolve(FILE_CONTINUE_COMPACT_INDEX),
+                        basePath.resolve(fileIndexName + "0" + fileIndexExtension), ATOMIC_MOVE);
             } else {
                 Files.delete(basePath.resolve(FILE_CONTINUE_COMPACT));
-                throw new NoSuchFileException(noSuchFile);
             }
+            return true;
         }
+        return false;
     }
 
     private void deleteFiles(List<Path> filePaths) throws IOException {
@@ -92,17 +119,24 @@ public class CompactOperations {
         }
     }
 
+    private void checkDataAndIndexCompliance(Path data, Path index) throws IOException {
+        String dataStr = data.toString();
+        String indexStr = index.toString();
+        if (Integer.parseInt(dataStr.substring(dataStr.indexOf(fileName) + fileName.length(),
+                dataStr.indexOf(fileExtension)))
+                != Integer.parseInt(indexStr.substring(indexStr.indexOf(fileIndexName) + fileIndexName.length(),
+                indexStr.indexOf(fileIndexExtension)))) {
+            throw new NoSuchFileException("Not all files found!");
+        }
+    }
+
     void saveDataAndIndexesCompact(Iterator<BaseEntry<byte[]>> iterator, Path basePath) throws IOException {
         long elementsCount = 0;
         long offset = 0;
         compactedFile = basePath.resolve(FILE_START_COMPACT);
         compactedIndex = basePath.resolve(FILE_START_COMPACT_INDEX);
-        if (!Files.exists(compactedFile)) {
-            Files.createFile(compactedFile);
-        }
-        if (!Files.exists(compactedIndex)) {
-            Files.createFile(compactedIndex);
-        }
+        Files.createFile(compactedFile);
+        Files.createFile(compactedIndex);
         try (FileReaderWriter writerFile = new FileReaderWriter(compactedFile, compactedIndex)) {
             writeIndexInitialPosition(writerFile.getIndexChannel());
             while (iterator.hasNext()) {
@@ -115,8 +149,7 @@ public class CompactOperations {
             }
             writeIndexSize(elementsCount, writerFile.getIndexChannel());
         }
-        Files.move(compactedFile, basePath.resolve(FILE_CONTINUE_COMPACT),
-                ATOMIC_MOVE);
+        Files.move(compactedFile, basePath.resolve(FILE_CONTINUE_COMPACT), ATOMIC_MOVE);
         Files.move(compactedIndex, basePath.resolve(FILE_CONTINUE_COMPACT_INDEX), ATOMIC_MOVE);
         compactedFile = basePath.resolve(FILE_CONTINUE_COMPACT);
         compactedIndex = basePath.resolve(FILE_CONTINUE_COMPACT_INDEX);
@@ -139,12 +172,8 @@ public class CompactOperations {
     }
 
     void renameCompactedFile(Path basePath) throws IOException {
-        if (compactedFile != null) {
-            Files.move(compactedFile, basePath.resolve(fileName + "0" + fileExtension), ATOMIC_MOVE);
-        }
-        if (compactedIndex != null) {
-            Files.move(compactedIndex, basePath.resolve(fileIndexName + "0" + fileIndexExtension), ATOMIC_MOVE);
-        }
+        Files.move(compactedFile, basePath.resolve(fileName + "0" + fileExtension), ATOMIC_MOVE);
+        Files.move(compactedIndex, basePath.resolve(fileIndexName + "0" + fileIndexExtension), ATOMIC_MOVE);
     }
 
     void clearFileIterators(List<FileIterator> fileIterators) throws IOException {

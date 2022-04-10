@@ -8,7 +8,6 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,14 +16,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class FileOperations {
     private long filesCount;
     private final Path basePath;
-    private List<Path> ssTables;
-    private List<Path> ssIndexes;
+    private final List<Path> ssTables;
+    private final List<Path> ssIndexes;
     private final Map<Path, Long> tablesSizes;
     private final List<FileIterator> fileIterators = new ArrayList<>();
     private final CompactOperations compactOperations;
@@ -35,28 +32,19 @@ public class FileOperations {
 
     public FileOperations(Config config) throws IOException {
         basePath = config.basePath();
+        ssTables = new ArrayList<>();
+        ssIndexes = new ArrayList<>();
         tablesSizes = new ConcurrentHashMap<>();
         compactOperations = new CompactOperations(FILE_NAME, FILE_EXTENSION, FILE_INDEX_NAME, FILE_INDEX_EXTENSION);
-        compactOperations.checkFiles(basePath);
-        getDataInfo();
+        Map<Path, Path> allData = compactOperations.checkFiles(basePath);
+        getDataInfo(allData);
     }
 
-    private void getDataInfo() throws IOException {
-        try (Stream<Path> pathStream = Files.list(basePath)) {
-            ssTables = pathStream.toList().stream()
-                    .filter(f -> String.valueOf(f.getFileName()).contains(FILE_NAME))
-                    .sorted(new PathsComparator(FILE_NAME, FILE_EXTENSION))
-                    .collect(Collectors.toList());
-        }
-        try (Stream<Path> indexPathStream = Files.list(basePath)) {
-            ssIndexes = indexPathStream.toList().stream()
-                    .filter(f -> String.valueOf(f.getFileName()).contains(FILE_INDEX_NAME))
-                    .sorted(new PathsComparator(FILE_INDEX_NAME, FILE_INDEX_EXTENSION))
-                    .collect(Collectors.toList());
-        }
-        filesCount = ssTables.size();
-        if (filesCount != ssIndexes.size()) {
-            throw new NoSuchFileException("Not each index file is associated with the data file!");
+    private void getDataInfo(Map<Path, Path> allData) throws IOException {
+        filesCount = allData.size();
+        for (Map.Entry<Path, Path> entry : allData.entrySet()) {
+            ssTables.add(entry.getKey());
+            ssIndexes.add(entry.getValue());
         }
         for (int i = 0; i < filesCount; i++) {
             tablesSizes.put(ssIndexes.get(i), indexSize(ssIndexes.get(i)));
@@ -192,7 +180,7 @@ public class FileOperations {
 
     private long indexSize(Path indexPath) throws IOException {
         long size;
-        try (RandomAccessFile raf = new RandomAccessFile(String.valueOf(indexPath), "r")) {
+        try (RandomAccessFile raf = new RandomAccessFile(indexPath.toString(), "r")) {
             size = raf.readLong();
         }
         return size;
