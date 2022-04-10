@@ -15,6 +15,8 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
@@ -22,16 +24,28 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     private final NavigableMap<Integer /*priority*/, PairedFiles> sstables = new TreeMap<>();
     private final Config config;
     private final Serializer serializer;
+    private final ReadWriteLock rwlock = new ReentrantReadWriteLock();
 
     public LSMDao(Config config) throws IOException {
-        this.config = config;
-        this.serializer = new Serializer(sstables, config);
-        Files.walkFileTree(config.basePath(), new ConfigVisitor(sstables, serializer));
+        try {
+            this.config = config;
+            this.serializer = new Serializer(sstables, config);
+            Files.walkFileTree(config.basePath(), new ConfigVisitor(sstables, serializer));
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        return new MergeIterator(from, to, serializer, memorySSTable, sstables);
+        try {
+            rwlock.readLock().lock();
+            return new MergeIterator(from, to, serializer, memorySSTable, sstables);
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
+        } finally {
+            rwlock.readLock().unlock();
+        }
     }
 
     @Override
@@ -41,32 +55,47 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        serializer.write(memorySSTable.values().iterator());
+        try {
+            rwlock.writeLock().lock();
+            serializer.write(memorySSTable.values().iterator());
+        } finally {
+            rwlock.writeLock().unlock();
+        }
     }
 
     @Override
     public void close() throws IOException {
-        if (memorySSTable.isEmpty()) {
-            return;
+        try {
+            rwlock.writeLock().lock();
+            if (memorySSTable.isEmpty()) {
+                return;
+            }
+            flush();
+            memorySSTable.clear();
+        } finally {
+            rwlock.writeLock().unlock();
         }
-
-        flush();
-        memorySSTable.clear();
     }
 
     @Override
     public void compact() throws IOException {
-        if (memorySSTable.isEmpty() && sstables.isEmpty()) {
-            return;
-        }
+        try {
+            rwlock.writeLock().lock();
+            if (memorySSTable.isEmpty() && sstables.isEmpty()) {
+                return;
+            }
 
-        Iterator<Entry<ByteBuffer>> mergeIterator = get(null, null);
-        if (!mergeIterator.hasNext()) {
-            return;
+            Iterator<Entry<ByteBuffer>> mergeIterator = get(null, null);
+            if (!mergeIterator.hasNext()) {
+                return;
+            }
+
+            serializer.write(mergeIterator);
+            Files.walkFileTree(config.basePath(), new CompactVisitor(sstables.lastEntry().getValue(), config));
+            memorySSTable.clear();
+        } finally {
+            rwlock.writeLock().unlock();
         }
-        serializer.write(mergeIterator);
-        Files.walkFileTree(config.basePath(), new CompactVisitor(sstables.lastEntry().getValue(), config));
-        memorySSTable.clear();
     }
 
 }

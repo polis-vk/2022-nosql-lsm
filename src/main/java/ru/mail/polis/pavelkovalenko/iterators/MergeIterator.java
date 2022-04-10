@@ -8,6 +8,7 @@ import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -22,7 +23,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     public MergeIterator(ByteBuffer from, ByteBuffer to, Serializer serializer,
                          ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memorySSTable,
-                         NavigableMap<Integer, PairedFiles> sstables) throws IOException {
+                         NavigableMap<Integer, PairedFiles> sstables) throws IOException, ReflectiveOperationException {
         ByteBuffer from1 = from == null ? Utils.EMPTY_BYTEBUFFER : from;
         int priority = 0;
 
@@ -50,12 +51,13 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     @Override
     public Entry<ByteBuffer> next() {
         Entry<ByteBuffer> result;
-        PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
-        PeekIterator<Entry<ByteBuffer>> second = iterators.poll();
+
+        Iterator<PeekIterator<Entry<ByteBuffer>>> iterator = iterators.iterator();
+        PeekIterator<Entry<ByteBuffer>> first = iterator.next();
+        PeekIterator<Entry<ByteBuffer>> second = iterator.hasNext() ? iterator.next() : null;
 
         if (second == null) {
             result = first.peek();
-            backIterator(first);
         } else {
             int compare = Utils.entryComparator.compare(first.peek(), second.peek());
             if (compare == 0) {
@@ -69,11 +71,9 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
             } else {
                 result = second.peek();
             }
-
-            backIterators(first, second);
         }
 
-        fallEntry(result);
+        fallAndRefresh(result);
         return result;
     }
 
@@ -90,12 +90,20 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         return !iterator.hasNext();
     }
 
-    private void fallEntry(Entry<ByteBuffer> entry) {
+    private void fallAndRefresh(Entry<ByteBuffer> entry) {
+        List<PeekIterator<Entry<ByteBuffer>>> toBeRefreshed = fallEntry(entry);
+        refreshIterators(toBeRefreshed);
+    }
+
+    private List<PeekIterator<Entry<ByteBuffer>>> fallEntry(Entry<ByteBuffer> entry) {
+        List<PeekIterator<Entry<ByteBuffer>>> toBeRefreshed = new ArrayList<>();
         for (PeekIterator<Entry<ByteBuffer>> iterator : iterators) {
             if (iterator.peek() != null && iterator.peek().key().equals(entry.key())) {
+                toBeRefreshed.add(iterator);
                 iterator.next();
             }
         }
+        return toBeRefreshed;
     }
 
     private void skipTombstones() {
@@ -121,8 +129,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         if (iterators.isEmpty()) {
             while (Utils.isTombstone(first.peek()) && first.hasNext()) {
                 backIterator(first);
-                fallEntry(first.peek());
-                refreshIterators();
+                fallAndRefresh(first.peek());
                 first = iterators.remove();
             }
             backIterator(first);
@@ -131,8 +138,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
             while (Utils.isTombstone(first.peek()) && first.hasNext()) {
                 backIterators(first, second);
-                fallEntry(first.peek());
-                refreshIterators();
+                fallAndRefresh(first.peek());
                 first = iterators.remove();
                 second = iterators.poll();
             }
@@ -142,14 +148,14 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private boolean hasTombstoneForFirstElement() {
-        refreshIterators();
+        PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
+        iterators.add(first);
         return !iterators.isEmpty() && Utils.isTombstone(iterators.peek().peek());
     }
 
-    private void refreshIterators() {
-        List<PeekIterator<Entry<ByteBuffer>>> peekIterators = iterators.stream().toList();
-        iterators.clear();
-        iterators.addAll(peekIterators);
+    private void refreshIterators(List<PeekIterator<Entry<ByteBuffer>>> toBeRefreshed) {
+        iterators.removeAll(toBeRefreshed);
+        iterators.addAll(toBeRefreshed);
     }
 
 }

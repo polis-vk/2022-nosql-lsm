@@ -4,9 +4,12 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
+import sun.misc.Unsafe;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -21,8 +24,24 @@ public final class Serializer {
     private final NavigableMap<Integer, PairedFiles> sstables;
     private final NavigableMap<Integer, MappedPairedFiles> mappedSSTables = new TreeMap<>();
     private final Config config;
+    private static final Method unmap;
+    private static final Unsafe unsafe;
 
-    public Serializer(NavigableMap<Integer, PairedFiles> sstables, Config config) {
+    static {
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            unmap = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
+            unmap.setAccessible(true);
+            Field theUnsafeField = unsafeClass.getDeclaredField("theUnsafe");
+            theUnsafeField.setAccessible(true);
+            unsafe = (Unsafe) theUnsafeField.get(null);
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    public Serializer(NavigableMap<Integer, PairedFiles> sstables, Config config)
+            throws ReflectiveOperationException {
         this.sstables = sstables;
         this.config = config;
     }
@@ -71,7 +90,8 @@ public final class Serializer {
         }
     }
 
-    public MappedPairedFiles get(int priority) throws IOException {
+    public MappedPairedFiles get(int priority)
+            throws IOException, ReflectiveOperationException {
         if (sstables.size() != mappedSSTables.size()) {
             mapSSTables();
         }
@@ -86,20 +106,16 @@ public final class Serializer {
             entry.value().rewind();
             size += Integer.BYTES + entry.value().remaining();
         }
-        size += Character.BYTES;
         return size;
     }
 
     public FileMeta readMeta(MappedByteBuffer file) {
-        byte wasWritten = file.get(0);
-        file.getChar(1);
-        return new FileMeta(wasWritten);
+        return new FileMeta(file.get(0));
     }
 
     private void writeMeta(FileMeta meta, RandomAccessFile file) throws IOException {
         file.seek(0);
         file.write(meta.wasWritten());
-        file.write(Utils.LINE_SEPARATOR);
     }
 
     public boolean hasSuccessMeta(RandomAccessFile file) throws IOException {
@@ -110,18 +126,24 @@ public final class Serializer {
         return indexesFile.getInt(indexesPos);
     }
 
-    private void mapSSTables() throws IOException {
+    private void mapSSTables()
+            throws IOException, ReflectiveOperationException {
         int priority = 1;
 
+        for (MappedPairedFiles mappedPairedFile : mappedSSTables.values()) {
+            unmap(mappedPairedFile.dataFile());
+            unmap(mappedPairedFile.indexesFile());
+        }
+
         for (PairedFiles filePair : sstables.values()) {
-            try (FileChannel dataFile = FileChannel.open(filePair.dataFile());
-                 FileChannel indexesFile = FileChannel.open(filePair.indexesFile())) {
-                MappedByteBuffer mappedDataFile = Utils.mapFile(dataFile,
-                        FileChannel.MapMode.READ_ONLY, dataFile.size());
-                MappedByteBuffer mappedIndexesFile = Utils.mapFile(indexesFile,
-                        FileChannel.MapMode.READ_ONLY, indexesFile.size());
-                FileMeta dataMeta = readMeta(mappedDataFile);
-                mappedDataFile.position(dataMeta.size());
+            try (FileChannel dataChannel = FileChannel.open(filePair.dataFile());
+                 FileChannel indexesChannel = FileChannel.open(filePair.indexesFile())) {
+                MappedByteBuffer mappedDataFile =
+                        dataChannel.map(FileChannel.MapMode.READ_ONLY, 0, dataChannel.size());
+                MappedByteBuffer mappedIndexesFile =
+                        indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size());
+                FileMeta meta = readMeta(mappedDataFile);
+                mappedDataFile.position(meta.size());
                 mappedSSTables.put(priority++, new MappedPairedFiles(mappedDataFile, mappedIndexesFile));
             }
         }
@@ -144,7 +166,6 @@ public final class Serializer {
      */
     private void writeOffset(int offset, ByteBuffer bbOffset, RandomAccessFile indexesFile) throws IOException {
         bbOffset.putInt(offset);
-        bbOffset.putChar(Utils.LINE_SEPARATOR);
         bbOffset.rewind();
         indexesFile.getChannel().write(bbOffset);
         bbOffset.rewind();
@@ -170,7 +191,6 @@ public final class Serializer {
             pair.put(entry.value());
         }
 
-        pair.putChar(Utils.LINE_SEPARATOR);
         pair.rewind();
         dataFile.getChannel().write(pair);
 
@@ -178,25 +198,42 @@ public final class Serializer {
     }
 
     private PairedFiles addPairedFiles() throws IOException {
-        final int priority = sstables.size() + 1;
-        Path dataFile = addFile(Utils.DATA_FILENAME, priority);
-        Path indexesFile = addFile(Utils.INDEXES_FILENAME, priority);
-        PairedFiles pairedFiles = new PairedFiles(dataFile, indexesFile);
-        sstables.put(priority, pairedFiles);
+        Path dataFile = null;
+        Path indexesFile = null;
+        PairedFiles pairedFiles;
+        try {
+            final int priority = sstables.size() + 1;
+
+            dataFile = config.basePath().resolve(
+                    Path.of(Utils.DATA_FILENAME + priority + Utils.FILE_EXTENSION));
+            addFile(dataFile);
+            indexesFile = config.basePath().resolve(
+                    Path.of(Utils.INDEXES_FILENAME + priority + Utils.FILE_EXTENSION));
+            addFile(indexesFile);
+
+            pairedFiles = new PairedFiles(dataFile, indexesFile);
+            sstables.put(priority, pairedFiles);
+        } catch (Exception ex) {
+            if (dataFile != null) {
+                Files.deleteIfExists(dataFile);
+            }
+            if (indexesFile != null) {
+                Files.deleteIfExists(indexesFile);
+            }
+            throw new RuntimeException(ex);
+        }
 
         return pairedFiles;
     }
 
-    private Path addFile(String filename, int priority) throws IOException {
-        Path file = config.basePath().resolve(filename + priority + Utils.FILE_EXTENSION);
-        createFile(file);
-        return file;
-    }
-
-    private void createFile(Path file) throws IOException {
+    private void addFile(Path file) throws IOException {
         if (!Files.exists(file)) {
             Files.createFile(file);
         }
+    }
+
+    private void unmap(MappedByteBuffer buffer) throws ReflectiveOperationException {
+        unmap.invoke(unsafe, buffer);
     }
 
 }
