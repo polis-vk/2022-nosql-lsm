@@ -1,4 +1,4 @@
-package ru.mail.polis.pavelkovalenko;
+package ru.mail.polis.pavelkovalenko.dto;
 
 import java.nio.MappedByteBuffer;
 
