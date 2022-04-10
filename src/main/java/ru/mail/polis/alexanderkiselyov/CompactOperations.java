@@ -126,7 +126,7 @@ public class CompactOperations {
                 dataStr.indexOf(fileExtension)))
                 != Integer.parseInt(indexStr.substring(indexStr.indexOf(fileIndexName) + fileIndexName.length(),
                 indexStr.indexOf(fileIndexExtension)))) {
-            throw new NoSuchFileException("Not all files found!");
+            throw new NoSuchFileException("Not all files match!");
         }
     }
 
