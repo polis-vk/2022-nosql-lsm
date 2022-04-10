@@ -122,7 +122,6 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         if (storage.isEmpty()) {
             return;
         }
-
         NavigableMap<MemorySegment, Entry<MemorySegment>> readOnlyStorage = this.storage;
         SSTable.Sizes sizes = Utils.getSizes(readOnlyStorage.values().iterator());
         SSTable table = writeSSTable(readOnlyStorage.values().iterator(), sizes.tableSize(), sizes.indexSize());
