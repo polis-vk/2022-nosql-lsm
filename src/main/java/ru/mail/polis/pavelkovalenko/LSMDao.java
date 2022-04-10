@@ -30,7 +30,6 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         try {
             this.config = config;
             this.serializer = new Serializer(sstables, config);
-            
             Files.walkFileTree(config.basePath(), new ConfigVisitor(sstables, serializer));
         } catch (ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
