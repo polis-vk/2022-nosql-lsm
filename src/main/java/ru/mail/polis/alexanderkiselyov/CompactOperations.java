@@ -42,12 +42,12 @@ public class CompactOperations {
             List<Path> files = filesStream.toList();
             checkCompactConflicts(basePath, files);
             List<Path> ssTables = files
-                    .stream()
+                    .stream().toList().stream()
                     .filter(f -> String.valueOf(f.getFileName()).startsWith(fileName))
                     .sorted(new PathsComparator(fileName, fileExtension))
                     .toList();
             List<Path> ssIndexes = files
-                    .stream()
+                    .stream().toList().stream()
                     .filter(f -> String.valueOf(f.getFileName()).startsWith(fileIndexName))
                     .sorted(new PathsComparator(fileIndexName, fileIndexExtension))
                     .toList();
