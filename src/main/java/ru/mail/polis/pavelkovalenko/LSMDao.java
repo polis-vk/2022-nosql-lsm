@@ -3,6 +3,7 @@ package ru.mail.polis.pavelkovalenko;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
+import ru.mail.polis.pavelkovalenko.dto.PairedFiles;
 import ru.mail.polis.pavelkovalenko.iterators.MergeIterator;
 import ru.mail.polis.pavelkovalenko.visitors.CompactVisitor;
 import ru.mail.polis.pavelkovalenko.visitors.ConfigVisitor;
@@ -38,8 +39,8 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
+        rwlock.readLock().lock();
         try {
-            rwlock.readLock().lock();
             return new MergeIterator(from, to, serializer, memorySSTable, sstables);
         } catch (ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
@@ -55,8 +56,8 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
+        rwlock.writeLock().lock();
         try {
-            rwlock.writeLock().lock();
             serializer.write(memorySSTable.values().iterator());
         } finally {
             rwlock.writeLock().unlock();
@@ -65,8 +66,8 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void close() throws IOException {
+        rwlock.writeLock().lock();
         try {
-            rwlock.writeLock().lock();
             if (memorySSTable.isEmpty()) {
                 return;
             }
@@ -79,8 +80,8 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void compact() throws IOException {
+        rwlock.writeLock().lock();
         try {
-            rwlock.writeLock().lock();
             if (memorySSTable.isEmpty() && sstables.isEmpty()) {
                 return;
             }

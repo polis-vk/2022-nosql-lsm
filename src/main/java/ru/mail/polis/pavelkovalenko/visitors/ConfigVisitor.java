@@ -1,6 +1,6 @@
 package ru.mail.polis.pavelkovalenko.visitors;
 
-import ru.mail.polis.pavelkovalenko.PairedFiles;
+import ru.mail.polis.pavelkovalenko.dto.PairedFiles;
 import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.comparators.PathComparator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;

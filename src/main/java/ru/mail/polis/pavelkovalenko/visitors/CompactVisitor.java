@@ -1,7 +1,7 @@
 package ru.mail.polis.pavelkovalenko.visitors;
 
 import ru.mail.polis.Config;
-import ru.mail.polis.pavelkovalenko.PairedFiles;
+import ru.mail.polis.pavelkovalenko.dto.PairedFiles;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.File;

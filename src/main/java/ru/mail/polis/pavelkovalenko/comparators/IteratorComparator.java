@@ -23,6 +23,7 @@ public final class IteratorComparator implements Comparator<PeekIterator<Entry<B
             }
             return compare;
         }
+        // reverse compare
         return Boolean.compare(it2.hasNext(), it1.hasNext());
     }
 

@@ -3,6 +3,9 @@ package ru.mail.polis.pavelkovalenko;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
+import ru.mail.polis.pavelkovalenko.dto.FileMeta;
+import ru.mail.polis.pavelkovalenko.dto.MappedPairedFiles;
+import ru.mail.polis.pavelkovalenko.dto.PairedFiles;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
@@ -90,7 +93,7 @@ public final class Serializer {
         if (sstables.size() != mappedSSTables.size()) {
             mapSSTables();
         }
-        return mappedSSTables.get(mappedSSTables.size() - priority + 1);
+        return mappedSSTables.get(priority);
     }
 
     public int sizeOf(Entry<ByteBuffer> entry) {
@@ -123,7 +126,7 @@ public final class Serializer {
 
     private void mapSSTables()
             throws IOException, ReflectiveOperationException {
-        int priority = 1;
+        int priority = 0;
 
         for (MappedPairedFiles mappedPairedFile : mappedSSTables.values()) {
             unmap(mappedPairedFile.dataFile());
