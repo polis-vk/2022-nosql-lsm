@@ -32,7 +32,6 @@ public class Storage {
         this.mappedDiskData = new ArrayList<>();
         this.tempFileDataPath = basePath.resolve(DATA_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
         this.tempFileIndexPath = basePath.resolve(INDEXES_FILE_NAME + TEMP_FILE_SUFFIX + EXTENSION);
-
         if (Files.exists(tempFileIndexPath) && Files.exists(tempFileDataPath)) {
             throw new RuntimeException("Storage has been corrupted");
         }
