@@ -4,42 +4,45 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.iterators.MergeIterator;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
+import ru.mail.polis.pavelkovalenko.visitors.ConfigVisitor;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     private final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memorySSTable = new ConcurrentSkipListMap<>();
     private final NavigableMap<Integer /*priority*/, PairedFiles> sstables = new TreeMap<>();
-    private final Config config;
     private final Serializer serializer;
+    private final ReadWriteLock rwlock = new ReentrantReadWriteLock();
 
     public PersistentDao(Config config) throws IOException {
-        this.config = config;
-
-        String[] files = new File(config.basePath().toString()).list();
-        if (files != null && files.length > 0) {
-            for (int i = 0; i < files.length / 2; ++i) {
-                addPairedFiles();
-            }
+        try {
+            this.serializer = new Serializer(sstables, config);
+            Files.walkFileTree(config.basePath(), new ConfigVisitor(sstables));
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
         }
-
-        this.serializer = new Serializer(sstables);
     }
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        return new MergeIterator(from, to, serializer, memorySSTable, sstables);
+        try {
+            rwlock.readLock().lock();
+            return new MergeIterator(from, to, serializer, memorySSTable, sstables);
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
+        } finally {
+            rwlock.readLock().unlock();
+        }
     }
 
     @Override
@@ -49,31 +52,25 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        serializer.write(sstables.lastEntry().getValue(), memorySSTable);
+        try {
+            rwlock.writeLock().lock();
+            serializer.write(memorySSTable.values().iterator());
+        } finally {
+            rwlock.writeLock().unlock();
+        }
     }
 
     @Override
     public void close() throws IOException {
-        addPairedFiles();
-        flush();
-    }
-
-    private void addPairedFiles() throws IOException {
-        Path pathToDataFile = addFile(Utils.DATA_FILENAME);
-        Path pathToIndexesFile = addFile(Utils.INDEXES_FILENAME);
-        PairedFiles pathToPairedFiles = new PairedFiles(pathToDataFile, pathToIndexesFile);
-        sstables.put(sstables.size() + 1, pathToPairedFiles);
-    }
-
-    private Path addFile(String filename) throws IOException {
-        Path file = config.basePath().resolve(filename + (sstables.size() + 1) + Utils.FILE_EXTENSION);
-        createFile(file);
-        return file;
-    }
-
-    private void createFile(Path filename) throws IOException {
-        if (!Files.exists(filename)) {
-            Files.createFile(filename);
+        try {
+            rwlock.writeLock().lock();
+            if (memorySSTable.isEmpty()) {
+                return;
+            }
+            flush();
+            memorySSTable.clear();
+        } finally {
+            rwlock.writeLock().unlock();
         }
     }
 
