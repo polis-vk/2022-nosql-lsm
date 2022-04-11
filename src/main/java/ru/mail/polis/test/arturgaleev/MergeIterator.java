@@ -44,10 +44,11 @@ public class MergeIterator implements Iterator<BaseEntry<ByteBuffer>> {
         return (PriorityPeekingIterator<BaseEntry<ByteBuffer>> it1,
                 PriorityPeekingIterator<BaseEntry<ByteBuffer>> it2
         ) -> {
-            if (it1.peek().key().compareTo(it2.peek().key()) < 0) {
+            int cmpResult = it1.peek().key().compareTo(it2.peek().key());
+            if (cmpResult < 0) {
                 return -1;
-            } else if (it1.peek().key().compareTo(it2.peek().key()) == 0) {
-                return -Integer.compare(it1.getPriority(), it2.getPriority());
+            } else if (cmpResult == 0) {
+                return Integer.compare(it2.getPriority(), it1.getPriority());
             } else {
                 return 1;
             }
