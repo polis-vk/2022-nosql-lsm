@@ -16,7 +16,7 @@ repositories {
 
 dependencies {
     // Checks
-    errorprone 'com.google.errorprone:error_prone_core:2.11.0'
+    errorprone 'com.google.errorprone:error_prone_core:2.12.1'
     checkstyle 'com.puppycrawl.tools:checkstyle:9.3'
 
     // Logging
