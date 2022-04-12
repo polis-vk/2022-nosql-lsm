@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
-public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
+class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
     private final ByteBuffer dataBuffer;
     private final ByteBuffer indexBuffer;
     private final int upperBound;
@@ -21,7 +21,7 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
 
     private static int findOffset(ByteBuffer indexBuffer, ByteBuffer dataBuffer, ByteBuffer key) {
         int low = 0;
-        int mid = 0;
+        int mid;
         int high = indexBuffer.remaining() / Integer.BYTES - 1;
         while (low <= high) {
             mid = low + ((high - low) / 2);
@@ -50,8 +50,8 @@ public class FileIterator implements Iterator<BaseEntry<ByteBuffer>> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-            BaseEntry<ByteBuffer> result = Utils.readEntry(dataBuffer, indexBuffer.getInt(cursor));
-            cursor += Integer.BYTES;
-            return result;
+        BaseEntry<ByteBuffer> result = Utils.readEntry(dataBuffer, indexBuffer.getInt(cursor));
+        cursor += Integer.BYTES;
+        return result;
     }
 }
