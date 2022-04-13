@@ -6,6 +6,7 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -73,11 +74,9 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     private Iterator<BaseEntry<MemorySegment>> getMemoryIterator(MemorySegment from, MemorySegment to) {
         lock.readLock().lock();
         try {
-
             if (to == null) {
                 return memory.tailMap(from).values().iterator();
             }
-
             return memory.subMap(from, to).values().iterator();
         } finally {
             lock.readLock().unlock();
@@ -108,8 +107,24 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public void flush() throws IOException {
-        throw new UnsupportedOperationException("Not supported");
+    public void compact() throws IOException {
+        lock.writeLock().lock();
+        try {
+            if (memory.isEmpty() && Storage.getFilesCount(config) <= 1) {
+                return;
+            }
+
+            Iterator<BaseEntry<MemorySegment>> allDataIterator = get(null, null);
+            Path tmp = Storage.save(config, storage, allDataIterator);
+            memory.clear();
+
+            if (tmp != null) {
+                Storage.deleteFiles(config);
+                Storage.moveFile(config, tmp, 0);
+            }
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     @Override
@@ -121,7 +136,11 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         storage.close();
         lock.writeLock().lock();
         try {
-            Storage.save(config, storage, memory.values());
+            Path tmp = Storage.save(config, storage, memory.values().iterator());
+
+            if (tmp != null) {
+                Storage.moveFile(config, tmp, Storage.getFilesCount(config) - 1);
+            }
         } finally {
             lock.writeLock().unlock();
         }

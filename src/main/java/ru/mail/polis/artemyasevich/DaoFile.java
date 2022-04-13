@@ -1,23 +1,22 @@
 package ru.mail.polis.artemyasevich;
 
-import java.io.BufferedInputStream;
-import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 public class DaoFile {
     private final long[] offsets;
-    private final Path pathToMeta;
     private final RandomAccessFile reader;
+    private final long size;
+    private final int entries;
     private int maxEntrySize;
 
     public DaoFile(Path pathToFile, Path pathToMeta) throws IOException {
         this.reader = new RandomAccessFile(pathToFile.toFile(), "r");
-        this.pathToMeta = pathToMeta;
-        this.offsets = readOffsets();
+        this.offsets = processMetaAndGetOffsets(pathToMeta);
+        this.size = offsets[offsets.length - 1];
+        this.entries = offsets.length - 1;
     }
 
     public FileChannel getChannel() {
@@ -29,14 +28,14 @@ public class DaoFile {
     }
 
     public long sizeOfFile() {
-        return offsets[offsets.length - 1];
+        return size;
     }
 
     public int maxEntrySize() {
         return maxEntrySize;
     }
 
-    //Returns fileSize if index == offsets.length - 1
+    //Returns fileSize if index == entries count
     public long getOffset(int index) {
         return offsets[index];
     }
@@ -46,24 +45,26 @@ public class DaoFile {
     }
 
     public int getLastIndex() {
-        return offsets.length - 2;
+        return entries - 1;
     }
 
-    private long[] readOffsets() throws IOException {
+    private long[] processMetaAndGetOffsets(Path pathToMeta) throws IOException {
         long[] fileOffsets;
-        try (DataInputStream metaStream = new DataInputStream(new BufferedInputStream(
-                Files.newInputStream(pathToMeta)))) {
-            int dataSize = metaStream.readInt();
-            fileOffsets = new long[dataSize + 1];
-
-            long currentOffset = 0;
-            fileOffsets[0] = currentOffset;
+        try (RandomAccessFile metaReader = new RandomAccessFile(pathToMeta.toFile(), "r")) {
+            long metaFileSize = metaReader.length();
+            metaReader.seek(metaFileSize - Integer.BYTES);
+            int entriesTotal = metaReader.readInt();
+            fileOffsets = new long[entriesTotal + 1];
+            fileOffsets[0] = 0;
+            metaReader.seek(0);
             int i = 1;
-            while (metaStream.available() > 0) {
-                int numberOfEntries = metaStream.readInt();
-                int entryBytesSize = metaStream.readInt();
-                if (entryBytesSize > maxEntrySize) {
-                    maxEntrySize = entryBytesSize;
+            int maxEntry = 0;
+            long currentOffset = 0;
+            while (metaReader.getFilePointer() != metaFileSize - Integer.BYTES) {
+                int numberOfEntries = metaReader.readInt();
+                int entryBytesSize = metaReader.readInt();
+                if (entryBytesSize > maxEntry) {
+                    maxEntry = entryBytesSize;
                 }
                 for (int j = 0; j < numberOfEntries; j++) {
                     currentOffset += entryBytesSize;
@@ -71,6 +72,7 @@ public class DaoFile {
                     i++;
                 }
             }
+            this.maxEntrySize = maxEntry;
         }
         return fileOffsets;
     }
