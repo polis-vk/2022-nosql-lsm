@@ -152,7 +152,9 @@ public class StoragePart implements AutoCloseable {
     private Entry<ByteBuffer> readEntry(int entryN) {
         int ind = indexBB.getInt(entryN * Integer.BYTES);
         var key = readBytes(ind);
-        assert key.isPresent();
+        if (key.isEmpty()) {
+            throw new RuntimeException("Entry without key.");
+        }
         ind += Integer.BYTES + key.get().length;
         var value = readBytes(ind);
         return new BaseEntry<>(ByteBuffer.wrap(key.get()), value.map(ByteBuffer::wrap).orElse(null));
@@ -214,7 +216,6 @@ public class StoragePart implements AutoCloseable {
     }
 
     private static MappedByteBuffer mapFile(Path filePath) throws IOException {
-        // Bad practice: Sys call, it will be better to refactor
         return mapFile(filePath, (int) filePath.toFile().length());
     }
 
