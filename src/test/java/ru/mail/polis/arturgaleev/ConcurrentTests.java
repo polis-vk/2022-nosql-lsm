@@ -123,6 +123,8 @@ public class ConcurrentTests extends BaseTest {
         entries.forEach(dao::upsert);
 
         dao.flush();
+        // Ожидание flush
+        Thread.sleep(100);
 
         // Замеряем сколько байт содержится
         long beginSize = sizePersistentData(dao);
