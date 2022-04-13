@@ -21,8 +21,8 @@ import java.util.Optional;
 public class StoragePart implements AutoCloseable {
     public static final int LEN_FOR_NULL = -1;
     private static final int DEFAULT_ALLOC_SIZE = 2048;
-    private static final int INDEX_BOOST_PORTION = 3000;
-    private static final int MEMORY_BOOST_PORTION = 100000;
+    private static final int INDEX_BOOST_PORTION = 400;
+    private static final int MEMORY_BOOST_PORTION = 5000;
 
     private final int storagePartN;
     private final Path indexPath;
@@ -216,7 +216,8 @@ public class StoragePart implements AutoCloseable {
     }
 
     private static MappedByteBuffer mapFile(Path filePath) throws IOException {
-        return mapFile(filePath, (int) filePath.toFile().length());
+        int fSize = (int) filePath.toFile().length();
+        return mapFile(filePath, fSize == 0 ? DEFAULT_ALLOC_SIZE : fSize);
     }
 
     private static MappedByteBuffer mapFile(Path filePath, int mapSize) throws IOException {
