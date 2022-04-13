@@ -24,29 +24,17 @@ import static ru.mail.polis.daniilbakin.Storage.INDEX_FILE_NAME;
 
 public class MapsDeserializeStream implements Closeable {
 
-    private final List<MappedByteBuffer> mapData;
-    private final List<MappedByteBuffer> indexesData;
-    private final int numOfFiles;
+    private final List<MappedByteBuffer> mapData = new ArrayList<>();
+    private final List<MappedByteBuffer> indexesData = new ArrayList<>();
+    private int numOfFiles;
     private final Method unmap;
     private final Object fieldValue;
 
-    public MapsDeserializeStream(Config config, int numOfFiles) throws IOException {
+    public MapsDeserializeStream(Config config, int numOfFiles, int startIndexOfFile) throws IOException {
         this.numOfFiles = numOfFiles;
-        mapData = new ArrayList<>();
-        indexesData = new ArrayList<>();
 
-        for (int i = 0; i < numOfFiles; i++) {
-            Path mapPath = config.basePath().resolve(DATA_FILE_NAME + i);
-            Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + i);
-
-            FileChannel mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(READ));
-            FileChannel indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(READ));
-
-            mapData.add(mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size()));
-            indexesData.add(indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size()));
-
-            mapChannel.close();
-            indexesChannel.close();
+        for (int i = startIndexOfFile; i < numOfFiles + startIndexOfFile; i++) {
+            addMappedFile(i, config.basePath());
         }
 
         Collections.reverse(mapData);
@@ -63,6 +51,24 @@ public class MapsDeserializeStream implements Closeable {
         }
     }
 
+    public void addMappedFile(int index, Path basePath) throws IOException {
+        Path mapPath = basePath.resolve(DATA_FILE_NAME + index);
+        Path indexesPath = basePath.resolve(INDEX_FILE_NAME + index);
+
+        FileChannel mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(READ));
+        FileChannel indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(READ));
+
+        mapData.add(mapChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapChannel.size()));
+        indexesData.add(indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size()));
+
+        mapChannel.close();
+        indexesChannel.close();
+    }
+
+    public void updateNumOfFiles(int newNum) {
+        numOfFiles = newNum;
+    }
+
     @Override
     public void close() throws IOException {
         try {
@@ -73,6 +79,8 @@ public class MapsDeserializeStream implements Closeable {
         } catch (ReflectiveOperationException e) {
             throw new IOException(e);
         }
+        mapData.clear();
+        indexesData.clear();
     }
 
     public BaseEntry<ByteBuffer> readByKey(ByteBuffer key) {

@@ -7,11 +7,6 @@ import ru.mail.polis.Dao;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -19,49 +14,26 @@ import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.stream.Stream;
+
+import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.getFiles;
+import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.mapFile;
+import static ru.mail.polis.alexanderkosnitskiy.DaoUtility.safelyReplaceUnifiedFile;
 
 public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
-    private static final String FILE = "data";
-    private static final String INDEX = "index";
-    private static final String EXTENSION = ".anime";
+    public static final String FILE = "data";
+    public static final String INDEX = "index";
+    public static final String SAFE_EXTENSION = ".anime";
+    public static final String IN_PROGRESS_EXTENSION = ".animerr";
+    public static final String COMPOSITE_EXTENSION = ".ancord";
     private final Config config;
     private final ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> memory = new ConcurrentSkipListMap<>();
     private long amountOfFiles;
-    private final List<FilePack> readers = new ArrayList<>();
+    private final List<FilePack> readers;
 
     public PersistenceDao(Config config) throws IOException {
-        long numberOfFiles;
         this.config = config;
-        try (Stream<Path> files = Files.list(config.basePath())) {
-            if (files == null) {
-                numberOfFiles = 0;
-            } else {
-                List<Path> paths = files.toList();
-                numberOfFiles = paths.size();
-                for (Path path : paths) {
-                    if (!path.toString().endsWith(EXTENSION)) {
-                        --numberOfFiles;
-                    }
-                }
-                numberOfFiles = numberOfFiles / 2;
-            }
-        } catch (NoSuchFileException e) {
-            numberOfFiles = 0;
-        }
-        this.amountOfFiles = numberOfFiles;
-        for (long i = amountOfFiles - 1; i >= 0; i--) {
-            readers.add(mapFile(config.basePath().resolve(FILE + i + EXTENSION),
-                    config.basePath().resolve(INDEX + i + EXTENSION)));
-        }
-    }
-
-    private FilePack mapFile(Path fileName, Path indexName) throws IOException {
-        try (FileChannel reader = FileChannel.open(fileName, StandardOpenOption.READ);
-             FileChannel indexReader = FileChannel.open(indexName, StandardOpenOption.READ)) {
-            return new FilePack(reader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(fileName)),
-                    indexReader.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(indexName)));
-        }
+        readers = getFiles(config);
+        amountOfFiles = readers.size();
     }
 
     @Override
@@ -105,10 +77,44 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         memory.clear();
     }
 
+    @Override
+    public void compact() throws IOException {
+        if (amountOfFiles == 0) {
+            if (memory.isEmpty()) {
+                return;
+            }
+            flush();
+            return;
+        }
+        int count = 0;
+        int size = 0;
+        Iterator<BaseEntry<ByteBuffer>> iter = get(null, null);
+        while (iter.hasNext()) {
+            BaseEntry<ByteBuffer> entry = iter.next();
+            count++;
+            size += 2 * Integer.BYTES + entry.key().capacity() + entry.value().capacity();
+        }
+        try (DaoWriter out = new DaoWriter(config.basePath().resolve(FILE + IN_PROGRESS_EXTENSION),
+                config.basePath().resolve(INDEX + IN_PROGRESS_EXTENSION))) {
+            out.writeIterator(get(null, null), count, size);
+        }
+
+        safelyReplaceUnifiedFile(memory, config, amountOfFiles,
+                INDEX + IN_PROGRESS_EXTENSION,
+                FILE + IN_PROGRESS_EXTENSION);
+        amountOfFiles = 1;
+
+    }
+
     private void store() throws IOException {
-        try (DaoWriter out = new DaoWriter(config.basePath().resolve(FILE + amountOfFiles + EXTENSION),
-                config.basePath().resolve(INDEX + amountOfFiles + EXTENSION))) {
+        if (memory.isEmpty()) {
+            return;
+        }
+        try (DaoWriter out = new DaoWriter(config.basePath().resolve(FILE + amountOfFiles + SAFE_EXTENSION),
+                config.basePath().resolve(INDEX + amountOfFiles + SAFE_EXTENSION))) {
             out.writeMap(memory);
+            readers.add(0, mapFile(config.basePath().resolve(FILE + amountOfFiles + SAFE_EXTENSION),
+                    config.basePath().resolve(INDEX + amountOfFiles + SAFE_EXTENSION)));
             amountOfFiles++;
         }
     }
@@ -137,12 +143,12 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
             for (FilePack pack : readers) {
                 iterators.add(new FileIterator(pack.getReader(), from, to));
             }
+
             queue = new PriorityQueue<>((l, r) -> {
                 int comparison = l.curEntry.key().compareTo(r.curEntry.key());
                 if (comparison > 0) {
                     return 1;
-                }
-                if (comparison < 0) {
+                } else if (comparison < 0) {
                     return -1;
                 }
                 return Integer.compare(l.index, r.index);
@@ -214,7 +220,7 @@ public class PersistenceDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
         }
     }
 
-    private static class FilePack {
+    static class FilePack {
         private final MappedByteBuffer valueFile;
         private final MappedByteBuffer indexFile;
 
