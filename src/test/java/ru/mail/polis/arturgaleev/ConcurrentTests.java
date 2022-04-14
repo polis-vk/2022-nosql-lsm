@@ -63,7 +63,7 @@ public class ConcurrentTests extends BaseTest {
         List<Entry<String>> entries = entries("k", "v", numberOfEntries);
 
         runInParallel(100, numberOfEntries, value -> {
-            // Проверка читаемости данных несмотря на compact
+            // Проверка читаемости данных несмотря на compact и flush
             try {
                 dao.upsert(entries.get(value));
                 dao.flush();
@@ -84,6 +84,8 @@ public class ConcurrentTests extends BaseTest {
         for (int i = 0; i < numberOfFiles; i++) {
             entries.forEach(dao::upsert);
             dao.flush();
+            // Ожидание flush
+            Thread.sleep(100);
 
             // Проверка времени выполнения compact
             Instant beginTime = Instant.now();
@@ -94,7 +96,7 @@ public class ConcurrentTests extends BaseTest {
     }
 
     @DaoTest(stage = 5)
-    void checkImpotentClose(Dao<String, Entry<String>> dao) throws Exception {
+    void checkIdempotentClose(Dao<String, Entry<String>> dao) throws Exception {
         dao.close();
         assertDoesNotThrow(dao::close);
     }
