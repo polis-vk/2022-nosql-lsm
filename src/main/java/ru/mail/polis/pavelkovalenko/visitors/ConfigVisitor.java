@@ -62,8 +62,8 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
         }
 
         if (dataFiles.size() != indexesFiles.size()) {
-            throw new IllegalStateException("Mismatch in the number of data- and indexes-files.\n" +
-                    "GOT: " + dataFiles.size() + ":" + indexesFiles.size());
+            throw new IllegalStateException("Mismatch in the number of data- and indexes-files.\n"
+                    + "GOT: " + dataFiles.size() + ":" + indexesFiles.size());
         }
 
         Iterator<Path> dataIterator = dataFiles.iterator();
@@ -72,8 +72,8 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
             Path dataFile = dataIterator.next();
             Path indexesFile = indexesIterator.next();
             if (!isPairedFiles(dataFile, indexesFile, priority)) {
-                throw new IllegalStateException("Illegal order of data- and indexes-files.\n" +
-                        "GOT: " + dataFile.getFileName() + " and " + indexesFile.getFileName());
+                throw new IllegalStateException("Illegal order of data- and indexes-files.\n"
+                        + "GOT: " + dataFile.getFileName() + " and " + indexesFile.getFileName());
             }
             sstablesSize.incrementAndGet();
         }
@@ -81,6 +81,10 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
     }
 
     private boolean finishCompact() throws IOException {
+        return finishFullCompact() || finishPartialCompact();
+    }
+
+    private boolean finishFullCompact() throws IOException {
         if (this.compactedDataPath != null) {
             // It is guaranteed that this.compactedIndexesPath != null
             // We have to check only Meta's success
@@ -101,6 +105,10 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
             }
         }
 
+        return false;
+    }
+
+    private boolean finishPartialCompact() throws IOException {
         if (this.compactedIndexesPath != null) {
             String compactedDataFilename = Utils.getDataFilename(String.valueOf(1));
             for (Path dataFile : this.dataFiles) {
