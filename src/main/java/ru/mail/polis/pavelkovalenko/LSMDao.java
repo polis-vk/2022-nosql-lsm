@@ -63,7 +63,6 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             Path dataFile = Utils.getFilePath(Utils.getDataFilename(priorityStr), config);
             Path indexesFile = Utils.getFilePath(Utils.getIndexesFilename(priorityStr), config);
             serializer.write(memorySSTable.values().iterator(), dataFile, indexesFile);
-            memorySSTable.clear();
         } finally {
             rwlock.writeLock().unlock();
         }
@@ -100,7 +99,6 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             serializer.write(mergeIterator, compactDataFile, compactIndexesFile);
             Files.walkFileTree(config.basePath(),
                     new CompactVisitor(config, compactDataFile, compactIndexesFile, sstablesSize));
-            memorySSTable.clear();
         } finally {
             rwlock.writeLock().unlock();
         }
