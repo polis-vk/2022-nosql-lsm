@@ -4,10 +4,7 @@ import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.FileSystemException;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
+import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -17,10 +14,13 @@ import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public final class StorageSystem implements AutoCloseable {
-    private static final String COMPACT_PREFIX = "compact.bin";
     private static final String MEM_FILENAME = "daoMem.bin";
     private static final String IND_FILENAME = "daoIndex.bin";
-
+    private static final String COMPACTED_PREFIX = "compacted_";
+    private static final String COMPACTED_IND_FILE = COMPACTED_PREFIX + IND_FILENAME;
+    private static final String COMPACTED_MEM_FILE = COMPACTED_PREFIX + MEM_FILENAME;
+    private static final String TMP_PREFIX = "tmp_";
+    private static final int NOT_STORAGE_PART = Integer.MAX_VALUE;
     // Order is important, fresh in begin
     private final List<StoragePart> storageParts;
     private final Path location;
@@ -31,6 +31,12 @@ public final class StorageSystem implements AutoCloseable {
     }
 
     public static StorageSystem load(Path location) throws IOException {
+        Path compactedIndFile = location.resolve(COMPACTED_IND_FILE);
+        Path compactedMemFile = location.resolve(COMPACTED_MEM_FILE);
+        if (Files.exists(compactedIndFile) || Files.exists(compactedMemFile)) {
+            finishCompact(location, compactedIndFile, compactedMemFile);
+        }
+
         ArrayList<StoragePart> storageParts = new ArrayList<>();
 
         for (int i = 0; i < Integer.MAX_VALUE; i++) {
@@ -67,36 +73,29 @@ public final class StorageSystem implements AutoCloseable {
     }
 
     public void compact(ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> localEntrys) throws IOException {
-        if (storageParts.size() <= 1 && localEntrys.isEmpty()) {
-            // Compacted already
-            return;
+//        System.out.println("Compaction: ");
+        Path indCompPath = location.resolve(COMPACTED_IND_FILE);
+        Path memCompPath = location.resolve(COMPACTED_MEM_FILE);
+        save(indCompPath, memCompPath, getMergedEntrys(localEntrys, null, null));
+
+        // TODO: In stage5 close will be not so simple, so here we won't use close
+        close();
+        finishCompact(location, indCompPath, memCompPath);
+
+        storageParts.add(StoragePart.load(getIndexFilePath(0), getMemFilePath(0), 0));
+    }
+
+    private static void finishCompact(Path location, Path compactedInd, Path compactedMem) throws IOException {
+        for (int i = 0; ; i++) {
+            Path nextIndFile = getIndexFilePath(location, i);
+            Path nextMemFile = getMemFilePath(location, i);
+            if (!Files.deleteIfExists(nextIndFile) && !Files.deleteIfExists(nextMemFile)) {
+                break;
+            }
         }
 
-        Path indCompPath = location.resolve(COMPACT_PREFIX + IND_FILENAME);
-        Path memCompPath = location.resolve(COMPACT_PREFIX + MEM_FILENAME);
-        if (!indCompPath.toFile().createNewFile()
-                || !memCompPath.toFile().createNewFile()) {
-            throw new FileAlreadyExistsException("Compaction file already exists.");
-        }
-
-        // Create compaction part and write all entrys there
-        StoragePart compactionPart = StoragePart.load(indCompPath, memCompPath, Integer.MAX_VALUE);
-        compactionPart.write(getMergedEntrys(localEntrys, null, null));
-        compactionPart.close();
-
-        for (StoragePart storagePart : storageParts) {
-            storagePart.delete();
-        }
-        storageParts.clear();
-
-        // Rename compactionPart
-        Path indexFP = getIndexFilePath(0);
-        Path memFP = getMemFilePath(0);
-        if (!indCompPath.toFile().renameTo(indexFP.toFile())
-                || !memCompPath.toFile().renameTo(memFP.toFile())) {
-            throw new FileSystemException("Renaming compaction file error.");
-        }
-        storageParts.add(StoragePart.load(indexFP, memFP, 0));
+        Files.move(compactedInd, getIndexFilePath(location, 0), StandardCopyOption.ATOMIC_MOVE);
+        Files.move(compactedMem, getMemFilePath(location, 0), StandardCopyOption.ATOMIC_MOVE);
     }
 
     public Iterator<Entry<ByteBuffer>> getMergedEntrys(
@@ -123,26 +122,27 @@ public final class StorageSystem implements AutoCloseable {
         if (entrys.isEmpty()) {
             return;
         }
-
-        if (!getIndexFilePath(storageParts.size()).toFile().createNewFile()
-                || !getMemFilePath(storageParts.size()).toFile().createNewFile()) {
-            throw new FileAlreadyExistsException("Can't create file to save entrys");
-        }
-
+        Path indPath = getIndexFilePath(storageParts.size());
+        Path memPath = getMemFilePath(storageParts.size());
+        save(indPath, memPath, entrys.values().iterator());
         // This part of mem is most fresh, so add in begin
         storageParts.add(0, StoragePart.load(
-                getIndexFilePath(storageParts.size()),
-                getMemFilePath(storageParts.size()),
+                indPath,
+                memPath,
                 storageParts.size()));
+    }
 
-        storageParts.get(0).write(entrys.values().iterator());
+    public boolean isCompacted() {
+        return storageParts.size() <= 1;
     }
 
     @Override
     public void close() {
         for (StoragePart storagePart : storageParts) {
+//            System.out.println("Close st part");
             storagePart.close();
         }
+        storageParts.clear();
     }
 
     private Path getMemFilePath(int num) {
@@ -159,5 +159,21 @@ public final class StorageSystem implements AutoCloseable {
 
     private static Path getIndexFilePath(Path location, int num) {
         return location.resolve(num + IND_FILENAME);
+    }
+
+    private static void save(Path indPath, Path memPath, Iterator<Entry<ByteBuffer>> entrysToWrite) throws IOException {
+        Path indTmpPath = indPath.resolveSibling(TMP_PREFIX + indPath.getFileName());
+        Files.deleteIfExists(indTmpPath);
+        Files.createFile(indTmpPath);
+
+        Path memTmpPath = memPath.resolveSibling(TMP_PREFIX + memPath.getFileName());
+        Files.deleteIfExists(memTmpPath);
+        Files.createFile(memTmpPath);
+
+        StoragePart tmpPart = StoragePart.load(indTmpPath, memTmpPath, NOT_STORAGE_PART);
+        tmpPart.write(entrysToWrite);
+        tmpPart.close();
+        Files.move(indTmpPath, indPath, StandardCopyOption.ATOMIC_MOVE);
+        Files.move(memTmpPath, memPath, StandardCopyOption.ATOMIC_MOVE);
     }
 }

@@ -3,6 +3,7 @@ package ru.mail.polis.levsaskov;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -21,8 +22,8 @@ import java.util.Optional;
 public class StoragePart implements AutoCloseable {
     public static final int LEN_FOR_NULL = -1;
     private static final int DEFAULT_ALLOC_SIZE = 2048;
-    private static final int INDEX_BOOST_PORTION = 4000;
-    private static final int MEMORY_BOOST_PORTION = 50000;
+    private static final int INDEX_BOOST_PORTION = 200;
+    private static final int MEMORY_BOOST_PORTION = 5000;
     private static final int MIN_MAP_SIZE = 0;
 
     private final int storagePartN;
@@ -46,8 +47,8 @@ public class StoragePart implements AutoCloseable {
     }
 
     public static StoragePart load(Path indexPath, Path memoryPath, int storagePartN) throws IOException {
-        MappedByteBuffer memoryBB = mapFile(memoryPath);
         MappedByteBuffer indexBB = mapFile(indexPath);
+        MappedByteBuffer memoryBB = mapFile(memoryPath);
         return new StoragePart(indexPath, memoryPath, indexBB, memoryBB, storagePartN);
     }
 
@@ -103,12 +104,6 @@ public class StoragePart implements AutoCloseable {
         memoryBB.flip();
         indexBB.force();
         memoryBB.force();
-    }
-
-    public void delete() throws IOException {
-        close();
-        Files.delete(indexPath);
-        Files.delete(memoryPath);
     }
 
     private void remapIfNeed(int changedSize) throws IOException {
@@ -230,10 +225,12 @@ public class StoragePart implements AutoCloseable {
             mappedFile = fileChannel.map(FileChannel.MapMode.READ_WRITE, 0, mapSize);
         }
 
+//        System.out.println("Mapping");
         return mappedFile;
     }
 
     private static void unmap(MappedByteBuffer buffer) {
+//        System.out.println("Unmapping");
         try {
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
             Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
