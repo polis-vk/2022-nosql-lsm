@@ -15,8 +15,10 @@ public final class Utils {
     public static final Byte NORMAL_VALUE = 1;
     public static final Byte TOMBSTONE_VALUE = -1;
     public static final String COMPACT_SUFFIX = "Log";
-    public static final String COMPACT_DATA_FILENAME = Utils.getDataFilename(COMPACT_SUFFIX);
-    public static final String COMPACT_INDEXES_FILENAME = Utils.getIndexesFilename(COMPACT_SUFFIX);
+    public static final String COMPACT_DATA_FILENAME
+            = Utils.getDataFilename(COMPACT_SUFFIX);
+    public static final String COMPACT_INDEXES_FILENAME
+            = Utils.getIndexesFilename(COMPACT_SUFFIX);
     public static final String COMPACTED_FILE_SUFFIX_TO_BE_SET = "1";
 
     private static final String DATA_PREFIX = "data";
@@ -24,12 +26,17 @@ public final class Utils {
     private static final String REPLACEMENT_STRING = "?";
     private static final String FILE_NUMBER = "(\\d+)";
     private static final String FILE_EXTENSION = ".txt";
-    private static final String DATA_FILENAME = DATA_PREFIX + REPLACEMENT_STRING + FILE_EXTENSION;
-    private static final String INDEXES_FILENAME = INDEXES_PREFIX + REPLACEMENT_STRING + FILE_EXTENSION;
+    private static final String DATA_FILENAME
+            = DATA_PREFIX + REPLACEMENT_STRING + FILE_EXTENSION;
+    private static final String INDEXES_FILENAME
+            = INDEXES_PREFIX + REPLACEMENT_STRING + FILE_EXTENSION;
 
-    private static final Pattern DATA_FILENAME_PATTERN = Pattern.compile(DATA_PREFIX + FILE_NUMBER + FILE_EXTENSION);
-    private static final Pattern INDEXES_FILENAME_PATTERN = Pattern.compile(INDEXES_PREFIX + FILE_NUMBER + FILE_EXTENSION);
-    private static final Pattern FILE_NUMBER_PATTERN = Pattern.compile(FILE_NUMBER);
+    private static final Pattern DATA_FILENAME_PATTERN
+            = Pattern.compile(DATA_PREFIX + FILE_NUMBER + FILE_EXTENSION);
+    private static final Pattern INDEXES_FILENAME_PATTERN
+            = Pattern.compile(INDEXES_PREFIX + FILE_NUMBER + FILE_EXTENSION);
+    private static final Pattern FILE_NUMBER_PATTERN
+            = Pattern.compile(FILE_NUMBER);
 
     private Utils() {
     }

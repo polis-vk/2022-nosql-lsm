@@ -18,13 +18,16 @@ public class CompactVisitor extends SimpleFileVisitor<Path> {
     private final Path dataPathToBeSet;
     private final Path indexesPathToBeSet;
     private final AtomicInteger sstablesSize;
-    private int numberOfDeletedFiles = 0;
+    private int numberOfDeletedFiles;
 
-    public CompactVisitor(Config config, Path compactedDataPath, Path compactedIndexesPath, AtomicInteger sstablesSize) {
+    public CompactVisitor(Config config, Path compactedDataPath, Path compactedIndexesPath,
+                          AtomicInteger sstablesSize) {
         this.compactedDataPath = compactedDataPath;
         this.compactedIndexesPath = compactedIndexesPath;
-        this.dataPathToBeSet = config.basePath().resolve(Utils.getDataFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
-        this.indexesPathToBeSet = config.basePath().resolve(Utils.getIndexesFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
+        this.dataPathToBeSet = config.basePath()
+                .resolve(Utils.getDataFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
+        this.indexesPathToBeSet = config.basePath()
+                .resolve(Utils.getIndexesFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
         this.sstablesSize = sstablesSize;
     }
 

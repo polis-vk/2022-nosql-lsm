@@ -32,8 +32,10 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
     public ConfigVisitor(Config config, AtomicInteger sstablesSize, Serializer serializer) {
         this.sstablesSize = sstablesSize;
         this.serializer = serializer;
-        this.dataPathToBeSet = config.basePath().resolve(Utils.getDataFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
-        this.indexesPathToBeSet = config.basePath().resolve(Utils.getIndexesFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
+        this.dataPathToBeSet = config.basePath()
+                .resolve(Utils.getDataFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
+        this.indexesPathToBeSet = config.basePath()
+                .resolve(Utils.getIndexesFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
     }
 
     @Override
@@ -54,39 +56,8 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
 
     @Override
     public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-        if (this.compactedDataPath != null) {
-            // It is guaranteed that this.compactedIndexesPath != null
-            // We have to check only Meta's success
-            if (serializer.hasSuccessMeta(new RandomAccessFile(this.compactedDataPath.toString(), "r"))) {
-                for (Path dataFile : this.dataFiles) {
-                    Files.delete(dataFile);
-                }
-                for (Path indexesFile : this.indexesFiles) {
-                    Files.delete(indexesFile);
-                }
-                Files.move(this.compactedDataPath, this.dataPathToBeSet);
-                Files.move(this.compactedIndexesPath, this.indexesPathToBeSet);
-                sstablesSize.incrementAndGet();
-                return FileVisitResult.CONTINUE;
-            } else {
-                Files.delete(this.compactedDataPath);
-                Files.delete(this.compactedIndexesPath);
-            }
-        }
-
-        if (this.compactedIndexesPath != null) {
-            String compactedDataFilename = Utils.getDataFilename(String.valueOf(1));
-            for (Path dataFile : this.dataFiles) {
-                if (!dataFile.getFileName().toString().equals(compactedDataFilename)) {
-                    Files.delete(dataFile);
-                }
-            }
-            for (Path indexesFile : this.indexesFiles) {
-                Files.delete(indexesFile);
-            }
-            // It is guaranteed that compacted data has success Meta
-            Files.move(this.compactedIndexesPath, this.indexesPathToBeSet);
-            sstablesSize.incrementAndGet();
+        boolean isNeedToExit = finishCompact();
+        if (isNeedToExit) {
             return FileVisitResult.CONTINUE;
         }
 
@@ -107,6 +78,46 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
             sstablesSize.incrementAndGet();
         }
         return FileVisitResult.CONTINUE;
+    }
+
+    private boolean finishCompact() throws IOException {
+        if (this.compactedDataPath != null) {
+            // It is guaranteed that this.compactedIndexesPath != null
+            // We have to check only Meta's success
+            if (serializer.hasSuccessMeta(new RandomAccessFile(this.compactedDataPath.toString(), "r"))) {
+                for (Path dataFile : this.dataFiles) {
+                    Files.delete(dataFile);
+                }
+                for (Path indexesFile : this.indexesFiles) {
+                    Files.delete(indexesFile);
+                }
+                Files.move(this.compactedDataPath, this.dataPathToBeSet);
+                Files.move(this.compactedIndexesPath, this.indexesPathToBeSet);
+                sstablesSize.incrementAndGet();
+                return true;
+            } else {
+                Files.delete(this.compactedDataPath);
+                Files.delete(this.compactedIndexesPath);
+            }
+        }
+
+        if (this.compactedIndexesPath != null) {
+            String compactedDataFilename = Utils.getDataFilename(String.valueOf(1));
+            for (Path dataFile : this.dataFiles) {
+                if (!dataFile.getFileName().toString().equals(compactedDataFilename)) {
+                    Files.delete(dataFile);
+                }
+            }
+            for (Path indexesFile : this.indexesFiles) {
+                Files.delete(indexesFile);
+            }
+            // It is guaranteed that compacted data has success Meta
+            Files.move(this.compactedIndexesPath, this.indexesPathToBeSet);
+            sstablesSize.incrementAndGet();
+            return true;
+        }
+
+        return false;
     }
 
     private boolean isPairedFiles(Path dataFile, Path indexesFile, int priority) {
