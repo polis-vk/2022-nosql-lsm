@@ -52,7 +52,7 @@ public class CompactVisitor extends SimpleFileVisitor<Path> {
         Files.move(this.compactedIndexesPath, this.indexesPathToBeSet);
         return FileVisitResult.CONTINUE;
     }
-
+  
     private boolean isTargetFile(Path file) {
         return Utils.isDataFile(file) || Utils.isIndexesFile(file);
     }

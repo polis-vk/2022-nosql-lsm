@@ -89,8 +89,7 @@ public final class Serializer {
         }
     }
 
-    public MappedPairedFiles get(int priority)
-            throws IOException, ReflectiveOperationException {
+    public MappedPairedFiles get(int priority) throws IOException, ReflectiveOperationException {
         if (sstablesSize.get() != mappedSSTables.size()) {
             mapSSTables();
         }

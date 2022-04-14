@@ -76,7 +76,6 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private void skipTombstones() {
-
         while (!iterators.isEmpty() && hasTombstoneForFirstElement()) {
             if (iterators.size() == 1) {
                 skipLastOneStanding();
@@ -90,12 +89,11 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         if (iterators.isEmpty()) {
             return;
         }
-
         PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
         while (Utils.isTombstone(first.peek()) && first.hasNext()) {
             first.next();
         }
-
+      
         if (first.hasNext()) {
             iterators.add(first);
         }
