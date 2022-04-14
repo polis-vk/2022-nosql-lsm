@@ -2,7 +2,6 @@ package ru.mail.polis.pavelkovalenko.iterators;
 
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.Serializer;
-import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
 import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
@@ -47,29 +46,11 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     @Override
     public Entry<ByteBuffer> next() {
-        Entry<ByteBuffer> result;
-
-        Iterator<PeekIterator<Entry<ByteBuffer>>> iterator = iterators.iterator();
-        PeekIterator<Entry<ByteBuffer>> first = iterator.next();
-        PeekIterator<Entry<ByteBuffer>> second = iterator.hasNext() ? iterator.next() : null;
-
-        if (second == null) {
-            result = first.peek();
-        } else {
-            int compare = EntryComparator.INSTANSE.compare(first.peek(), second.peek());
-            if (compare == 0) {
-                compare = Integer.compare(first.getPriority(), second.getPriority());
-            }
-
-            if (compare < 0) {
-                result = first.peek();
-            } else if (compare == 0) {
-                throw new IllegalStateException("Illegal priority equality");
-            } else {
-                result = second.peek();
-            }
+        if (iterators.isEmpty()) {
+            throw new RuntimeException("Empty queue");
         }
 
+        Entry<ByteBuffer> result = iterators.peek().peek();
         fallAndRefresh(result);
         return result;
     }
