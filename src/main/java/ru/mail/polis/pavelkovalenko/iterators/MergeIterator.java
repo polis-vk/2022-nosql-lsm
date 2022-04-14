@@ -93,7 +93,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         while (Utils.isTombstone(first.peek()) && first.hasNext()) {
             first.next();
         }
-      
+
         if (first.hasNext()) {
             iterators.add(first);
         }

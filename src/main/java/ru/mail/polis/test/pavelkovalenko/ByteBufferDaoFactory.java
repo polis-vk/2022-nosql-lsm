@@ -4,7 +4,7 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.pavelkovalenko.PersistentDao;
+import ru.mail.polis.pavelkovalenko.LSMDao;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
@@ -16,7 +16,7 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Entr
 
     @Override
     public Dao<ByteBuffer, Entry<ByteBuffer>> createDao(Config config) throws IOException {
-        return new PersistentDao(config);
+        return new LSMDao(config);
     }
 
     @Override
