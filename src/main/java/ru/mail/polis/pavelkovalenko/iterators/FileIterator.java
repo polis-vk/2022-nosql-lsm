@@ -3,6 +3,7 @@ package ru.mail.polis.pavelkovalenko.iterators;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.Serializer;
+import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
 import ru.mail.polis.pavelkovalenko.dto.MappedPairedFiles;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
@@ -71,7 +72,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
     private boolean canContinue() throws IOException {
         return (peek() != null && peek().key().compareTo(from) >= 0)
                 && ((to == null && peek() != null)
-                || (peek() != null && Utils.entryComparator.compare(peek(), toEntry) < 0));
+                || (peek() != null && EntryComparator.INSTANSE.compare(peek(), toEntry) < 0));
     }
 
     private boolean isEOFReached() {
@@ -87,7 +88,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
         while (b - a >= 1) {
             c = (b + a) / 2;
             Entry<ByteBuffer> curEntry = serializer.readEntry(mappedFilePair, c * Utils.INDEX_OFFSET);
-            if (curEntry.key().compareTo(from) >= 0 && Utils.entryComparator.compare(curEntry, ceilEntry) <= 0) {
+            if (curEntry.key().compareTo(from) >= 0 && EntryComparator.INSTANSE.compare(curEntry, ceilEntry) <= 0) {
                 ceilEntry = curEntry;
                 curIndexesPos = c * Utils.INDEX_OFFSET;
             }

@@ -7,14 +7,13 @@ public final class Timer {
 
     public String elapse() {
         double elapse = System.nanoTime() - startTime;
-        double times;
         String result = TIME_PATTERN;
 
         for (Time time : Time.times) {
-            if (elapse * time.getFactor() > 0) {
-                times = Math.floor(elapse * time.getFactor());
-                elapse -= times * time.getFactor();
-                result = result.replaceFirst("/?", String.valueOf(times));
+            double curTime = Math.floor(elapse * time.getFactor());
+            if (curTime > 0) {
+                elapse -= curTime;
+                result = result.replaceFirst("\\?", String.valueOf(curTime));
             }
         }
 

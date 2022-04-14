@@ -2,17 +2,15 @@ package ru.mail.polis.pavelkovalenko.iterators;
 
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.Serializer;
+import ru.mail.polis.pavelkovalenko.comparators.EntryComparator;
 import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
-import ru.mail.polis.pavelkovalenko.dto.PairedFiles;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.NavigableMap;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -22,8 +20,8 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     private final Queue<PeekIterator<Entry<ByteBuffer>>> iterators = new PriorityQueue<>(IteratorComparator.INSTANSE);
 
     public MergeIterator(ByteBuffer from, ByteBuffer to, Serializer serializer,
-                         ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memorySSTable,
-                         NavigableMap<Integer, PairedFiles> sstables) throws IOException, ReflectiveOperationException {
+                         ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memorySSTable, int sstablesSize)
+            throws IOException, ReflectiveOperationException {
         ByteBuffer from1 = from == null ? Utils.EMPTY_BYTEBUFFER : from;
         int priority = 0;
 
@@ -33,9 +31,9 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
             iterators.add(new PeekIterator<>(memorySSTable.subMap(from1, to).values().iterator(), priority++));
         }
 
-        for (; priority <= sstables.size(); ++priority) {
+        for (; priority <= sstablesSize; ++priority) {
             iterators.add(new PeekIterator<>(
-                    new FileIterator(serializer.get(sstables.size() - priority), serializer, from1, to), priority)
+                    new FileIterator(serializer.get(sstablesSize - priority + 1), serializer, from1, to), priority)
             );
         }
     }
@@ -44,7 +42,6 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     public boolean hasNext() {
         iterators.removeIf(this::removeIteratorIf);
         skipTombstones();
-        iterators.removeIf(this::removeIteratorIf);
         return !iterators.isEmpty();
     }
 
@@ -59,7 +56,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         if (second == null) {
             result = first.peek();
         } else {
-            int compare = Utils.entryComparator.compare(first.peek(), second.peek());
+            int compare = EntryComparator.INSTANSE.compare(first.peek(), second.peek());
             if (compare == 0) {
                 compare = Integer.compare(first.getPriority(), second.getPriority());
             }
@@ -75,15 +72,6 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
         fallAndRefresh(result);
         return result;
-    }
-
-    @SafeVarargs
-    private void backIterators(PeekIterator<Entry<ByteBuffer>>... peekIterators) {
-        Arrays.stream(peekIterators).forEach(this::backIterator);
-    }
-
-    private void backIterator(PeekIterator<Entry<ByteBuffer>> it) {
-        iterators.add(it);
     }
 
     private boolean removeIteratorIf(PeekIterator<Entry<ByteBuffer>> iterator) {
@@ -107,6 +95,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private void skipTombstones() {
+
         while (!iterators.isEmpty() && hasTombstoneForFirstElement()) {
             if (iterators.size() == 1) {
                 skipLastOneStanding();
@@ -117,34 +106,40 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private void skipLastOneStanding() {
+        if (iterators.isEmpty()) {
+            return;
+        }
+
         PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
         while (Utils.isTombstone(first.peek()) && first.hasNext()) {
             first.next();
         }
-        backIterator(first);
+
+        if (first.hasNext()) {
+            iterators.add(first);
+        }
     }
 
     private void skipPairStanding() {
         PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
-        if (iterators.isEmpty()) {
-            while (Utils.isTombstone(first.peek()) && first.hasNext()) {
-                backIterator(first);
-                fallAndRefresh(first.peek());
-                first = iterators.remove();
-            }
-            backIterator(first);
-        } else {
-            PeekIterator<Entry<ByteBuffer>> second = iterators.poll();
+        PeekIterator<Entry<ByteBuffer>> second = iterators.remove();
 
-            while (Utils.isTombstone(first.peek()) && first.hasNext()) {
-                backIterators(first, second);
-                fallAndRefresh(first.peek());
-                first = iterators.remove();
-                second = iterators.poll();
+        while (first != null && Utils.isTombstone(first.peek())) {
+            iterators.add(first);
+            if (second != null && second.hasNext()) {
+                iterators.add(second);
             }
-            backIterators(first, second);
+            fallAndRefresh(first.peek());
+            first = iterators.poll();
+            second = iterators.poll();
         }
-        iterators.removeIf(this::removeIteratorIf);
+
+        if (first != null && first.hasNext()) {
+            iterators.add(first);
+        }
+        if (second != null && second.hasNext()) {
+            iterators.add(second);
+        }
     }
 
     private boolean hasTombstoneForFirstElement() {
@@ -155,7 +150,11 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     private void refreshIterators(List<PeekIterator<Entry<ByteBuffer>>> toBeRefreshed) {
         iterators.removeAll(toBeRefreshed);
-        iterators.addAll(toBeRefreshed);
+        for (PeekIterator<Entry<ByteBuffer>> it : toBeRefreshed) {
+            if (it.hasNext()) {
+                iterators.add(it);
+            }
+        }
     }
 
 }
