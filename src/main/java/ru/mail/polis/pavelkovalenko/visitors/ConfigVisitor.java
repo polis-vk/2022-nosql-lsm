@@ -20,7 +20,7 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
     private final NavigableSet<Path> indexesFiles = new TreeSet<>(PathComparator.INSTANSE);
     private final AtomicInteger sstablesSize;
 
-    public ConfigVisitor(AtomicInteger sstablesSize, Serializer serializer) {
+    public ConfigVisitor(AtomicInteger sstablesSize) {
         this.sstablesSize = sstablesSize;
     }
 

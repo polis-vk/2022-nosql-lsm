@@ -29,7 +29,7 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     public PersistentDao(Config config) throws IOException {
         this.config = config;
         this.serializer = new Serializer(sstablesSize, config);
-        Files.walkFileTree(config.basePath(), new ConfigVisitor(sstablesSize, serializer));
+        Files.walkFileTree(config.basePath(), new ConfigVisitor(sstablesSize));
     }
 
     @Override
