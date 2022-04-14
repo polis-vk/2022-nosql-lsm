@@ -9,6 +9,7 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 
 public class DaoWriter implements Closeable {
@@ -56,5 +57,22 @@ public class DaoWriter implements Closeable {
     public void close() throws IOException {
         writer.close();
         indexWriter.close();
+    }
+
+    public void writeIterator(Iterator<BaseEntry<ByteBuffer>> iterator, int count, int size) throws IOException {
+        MappedByteBuffer indexMapper = indexWriter.map(FileChannel.MapMode.READ_WRITE, 0,
+                (long) Integer.BYTES * (count + 1));
+        indexMapper.putInt(count);
+        MappedByteBuffer mapper = writer.map(FileChannel.MapMode.READ_WRITE, 0, size);
+        int position = 0;
+        while (iterator.hasNext()) {
+            BaseEntry<ByteBuffer> entry = iterator.next();
+            indexMapper.putInt(position);
+            position += 2 * Integer.BYTES + entry.key().capacity() + entry.value().capacity();
+            mapper.putInt(entry.key().capacity());
+            mapper.putInt(entry.value().capacity());
+            mapper.put(entry.key());
+            mapper.put(entry.value());
+        }
     }
 }
