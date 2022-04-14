@@ -1,14 +1,11 @@
 package ru.mail.polis.pavelkovalenko.visitors;
 
-import ru.mail.polis.Config;
 import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.comparators.PathComparator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -21,12 +18,10 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
 
     private final NavigableSet<Path> dataFiles = new TreeSet<>(PathComparator.INSTANSE);
     private final NavigableSet<Path> indexesFiles = new TreeSet<>(PathComparator.INSTANSE);
-    private final Serializer serializer;
     private final AtomicInteger sstablesSize;
 
-    public ConfigVisitor(Config config, AtomicInteger sstablesSize, Serializer serializer) {
+    public ConfigVisitor(AtomicInteger sstablesSize, Serializer serializer) {
         this.sstablesSize = sstablesSize;
-        this.serializer = serializer;
     }
 
     @Override
@@ -44,8 +39,8 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
     @Override
     public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
         if (dataFiles.size() != indexesFiles.size()) {
-            throw new IllegalStateException("Mismatch in the number of data- and indexes-files.\n" +
-                    "GOT: " + dataFiles.size() + ":" + indexesFiles.size());
+            throw new IllegalStateException("Mismatch in the number of data- and indexes-files.\n"
+                    + "GOT: " + dataFiles.size() + ":" + indexesFiles.size());
         }
 
         Iterator<Path> dataIterator = dataFiles.iterator();
@@ -54,8 +49,8 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
             Path dataFile = dataIterator.next();
             Path indexesFile = indexesIterator.next();
             if (!isPairedFiles(dataFile, indexesFile, priority)) {
-                throw new IllegalStateException("Illegal order of data- and indexes-files.\n" +
-                        "GOT: " + dataFile.getFileName() + " and " + indexesFile.getFileName());
+                throw new IllegalStateException("Illegal order of data- and indexes-files.\n"
+                        + "GOT: " + dataFile.getFileName() + " and " + indexesFile.getFileName());
             }
             sstablesSize.incrementAndGet();
         }

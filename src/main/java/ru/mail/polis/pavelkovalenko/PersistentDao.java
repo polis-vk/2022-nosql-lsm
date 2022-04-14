@@ -5,7 +5,6 @@ import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.iterators.MergeIterator;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
-import ru.mail.polis.pavelkovalenko.visitors.CompactVisitor;
 import ru.mail.polis.pavelkovalenko.visitors.ConfigVisitor;
 
 import java.io.IOException;
@@ -30,7 +29,7 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     public PersistentDao(Config config) throws IOException {
         this.config = config;
         this.serializer = new Serializer(sstablesSize, config);
-        Files.walkFileTree(config.basePath(), new ConfigVisitor(config, sstablesSize, serializer));
+        Files.walkFileTree(config.basePath(), new ConfigVisitor(sstablesSize, serializer));
     }
 
     @Override
@@ -77,29 +76,6 @@ public class PersistentDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
                 return;
             }
             flush();
-        } finally {
-            rwlock.writeLock().unlock();
-        }
-    }
-
-    @Override
-    public void compact() throws IOException {
-        rwlock.writeLock().lock();
-        try {
-            if (memorySSTable.isEmpty() && sstablesSize.get() == 0) {
-                return;
-            }
-
-            Iterator<Entry<ByteBuffer>> mergeIterator = get(null, null);
-            if (!mergeIterator.hasNext()) {
-                return;
-            }
-
-            Path compactDataFile = Utils.getFilePath(Utils.COMPACT_DATA_FILENAME, config);
-            Path compactIndexesFile = Utils.getFilePath(Utils.COMPACT_INDEXES_FILENAME, config);
-            serializer.write(mergeIterator, compactDataFile, compactIndexesFile);
-            Files.walkFileTree(config.basePath(), new CompactVisitor(config, compactDataFile, compactIndexesFile, sstablesSize));
-            memorySSTable.clear();
         } finally {
             rwlock.writeLock().unlock();
         }
