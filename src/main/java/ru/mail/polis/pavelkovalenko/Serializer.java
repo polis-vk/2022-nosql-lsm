@@ -3,6 +3,7 @@ package ru.mail.polis.pavelkovalenko;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
+import ru.mail.polis.pavelkovalenko.dto.FileMeta;
 import ru.mail.polis.pavelkovalenko.dto.MappedPairedFiles;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
@@ -68,6 +69,8 @@ public final class Serializer {
 
         try (RandomAccessFile dataFile = new RandomAccessFile(dataPath.toString(), "rw");
              RandomAccessFile indexesFile = new RandomAccessFile(indexesPath.toString(), "rw")) {
+            writeMeta(FileMeta.UNFINISHED_META, dataFile);
+
             int curOffset = (int) dataFile.getFilePointer();
             int bbSize = 0;
             ByteBuffer offset = ByteBuffer.allocate(Utils.INDEX_OFFSET);
@@ -76,6 +79,8 @@ public final class Serializer {
                 writeOffset(curOffset, offset, indexesFile);
                 bbSize = writePair(sstable.next(), dataFile);
             }
+
+            writeMeta(FileMeta.FINISHED_META, dataFile);
         } catch (Exception ex) {
             Files.delete(dataPath);
             Files.delete(indexesPath);
@@ -103,6 +108,19 @@ public final class Serializer {
         return size;
     }
 
+    public FileMeta readMeta(MappedByteBuffer file) {
+        return new FileMeta(file.get(0));
+    }
+
+    private void writeMeta(FileMeta meta, RandomAccessFile file) throws IOException {
+        file.seek(0);
+        file.write(meta.wasWritten());
+    }
+
+    public boolean hasSuccessMeta(RandomAccessFile file) throws IOException {
+        return file.readByte() == FileMeta.finishedWrite;
+    }
+
     private int readDataFileOffset(MappedByteBuffer indexesFile, int indexesPos) {
         return indexesFile.getInt(indexesPos);
     }
@@ -125,6 +143,8 @@ public final class Serializer {
                         dataChannel.map(FileChannel.MapMode.READ_ONLY, 0, dataChannel.size());
                 MappedByteBuffer mappedIndexesFile =
                         indexesChannel.map(FileChannel.MapMode.READ_ONLY, 0, indexesChannel.size());
+                FileMeta meta = readMeta(mappedDataFile);
+                mappedDataFile.position(meta.size());
                 mappedSSTables.put(priority, new MappedPairedFiles(mappedDataFile, mappedIndexesFile));
             }
         }
