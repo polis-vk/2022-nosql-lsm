@@ -21,7 +21,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     public static final String INDEX_EXT = ".ind";
     private static final String ALL_FILES = "files.fl";
     private static final Random rnd = new Random();
-    private final ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
+    private ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
     private final Path basePath;
     private volatile boolean commit = true;
     private final Deque<String> filesList = new ArrayDeque<>();
@@ -115,13 +115,15 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         Path file = basePath.resolve(name + DATA_EXT);
         Path index = basePath.resolve(name + INDEX_EXT);
         filesList.addFirst(name);
+        ConcurrentNavigableMap<String, Entry<String>> dataCopy = data;
+        data = new ConcurrentSkipListMap<>();
         try (RandomAccessFile output = new RandomAccessFile(file.toString(), "rw");
              RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
              RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw")
         ) {
             output.seek(0);
-            output.writeInt(data.size());
-            for (Entry<String> value : data.values()) {
+            output.writeInt(dataCopy.size());
+            for (Entry<String> value : dataCopy.values()) {
                 indexOut.writeLong(output.getFilePointer());
                 Utils.writeEntry(output, value);
             }
@@ -132,7 +134,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 allFilesOut.writeUTF(filesListIterator.next());
             }
             commit = true;
-            data.clear();
         }
     }
 
