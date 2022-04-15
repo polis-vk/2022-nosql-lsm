@@ -31,12 +31,12 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-@Target({ ElementType.ANNOTATION_TYPE, ElementType.METHOD })
+@Target({ElementType.ANNOTATION_TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 @ParameterizedTest
 @ArgumentsSource(DaoTest.DaoList.class)
 @ExtendWith(DaoTest.DaoList.class)
-@Timeout(2500)
+@Timeout(5)
 public @interface DaoTest {
 
     int stage();

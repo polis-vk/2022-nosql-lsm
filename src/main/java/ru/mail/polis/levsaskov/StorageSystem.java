@@ -89,7 +89,8 @@ public final class StorageSystem implements AutoCloseable {
         for (int i = 0; ; i++) {
             Path nextIndFile = getIndexFilePath(location, i);
             Path nextMemFile = getMemFilePath(location, i);
-            if (!Files.deleteIfExists(nextIndFile) && !Files.deleteIfExists(nextMemFile)) {
+            // not &&, because if first will be false the second file won't be deleted
+            if (!Files.deleteIfExists(nextIndFile) & !Files.deleteIfExists(nextMemFile)) {
                 break;
             }
         }
