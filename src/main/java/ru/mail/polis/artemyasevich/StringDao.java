@@ -40,42 +40,45 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
-        lock.readLock().lock();
-        List<PeekIterator> iterators = new ArrayList<>(2);
+        lock.writeLock().lock(); //Хотелось бы дождаться фонового флаша
+        List<PeekIterator> iterators = new ArrayList<>(3);
         try {
             if (to != null && to.equals(from)) {
                 return Collections.emptyIterator();
             }
-            iterators.add(new PeekIterator(getDataMapIterator(from, to), 0));
+            if (!memory.isEmpty()) {
+                iterators.add(new PeekIterator(memoryIterator(from, to), 0));
+            }
             if (storage != null) {
                 iterators.add(new PeekIterator(storage.iterate(from, to), 1));
             }
         } finally {
-            lock.readLock().unlock();
+            lock.writeLock().unlock();
         }
         return new MergeIterator(iterators);
     }
 
     @Override
     public BaseEntry<String> get(String key) throws IOException {
+        BaseEntry<String> entry;
         lock.readLock().lock();
         try {
-            BaseEntry<String> entry = memory.get(key);
-            if (entry != null) {
-                return entry.value() == null ? null : entry;
+            entry = memory.get(key);
+            if (entry == null) {
+                entry = reserveMemory.get(key);
             }
-            if (storage != null) {
-                return storage.get(key);
+            if (entry == null && storage != null) {
+                entry = storage.get(key);
             }
         } finally {
             lock.readLock().unlock();
         }
-        return null;
+        return entry == null || entry.value() == null ? null : entry;
     }
 
     @Override
     public void upsert(BaseEntry<String> entry) {
-        if (config == null) {
+        if (config == null || config.flushThresholdBytes() == 0) {
             memory.put(entry.key(), entry);
             return;
         }
@@ -163,7 +166,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     }
 
     private void autoFlush(long memoryFlushed) {
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
             if (storage == null || memory.isEmpty()) {
                 return;
@@ -177,11 +180,11 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
-    private Iterator<BaseEntry<String>> getDataMapIterator(String from, String to) {
+    private Iterator<BaseEntry<String>> memoryIterator(String from, String to) {
         Map<String, BaseEntry<String>> subMap;
         if (from == null && to == null) {
             subMap = memory;

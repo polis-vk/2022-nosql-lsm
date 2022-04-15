@@ -27,12 +27,13 @@ public class Storage {
     private static final String META_FILE = "meta";
     private static final String FILE_EXTENSION = ".txt";
     private static final String COMPACTED = "compacted_";
+    private static final int DEFAULT_BUFFER_SIZE = 64;
     private static final OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
 
     private final Map<Thread, EntryReadWriter> entryReadWriter;
     private final Path pathToDirectory;
     private final List<DaoFile> daoFiles;
-    private final int bufferSize;
+    private int bufferSize;
 
     Storage(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
@@ -41,7 +42,8 @@ public class Storage {
         boolean compactionResolved = resolveCompactionIfNeeded(filesCount);
         int daoFilesCount = compactionResolved ? 1 : filesCount / 2;
         this.daoFiles = new ArrayList<>(daoFilesCount);
-        this.bufferSize = initFiles(daoFilesCount);
+        int maxEntrySize = initFiles(daoFilesCount);
+        this.bufferSize = maxEntrySize == 0 ? DEFAULT_BUFFER_SIZE : maxEntrySize;
         this.entryReadWriter = Collections.synchronizedMap(new WeakHashMap<>());
     }
 
@@ -87,7 +89,11 @@ public class Storage {
     void flush(Iterator<BaseEntry<String>> dataIterator) throws IOException {
         Path pathToData = pathToData(daoFiles.size());
         Path pathToMeta = pathToMeta(daoFiles.size());
-        savaData(dataIterator, pathToData, pathToMeta);
+        int maxEntrySize = savaData(dataIterator, pathToData, pathToMeta);
+        if (maxEntrySize > bufferSize) {
+            entryReadWriter.forEach((key, value) -> value.increaseBufferSize(maxEntrySize));
+            bufferSize = maxEntrySize;
+        }
         daoFiles.add(new DaoFile(pathToData, pathToMeta));
     }
 
@@ -97,8 +103,9 @@ public class Storage {
         }
     }
 
-    private void savaData(Iterator<BaseEntry<String>> dataIterator,
-                          Path pathToData, Path pathToMeta) throws IOException {
+    private int savaData(Iterator<BaseEntry<String>> dataIterator,
+                         Path pathToData, Path pathToMeta) throws IOException {
+        int maxEntrySize = 0;
         try (DataOutputStream dataStream = new DataOutputStream(new BufferedOutputStream(
                 Files.newOutputStream(pathToData, writeOptions)));
              DataOutputStream metaStream = new DataOutputStream(new BufferedOutputStream(
@@ -114,6 +121,9 @@ public class Storage {
                 entry = dataIterator.next();
                 entriesCount++;
                 int bytesWritten = entryWriter.writeEntryInStream(dataStream, entry);
+                if (bytesWritten > maxEntrySize) {
+                    maxEntrySize = bytesWritten;
+                }
                 if (bytesWritten == currentBytes) {
                     currentRepeats++;
                     continue;
@@ -127,6 +137,7 @@ public class Storage {
             metaStream.writeInt(currentBytes);
             metaStream.writeInt(entriesCount);
         }
+        return maxEntrySize;
     }
 
     private int getEntryIndex(String key, DaoFile daoFile) throws IOException {
