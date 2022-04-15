@@ -3,14 +3,14 @@ package ru.mail.polis.levsaskov;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 
-import java.io.Closeable;
+import java.io.BufferedOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -22,21 +22,14 @@ import java.util.Optional;
 public class StoragePart implements AutoCloseable {
     public static final int LEN_FOR_NULL = -1;
     private static final int DEFAULT_ALLOC_SIZE = 2048;
-    private static final int INDEX_BOOST_PORTION = 200;
-    private static final int MEMORY_BOOST_PORTION = 5000;
-    private static final int MIN_MAP_SIZE = 0;
 
     private final int storagePartN;
-    private final Path indexPath;
-    private final Path memoryPath;
     private MappedByteBuffer indexBB;
     private MappedByteBuffer memoryBB;
     private int entrysC;
 
     private StoragePart(Path indexPath, Path memoryPath,
                         MappedByteBuffer indexBB, MappedByteBuffer memoryBB, int storagePartN) {
-        this.indexPath = indexPath;
-        this.memoryPath = memoryPath;
         this.storagePartN = storagePartN;
         this.memoryBB = memoryBB;
         this.indexBB = indexBB;
@@ -47,9 +40,43 @@ public class StoragePart implements AutoCloseable {
     }
 
     public static StoragePart load(Path indexPath, Path memoryPath, int storagePartN) throws IOException {
-        MappedByteBuffer indexBB = mapFile(indexPath);
-        MappedByteBuffer memoryBB = mapFile(memoryPath);
+        MappedByteBuffer indexBB = mapFile(indexPath, (int) Files.size(indexPath));
+        MappedByteBuffer memoryBB = mapFile(memoryPath, (int) Files.size(memoryPath));
+
         return new StoragePart(indexPath, memoryPath, indexBB, memoryBB, storagePartN);
+    }
+
+    // Entrys count will be written in the end of index file
+    public static void saveSTPart(Path indexPath, Path memoryPath, Iterator<Entry<ByteBuffer>> entrysToWrite) throws IOException {
+        ByteBuffer bufferToWrite = ByteBuffer.allocate(DEFAULT_ALLOC_SIZE);
+        int bytesWritten = 0;
+        int entrysC = 0;
+
+        try (
+                FileChannel memChannel = (FileChannel) Files.newByteChannel(memoryPath,
+                        EnumSet.of(StandardOpenOption.WRITE));
+                DataOutputStream indStream = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(indexPath)));
+        ) {
+            while (entrysToWrite.hasNext()) {
+                Entry<ByteBuffer> entry = entrysToWrite.next();
+                int entryBytesC = getPersEntryByteSize(entry);
+
+                indStream.writeInt(bytesWritten);
+                if (entryBytesC > bufferToWrite.capacity()) {
+                    bufferToWrite = ByteBuffer.allocate(entryBytesC);
+                }
+                persistEntry(entry, bufferToWrite);
+                memChannel.write(bufferToWrite);
+
+                bufferToWrite.clear();
+                bytesWritten += entryBytesC;
+
+                entrysC++;
+            }
+            indStream.writeInt(entrysC);
+
+            memChannel.force(true);
+        }
     }
 
     public Entry<ByteBuffer> get(ByteBuffer key) {
@@ -68,53 +95,6 @@ public class StoragePart implements AutoCloseable {
         indexBB = null;
         unmap(memoryBB);
         memoryBB = null;
-    }
-
-    // Entrys count will be written in the end of index file
-    public void write(Iterator<Entry<ByteBuffer>> entrysToWrite) throws IOException {
-        if (entrysC != 0) {
-            throw new FileAlreadyExistsException("Can't write in file that isn't empty!");
-        }
-
-        ByteBuffer bufferToWrite = ByteBuffer.allocate(DEFAULT_ALLOC_SIZE);
-        int bytesWritten = 0;
-
-        while (entrysToWrite.hasNext()) {
-            Entry<ByteBuffer> entry = entrysToWrite.next();
-            int entryBytesC = getPersEntryByteSize(entry);
-
-            // Проверяем, что размеров MappedByteBuffer хватает для дальнейшей записи
-            remapIfNeed(bytesWritten + entryBytesC);
-
-            indexBB.putInt(bytesWritten);
-            if (entryBytesC > bufferToWrite.capacity()) {
-                bufferToWrite = ByteBuffer.allocate(entryBytesC);
-            }
-            persistEntry(entry, bufferToWrite);
-            memoryBB.put(bufferToWrite);
-
-            bufferToWrite.clear();
-            bytesWritten += entryBytesC;
-
-            entrysC++;
-        }
-
-        indexBB.putInt(indexBB.capacity() - Integer.BYTES, entrysC);
-        indexBB.flip();
-        memoryBB.flip();
-        indexBB.force();
-        memoryBB.force();
-    }
-
-    private void remapIfNeed(int changedSize) throws IOException {
-        if (changedSize > memoryBB.capacity()) {
-            memoryBB = remap(memoryBB, memoryPath, changedSize + MEMORY_BOOST_PORTION);
-        }
-
-        // "2 *" because I need memory for writing entrysC in the end
-        if (indexBB.capacity() - indexBB.position() < 2 * Integer.BYTES) {
-            indexBB = remap(indexBB, indexPath, indexBB.capacity() + INDEX_BOOST_PORTION);
-        }
     }
 
     private int getGreaterOrEqual(int inLast, ByteBuffer key) {
@@ -209,11 +189,6 @@ public class StoragePart implements AutoCloseable {
         newMap.position(position);
 
         return newMap;
-    }
-
-    private static MappedByteBuffer mapFile(Path filePath) throws IOException {
-        int fSize = (int) filePath.toFile().length();
-        return mapFile(filePath, fSize == 0 ? MIN_MAP_SIZE : fSize);
     }
 
     private static MappedByteBuffer mapFile(Path filePath, int mapSize) throws IOException {

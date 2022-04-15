@@ -90,8 +90,10 @@ public final class StorageSystem implements AutoCloseable {
             Path nextIndFile = getIndexFilePath(location, i);
             Path nextMemFile = getMemFilePath(location, i);
             // not &&, because if first will be false the second file won't be deleted
-            if (!Files.deleteIfExists(nextIndFile) & !Files.deleteIfExists(nextMemFile)) {
-                break;
+            if (!Files.deleteIfExists(nextIndFile)) {
+                if (!Files.deleteIfExists(nextMemFile)) {
+                    break;
+                }
             }
         }
 
@@ -166,14 +168,11 @@ public final class StorageSystem implements AutoCloseable {
         Path indTmpPath = indPath.resolveSibling(TMP_PREFIX + indPath.getFileName());
         Files.deleteIfExists(indTmpPath);
         Files.createFile(indTmpPath);
-
         Path memTmpPath = memPath.resolveSibling(TMP_PREFIX + memPath.getFileName());
         Files.deleteIfExists(memTmpPath);
         Files.createFile(memTmpPath);
 
-        StoragePart tmpPart = StoragePart.load(indTmpPath, memTmpPath, NOT_STORAGE_PART);
-        tmpPart.write(entrysToWrite);
-        tmpPart.close();
+        StoragePart.saveSTPart(indTmpPath, memTmpPath, entrysToWrite);
         Files.move(indTmpPath, indPath, StandardCopyOption.ATOMIC_MOVE);
         Files.move(memTmpPath, memPath, StandardCopyOption.ATOMIC_MOVE);
     }
