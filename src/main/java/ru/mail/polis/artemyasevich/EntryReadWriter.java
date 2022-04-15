@@ -79,4 +79,8 @@ public class EntryReadWriter {
         buffer.flip();
     }
 
+    static long sizeOfEntry(BaseEntry<String> entry) {
+        int valueSize = entry.value() == null ? 0 : entry.value().length();
+        return (entry.key().length() + valueSize) * 2L;
+    }
 }
