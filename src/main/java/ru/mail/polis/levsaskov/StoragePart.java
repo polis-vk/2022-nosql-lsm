@@ -3,8 +3,6 @@ package ru.mail.polis.levsaskov;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 
-import java.io.BufferedOutputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -22,14 +20,13 @@ import java.util.Optional;
 public class StoragePart implements AutoCloseable {
     public static final int LEN_FOR_NULL = -1;
     private static final int DEFAULT_ALLOC_SIZE = 2048;
-
+    private static final int IND_BUFF_SIZE = 10;
     private final int storagePartN;
     private MappedByteBuffer indexBB;
     private MappedByteBuffer memoryBB;
     private int entrysC;
 
-    private StoragePart(Path indexPath, Path memoryPath,
-                        MappedByteBuffer indexBB, MappedByteBuffer memoryBB, int storagePartN) {
+    private StoragePart(MappedByteBuffer indexBB, MappedByteBuffer memoryBB, int storagePartN) {
         this.storagePartN = storagePartN;
         this.memoryBB = memoryBB;
         this.indexBB = indexBB;
@@ -43,39 +40,48 @@ public class StoragePart implements AutoCloseable {
         MappedByteBuffer indexBB = mapFile(indexPath, (int) Files.size(indexPath));
         MappedByteBuffer memoryBB = mapFile(memoryPath, (int) Files.size(memoryPath));
 
-        return new StoragePart(indexPath, memoryPath, indexBB, memoryBB, storagePartN);
+        return new StoragePart(indexBB, memoryBB, storagePartN);
     }
 
     // Entrys count will be written in the end of index file
     public static void saveSTPart(Path indexPath, Path memoryPath, Iterator<Entry<ByteBuffer>> entrysToWrite) throws IOException {
-        ByteBuffer bufferToWrite = ByteBuffer.allocate(DEFAULT_ALLOC_SIZE);
+        ByteBuffer memBufferToWrite = ByteBuffer.allocate(DEFAULT_ALLOC_SIZE);
+        ByteBuffer indBufferToWrite = ByteBuffer.allocate(Integer.BYTES * IND_BUFF_SIZE);
         int bytesWritten = 0;
         int entrysC = 0;
 
         try (
                 FileChannel memChannel = (FileChannel) Files.newByteChannel(memoryPath,
-                        EnumSet.of(StandardOpenOption.WRITE));
-                DataOutputStream indStream = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(indexPath)));
+                        EnumSet.of(StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW));
+                FileChannel indChannel = (FileChannel) Files.newByteChannel(indexPath,
+                        EnumSet.of(StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW));
         ) {
             while (entrysToWrite.hasNext()) {
                 Entry<ByteBuffer> entry = entrysToWrite.next();
                 int entryBytesC = getPersEntryByteSize(entry);
 
-                indStream.writeInt(bytesWritten);
-                if (entryBytesC > bufferToWrite.capacity()) {
-                    bufferToWrite = ByteBuffer.allocate(entryBytesC);
+                indBufferToWrite.putInt(bytesWritten);
+                if (indBufferToWrite.position() == indBufferToWrite.capacity()) {
+                    indBufferToWrite.flip();
+                    indChannel.write(indBufferToWrite);
+                    indBufferToWrite.clear();
                 }
-                persistEntry(entry, bufferToWrite);
-                memChannel.write(bufferToWrite);
 
-                bufferToWrite.clear();
+                if (entryBytesC > memBufferToWrite.capacity()) {
+                    memBufferToWrite = ByteBuffer.allocate(entryBytesC);
+                }
+                persistEntry(entry, memBufferToWrite);
+                memChannel.write(memBufferToWrite);
+
+
+                memBufferToWrite.clear();
                 bytesWritten += entryBytesC;
 
                 entrysC++;
             }
-            indStream.writeInt(entrysC);
-
-            memChannel.force(true);
+            indBufferToWrite.putInt(entrysC);
+            indBufferToWrite.flip();
+            indChannel.write(indBufferToWrite);
         }
     }
 
@@ -195,17 +201,15 @@ public class StoragePart implements AutoCloseable {
         MappedByteBuffer mappedFile;
         try (
                 FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath,
-                        EnumSet.of(StandardOpenOption.READ, StandardOpenOption.WRITE))
+                        EnumSet.of(StandardOpenOption.READ))
         ) {
-            mappedFile = fileChannel.map(FileChannel.MapMode.READ_WRITE, 0, mapSize);
+            mappedFile = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapSize);
         }
 
-//        System.out.println("Mapping");
         return mappedFile;
     }
 
     private static void unmap(MappedByteBuffer buffer) {
-//        System.out.println("Unmapping");
         try {
             Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
             Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");

@@ -20,7 +20,6 @@ public final class StorageSystem implements AutoCloseable {
     private static final String COMPACTED_IND_FILE = COMPACTED_PREFIX + IND_FILENAME;
     private static final String COMPACTED_MEM_FILE = COMPACTED_PREFIX + MEM_FILENAME;
     private static final String TMP_PREFIX = "tmp_";
-    private static final int NOT_STORAGE_PART = Integer.MAX_VALUE;
     // Order is important, fresh in begin
     private final List<StoragePart> storageParts;
     private final Path location;
@@ -73,7 +72,6 @@ public final class StorageSystem implements AutoCloseable {
     }
 
     public void compact(ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> localEntrys) throws IOException {
-//        System.out.println("Compaction: ");
         Path indCompPath = location.resolve(COMPACTED_IND_FILE);
         Path memCompPath = location.resolve(COMPACTED_MEM_FILE);
         save(indCompPath, memCompPath, getMergedEntrys(localEntrys, null, null));
@@ -89,12 +87,11 @@ public final class StorageSystem implements AutoCloseable {
         for (int i = 0; ; i++) {
             Path nextIndFile = getIndexFilePath(location, i);
             Path nextMemFile = getMemFilePath(location, i);
-            // not &&, because if first will be false the second file won't be deleted
+
             if (!Files.deleteIfExists(nextIndFile)) {
-                if (!Files.deleteIfExists(nextMemFile)) {
-                    break;
-                }
+                break;
             }
+            Files.deleteIfExists(nextMemFile);
         }
 
         Files.move(compactedInd, getIndexFilePath(location, 0), StandardCopyOption.ATOMIC_MOVE);
@@ -142,7 +139,6 @@ public final class StorageSystem implements AutoCloseable {
     @Override
     public void close() {
         for (StoragePart storagePart : storageParts) {
-//            System.out.println("Close st part");
             storagePart.close();
         }
         storageParts.clear();
@@ -167,10 +163,9 @@ public final class StorageSystem implements AutoCloseable {
     private static void save(Path indPath, Path memPath, Iterator<Entry<ByteBuffer>> entrysToWrite) throws IOException {
         Path indTmpPath = indPath.resolveSibling(TMP_PREFIX + indPath.getFileName());
         Files.deleteIfExists(indTmpPath);
-        Files.createFile(indTmpPath);
+
         Path memTmpPath = memPath.resolveSibling(TMP_PREFIX + memPath.getFileName());
         Files.deleteIfExists(memTmpPath);
-        Files.createFile(memTmpPath);
 
         StoragePart.saveSTPart(indTmpPath, memTmpPath, entrysToWrite);
         Files.move(indTmpPath, indPath, StandardCopyOption.ATOMIC_MOVE);
