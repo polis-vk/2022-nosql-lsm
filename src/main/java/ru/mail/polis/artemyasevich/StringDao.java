@@ -111,11 +111,11 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         }
         lock.writeLock().lock();
         try {
-            Iterator<BaseEntry<String>> mergeIterator = get(null, null);
-            if (!mergeIterator.hasNext()) {
+            Iterator<BaseEntry<String>> diskIterator = storage.iterate(null, null);
+            if (!diskIterator.hasNext()) {
                 return;
             }
-            storage.compact(mergeIterator);
+            storage.compact(diskIterator);
             clearMemory();
         } finally {
             lock.writeLock().unlock();
@@ -174,8 +174,8 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             storage.flush(memory.values().iterator());
             memory.clear();
             ConcurrentNavigableMap<String, BaseEntry<String>> empty = memory;
-            memory = reserveMemory; //memory и reserveMemory указывают на reserve map
-            memoryUsage.addAndGet(-memoryFlushed); //Теперь upsertы пойдут по ссылке memory
+            memory = reserveMemory;
+            memoryUsage.addAndGet(-memoryFlushed); //Теперь upsertы пойдут на memory
             reserveMemory = empty;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -197,5 +197,4 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         }
         return subMap.values().iterator();
     }
-
 }
