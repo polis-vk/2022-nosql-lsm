@@ -1,9 +1,12 @@
 package ru.mail.polis.baidiyarosan;
 
 import ru.mail.polis.BaseEntry;
+import sun.misc.Unsafe;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,18 +23,55 @@ import java.util.stream.Stream;
 
 public final class FileUtils {
 
-    public static final int NULL_SIZE_FLAG = -1;
+    public static final String INDEX_FOLDER = "indexes";
 
     public static final String DATA_FILE_HEADER = "data";
-
-    public static final String INDEX_FOLDER = "indexes";
 
     public static final String INDEX_FILE_HEADER = "index";
 
     public static final String FILE_EXTENSION = ".log";
 
+    public static final int NULL_SIZE_FLAG = -1;
+
+    private static Unsafe UNSAFE;
+
+    // unsafe hack that need to delete files on windows
+    static {
+        try {
+            Field f = Unsafe.class.getDeclaredField("theUnsafe");
+            f.setAccessible(true);
+            UNSAFE = (Unsafe) f.get(null);
+        } catch (IllegalAccessException | NoSuchFieldException e) {
+            e.printStackTrace();
+        }
+    }
+
     private FileUtils() {
         // Utility class
+    }
+
+    // windows method that close files before delete
+    private static void clear(MappedByteBuffer map) {
+        UNSAFE.invokeCleaner(map);
+    }
+
+    // windows method that close files before delete
+    public static void clearAllFrom(Collection<MappedByteBuffer> collection) {
+        for (MappedByteBuffer map : collection) {
+            if(map != null) {
+                clear(map);
+            }
+        }
+    }
+
+    // windows method that close files before delete
+    public static void clearFrom(List<MappedByteBuffer> list, int number) {
+        if(list.size() < number) {
+            return;
+        }
+
+        clear(list.get(number - 1));
+        list.set(number - 1, null);
     }
 
     public static List<Path> getPaths(Path path) throws IOException {
@@ -111,8 +151,10 @@ public final class FileUtils {
         }
     }
 
-    public static void compact(Iterator<BaseEntry<ByteBuffer>> iter, Path path) throws IOException {
+    public static void compact(MemoryAndDiskDao dao, Path path) throws IOException {
+
         int fileNumber = getPaths(path).size() + 1;
+        Iterator<BaseEntry<ByteBuffer>> iter = dao.get(null, null);
         if (iter.hasNext()) {
             ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
             ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
@@ -136,18 +178,23 @@ public final class FileUtils {
                     dataOut.write(writeEntryToBuffer(buffer, entry));
                 }
             }
-            Files.move(getIndexPath(path, fileNumber), getIndexPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
-            Files.move(getDataPath(path, fileNumber), getDataPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
-
+            if (fileNumber != 1) {
+                clearFrom(dao.fileIndexes, 1);
+                Files.move(getIndexPath(path, fileNumber), getIndexPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
+                clearFrom(dao.files, 1);
+                Files.move(getDataPath(path, fileNumber), getDataPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
+            }
         }
 
         for (int i = 2; i <= fileNumber; ++i) {
+            clearFrom(dao.fileIndexes, i);
             Files.deleteIfExists(getIndexPath(path, i));
+            clearFrom(dao.files, i);
             Files.deleteIfExists(getDataPath(path, i));
         }
 
     }
-  
+
     public static Collection<BaseEntry<ByteBuffer>> getInMemoryCollection(
             NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, ByteBuffer from, ByteBuffer to) {
 
