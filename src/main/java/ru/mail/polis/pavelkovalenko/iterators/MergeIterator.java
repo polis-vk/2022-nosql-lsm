@@ -10,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -47,7 +48,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     @Override
     public Entry<ByteBuffer> next() {
         if (iterators.isEmpty()) {
-            throw new RuntimeException("Empty queue");
+            throw new NoSuchElementException("No more elements in queue");
         }
 
         Entry<ByteBuffer> result = iterators.peek().peek();
@@ -89,13 +90,14 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         if (iterators.isEmpty()) {
             return;
         }
-        PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
+        
+        PeekIterator<Entry<ByteBuffer>> first = iterators.peek();
         while (Utils.isTombstone(first.peek()) && first.hasNext()) {
             first.next();
         }
 
-        if (first.hasNext()) {
-            iterators.add(first);
+        if (!first.hasNext()) {
+            iterators.remove(first);
         }
     }
 

@@ -58,6 +58,11 @@ public final class Serializer {
         return new BaseEntry<>(key, value);
     }
 
+    public ByteBuffer readKey(MappedPairedFiles mappedFilePair, int indexesPos) {
+        int dataPos = readDataFileOffset(mappedFilePair.indexesFile(), indexesPos);
+        return readByteBuffer(mappedFilePair.dataFile(), dataPos + 1);
+    }
+
     public void write(Iterator<Entry<ByteBuffer>> sstable, Path dataPath, Path indexesPath)
             throws IOException {
         if (!sstable.hasNext()) {

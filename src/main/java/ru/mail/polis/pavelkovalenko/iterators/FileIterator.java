@@ -80,31 +80,25 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private void binarySearchInFile() {
-        Entry<ByteBuffer> ceilEntry = getLast();
-        int a = 0;
+        ByteBuffer ceilKey = getLast().key();
+        int a = -1;
         int b = getIndexesFileLength() / Utils.INDEX_OFFSET;
         int c;
 
-        while (b - a >= 1) {
+        while (b - a > 1) {
             c = (b + a) / 2;
-            Entry<ByteBuffer> curEntry = serializer.readEntry(mappedFilePair, c * Utils.INDEX_OFFSET);
-            if (curEntry.key().compareTo(from) >= 0 && EntryComparator.INSTANSE.compare(curEntry, ceilEntry) <= 0) {
-                ceilEntry = curEntry;
+            ByteBuffer curKey = serializer.readKey(mappedFilePair, c * Utils.INDEX_OFFSET);
+            int curKeyCompareToFrom = curKey.compareTo(from);
+            if (curKeyCompareToFrom >= 0 && curKey.compareTo(ceilKey) <= 0) {
+                ceilKey = curKey;
                 curIndexesPos = c * Utils.INDEX_OFFSET;
             }
 
-            int compare = curEntry.key().compareTo(from);
-            if (compare < 0) {
-                if (b - a <= 1) {
-                    break;
-                }
+            if (curKeyCompareToFrom < 0) {
                 a = c;
-            } else if (compare == 0) {
+            } else if (curKeyCompareToFrom == 0) {
                 break;
             } else {
-                if (b - a <= 1) {
-                    break;
-                }
                 b = c;
             }
         }
