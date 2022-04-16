@@ -23,7 +23,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     private final Config config;
     private final Storage storage;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final Lock memoryLock = new ReentrantLock();
+    private final ReadWriteLock memoryLock = new ReentrantReadWriteLock();
     private final Lock backgroundLock = new ReentrantLock();
     private final AtomicLong memoryUsage = new AtomicLong();
     private volatile ConcurrentNavigableMap<String, BaseEntry<String>> memory = new ConcurrentSkipListMap<>();
@@ -42,7 +42,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
         lock.readLock().lock();
-        memoryLock.lock(); //Хотелось бы дождаться фонового флаша
+        memoryLock.readLock().lock(); //Хотелось бы дождаться фонового флаша
         List<PeekIterator> iterators = new ArrayList<>(3);
         try {
             if (to != null && to.equals(from)) {
@@ -55,7 +55,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
                 iterators.add(new PeekIterator(storage.iterate(from, to), 1));
             }
         } finally {
-            memoryLock.unlock();
+            memoryLock.readLock().unlock();
             lock.readLock().unlock();
         }
         return new MergeIterator(iterators);
@@ -172,13 +172,17 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     private void autoFlush(long memoryFlushed) {
         lock.readLock().lock();
         backgroundLock.lock(); //Не флашим, пока идёт компакт
-        memoryLock.lock(); // Не флашим, пока есть итераторы по памяти
         try {
             if (storage == null || memory.isEmpty()) {
                 return;
             }
             storage.flush(memory.values().iterator());
-            memory.clear();
+            memoryLock.writeLock().lock(); // Не чистим память, пока есть итераторы
+            try {
+                memory.clear();
+            } finally {
+                memoryLock.writeLock().unlock();
+            }
             ConcurrentNavigableMap<String, BaseEntry<String>> empty = memory;
             memory = reserveMemory;
             memoryUsage.addAndGet(-memoryFlushed); //Теперь upsertы пойдут на memory
@@ -186,7 +190,6 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } finally {
-            memoryLock.unlock();
             backgroundLock.unlock();
             lock.readLock().unlock();
         }
