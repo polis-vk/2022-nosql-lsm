@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -174,8 +175,13 @@ public class Storage {
 
     private int initFiles() throws IOException {
         int maxSize = 0;
-        Queue<Path> dataFiles = new PriorityQueue<>();
-        Queue<Path> metaFiles = new PriorityQueue<>();
+        Comparator<Path> comparator = (o1, o2) -> {
+            int n1 = Integer.parseInt(o1.getFileName().toString().replaceAll("[^\\d]", ""));
+            int n2 = Integer.parseInt(o2.getFileName().toString().replaceAll("[^\\d]", ""));
+            return n1 - n2;
+        };
+        Queue<Path> dataFiles = new PriorityQueue<>(comparator);
+        Queue<Path> metaFiles = new PriorityQueue<>(comparator);
         try (DirectoryStream<Path> paths = Files.newDirectoryStream(pathToDirectory)) {
             for (Path path : paths) {
                 String fileName = path.getFileName().toString();
@@ -187,12 +193,8 @@ public class Storage {
                 }
             }
         }
-        Iterator<Path> dataFilesIterator = dataFiles.iterator();
-        Iterator<Path> metaFilesIterator = metaFiles.iterator();
-        while (dataFilesIterator.hasNext() && metaFilesIterator.hasNext()) {
-            Path data = dataFilesIterator.next();
-            Path meta = metaFilesIterator.next();
-            DaoFile daoFile = new DaoFile(data, meta, false);
+        while (!dataFiles.isEmpty() && !metaFiles.isEmpty()) {
+            DaoFile daoFile = new DaoFile(dataFiles.poll(), metaFiles.poll(), false);
             if (daoFile.maxEntrySize() > maxSize) {
                 maxSize = daoFile.maxEntrySize();
             }
