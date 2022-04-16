@@ -180,13 +180,13 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             memoryLock.writeLock().lock(); // Не чистим память, пока есть итераторы
             try {
                 memory.clear();
+                ConcurrentNavigableMap<String, BaseEntry<String>> empty = memory;
+                memory = reserveMemory;
+                memoryUsage.addAndGet(-memoryFlushed); //Теперь upsertы пойдут на memory
+                reserveMemory = empty;
             } finally {
                 memoryLock.writeLock().unlock();
             }
-            ConcurrentNavigableMap<String, BaseEntry<String>> empty = memory;
-            memory = reserveMemory;
-            memoryUsage.addAndGet(-memoryFlushed); //Теперь upsertы пойдут на memory
-            reserveMemory = empty;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } finally {

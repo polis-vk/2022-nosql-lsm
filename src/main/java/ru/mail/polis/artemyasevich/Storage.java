@@ -7,7 +7,6 @@ import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.CharBuffer;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
@@ -28,23 +27,20 @@ public class Storage {
     private static final String DATA_FILE = "data";
     private static final String META_FILE = "meta";
     private static final String FILE_EXTENSION = ".txt";
-    private static final int DEFAULT_BUFFER_SIZE = 64;
+    private static final int DEFAULT_BUFFER_SIZE = 1024;
     private static final OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
-    private final Map<Thread, EntryReadWriter> entryReadWriter;
+    private final Map<Thread, EntryReadWriter> entryReadWriter = Collections.synchronizedMap(new WeakHashMap<>());
+    private final List<DaoFile> filesToRemove = new ArrayList<>();
+    private final Deque<DaoFile> daoFiles = new ConcurrentLinkedDeque<>();
     private final Path pathToDirectory;
-    private final List<DaoFile> filesToRemove;
-    private final Deque<DaoFile> daoFiles;
     private int daoFilesCount;
     private int bufferSize;
 
     Storage(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
-        this.daoFiles = new ConcurrentLinkedDeque<>();
         int maxEntrySize = initFiles();
         this.daoFilesCount = daoFiles.size();
-        this.filesToRemove = new ArrayList<>();
         this.bufferSize = maxEntrySize == 0 ? DEFAULT_BUFFER_SIZE : maxEntrySize;
-        this.entryReadWriter = Collections.synchronizedMap(new WeakHashMap<>());
     }
 
     BaseEntry<String> get(String key) throws IOException {
@@ -104,6 +100,7 @@ public class Storage {
         daoFilesCount++;
         int maxEntrySize = savaData(dataIterator, pathToData, pathToMeta);
         if (maxEntrySize > bufferSize) {
+            //???
             entryReadWriter.forEach((key, value) -> value.increaseBufferSize(maxEntrySize));
             bufferSize = maxEntrySize;
         }
@@ -226,9 +223,8 @@ public class Storage {
         public FileIterator(String from, String to, DaoFile daoFile) throws IOException {
             this.daoFile = daoFile;
             this.to = to;
-            EntryReadWriter entryReader = getEntryReadWriter();
-            this.entryToRead = from == null ? 0 : entryReader.getEntryIndex(from, daoFile);
             this.entryReader = getEntryReadWriter();
+            this.entryToRead = from == null ? 0 : entryReader.getEntryIndex(from, daoFile);
             this.next = getNext();
         }
 

@@ -37,54 +37,6 @@ public class EntryReadWriter {
         return readEntryFromChannel(daoFile.getChannel(), daoFile.entrySize(index), daoFile.getOffset(index));
     }
 
-    BaseEntry<String> readEntryFromChannel(FileChannel channel, int entrySize, long offset) throws IOException {
-        String key = bufferAsKeyOnly(channel, entrySize, offset).toString();
-        buffer.limit(entrySize);
-        String value = null;
-        if (buffer.hasRemaining()) {
-            short valueSize = buffer.getShort();
-            value = valueSize == 0 ? "" : buffer.asCharBuffer().toString();
-        }
-        return new BaseEntry<>(key, value);
-    }
-
-    CharBuffer bufferAsKeyOnly(DaoFile daoFile, int index) throws IOException {
-        return bufferAsKeyOnly(daoFile.getChannel(), daoFile.entrySize(index), daoFile.getOffset(index));
-    }
-
-    CharBuffer bufferAsKeyOnly(FileChannel channel, int entrySize, long offset) throws IOException {
-        fillBufferWithEntry(channel, entrySize, offset);
-        short keySize = buffer.getShort();
-        buffer.limit(keySize + Short.BYTES);
-        CharBuffer key = buffer.asCharBuffer();
-        buffer.position(Short.BYTES + keySize);
-        return key;
-    }
-
-    CharBuffer fillAndGetKeyBuffer(String key) {
-        searchedKeyBuffer.clear();
-        searchedKeyBuffer.put(key);
-        searchedKeyBuffer.flip();
-        return searchedKeyBuffer;
-    }
-
-    int maxKeyLength() {
-        return (buffer.capacity() / 2 - Short.BYTES / 2);
-    }
-
-    private void fillBufferWithEntry(FileChannel channel, int entrySize, long offset) throws IOException {
-        buffer.clear();
-        buffer.limit(entrySize);
-        channel.read(buffer, offset);
-        buffer.flip();
-    }
-
-    void increaseBufferSize(int maxEntrySize) {
-        int newCapacity = Math.max(buffer.capacity() * 2, maxEntrySize);
-        buffer = ByteBuffer.allocate(newCapacity);
-        searchedKeyBuffer = CharBuffer.allocate(newCapacity);
-    }
-
     int getEntryIndex(String key, DaoFile daoFile) throws IOException {
         int left = 0;
         int right = daoFile.getLastIndex();
@@ -104,8 +56,57 @@ public class EntryReadWriter {
         return left;
     }
 
+    void increaseBufferSize(int maxEntrySize) {
+        int newCapacity = Math.max(buffer.capacity() * 2, maxEntrySize);
+        buffer = ByteBuffer.allocate(newCapacity);
+        searchedKeyBuffer = CharBuffer.allocate(newCapacity);
+    }
+
+    int maxKeyLength() {
+        return (buffer.capacity() / 2 - Short.BYTES / 2);
+    }
+
     static long sizeOfEntry(BaseEntry<String> entry) {
         int valueSize = entry.value() == null ? 0 : entry.value().length();
         return (entry.key().length() + valueSize) * 2L;
     }
+
+    private BaseEntry<String> readEntryFromChannel(FileChannel channel, int entrySize, long offset) throws IOException {
+        String key = bufferAsKeyOnly(channel, entrySize, offset).toString();
+        buffer.limit(entrySize);
+        String value = null;
+        if (buffer.hasRemaining()) {
+            short valueSize = buffer.getShort();
+            value = valueSize == 0 ? "" : buffer.asCharBuffer().toString();
+        }
+        return new BaseEntry<>(key, value);
+    }
+
+    private CharBuffer bufferAsKeyOnly(DaoFile daoFile, int index) throws IOException {
+        return bufferAsKeyOnly(daoFile.getChannel(), daoFile.entrySize(index), daoFile.getOffset(index));
+    }
+
+    private CharBuffer bufferAsKeyOnly(FileChannel channel, int entrySize, long offset) throws IOException {
+        fillBufferWithEntry(channel, entrySize, offset);
+        short keySize = buffer.getShort();
+        buffer.limit(keySize + Short.BYTES);
+        CharBuffer key = buffer.asCharBuffer();
+        buffer.position(Short.BYTES + keySize);
+        return key;
+    }
+
+    private CharBuffer fillAndGetKeyBuffer(String key) {
+        searchedKeyBuffer.clear();
+        searchedKeyBuffer.put(key);
+        searchedKeyBuffer.flip();
+        return searchedKeyBuffer;
+    }
+
+    private void fillBufferWithEntry(FileChannel channel, int entrySize, long offset) throws IOException {
+        buffer.clear();
+        buffer.limit(entrySize);
+        channel.read(buffer, offset);
+        buffer.flip();
+    }
+
 }
