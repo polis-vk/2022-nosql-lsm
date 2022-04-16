@@ -14,7 +14,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.Iterator;
 import java.util.List;
 
-import static ru.mail.polis.vladislavfetisov.LsmDao.logger;
 
 public final class Utils {
 
@@ -117,8 +116,9 @@ public final class Utils {
         return entry.value() == null;
     }
 
-    public static void deleteTables(List<SSTable> tableList) throws IOException {
-        for (SSTable table : tableList) {
+    public static void deleteTablesToIndex(List<SSTable> tableList, int toIndex) throws IOException {
+        for (int i = 0; i < toIndex; i++) {
+            SSTable table = tableList.get(i);
             Files.deleteIfExists(table.getTableName());
             Files.deleteIfExists(table.getIndexName());
         }
@@ -134,11 +134,8 @@ public final class Utils {
         return new SSTable.Sizes(tableSize, count * Long.BYTES);
     }
 
-    public static void checkMemory() {
-        long usedMemory = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
-        logger.info("memory use: {}", usedMemory / 1024L);
-        long free = Runtime.getRuntime().maxMemory() - usedMemory;
-        logger.info("free: {}", free / 1024L);
-        logger.info("all {}", (usedMemory + free) / 1024L);
+    public static String removeSuffix(String source, String suffix) {
+        return source.substring(0, source.length() - suffix.length());
     }
+
 }

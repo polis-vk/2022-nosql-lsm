@@ -12,18 +12,15 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static ru.mail.polis.vladislavfetisov.LsmDao.logger;
 
 public final class SSTable implements Closeable {
     public static final int NULL_VALUE = -1;
     public static final String TEMP = "_tmp";
     public static final String INDEX = "_i";
+    public static final String COMPACTED = "_compacted";
     private final MemorySegment mapFile;
     private final MemorySegment mapIndex;
     private final Path tableName;
@@ -46,22 +43,60 @@ public final class SSTable implements Closeable {
         this.indexName = indexName;
     }
 
-    public static List<SSTable> getAllTables(Path dir) {
+
+    public static Directory retrieveDir(Path dir) throws IOException {
         try (Stream<Path> files = Files.list(dir)) {
-            return files
-                    .filter(path -> {
-                        String s = path.toString();
-                        return !(s.endsWith(INDEX) || s.endsWith(TEMP));
-                    })
-                    .mapToInt(path -> Integer.parseInt(path.getFileName().toString()))
-                    .sorted()
-                    .mapToObj(i -> mapToTable(dir.resolve(String.valueOf(i))))
+            Set<Path> compactedTables = new HashSet<>();
+            List<Path> paths = sortPathsAndFindCompacted(dir, files, compactedTables);
+
+            int indexOfLastCompacted = lastCompactedIndex(compactedTables, paths);
+
+            List<SSTable> ssTables = paths
+                    .stream()
+                    .map(SSTable::mapToTable)
                     .toList();
-        } catch (IOException e) {
-            logger.info("No SSTables in directory");
-            return Collections.emptyList();
+            return new Directory(ssTables, indexOfLastCompacted);
         }
     }
+
+    private static List<Path> sortPathsAndFindCompacted(Path dir, Stream<Path> files, Set<Path> compactedTables) {
+        return files
+                .filter(path -> {
+                    String s = path.toString();
+                    return !(s.endsWith(INDEX) || s.endsWith(TEMP));
+                })
+                .mapToInt(path -> processFileName(compactedTables, path))
+                .sorted()
+                .mapToObj(i -> dir.resolve(String.valueOf(i)))
+                .collect(Collectors.toList());
+    }
+
+    private static int processFileName(Set<Path> compactedTables, Path path) {
+        if (path.toString().endsWith(COMPACTED)) {
+            path = Path.of(Utils.removeSuffix(path.toString(), COMPACTED));
+            compactedTables.add(path);
+        }
+        return getTableNum(path);
+    }
+
+    private static int lastCompactedIndex(Set<Path> compactedTables, List<Path> paths) {
+        int lastCompactedIndex = 0;
+        if (compactedTables.isEmpty()) {
+            return 0;
+        }
+        if (compactedTables.size() > 2) {
+            throw new IllegalStateException("compactedTables: " + compactedTables.size());
+        }
+        for (int i = 0; i < paths.size(); i++) {
+            Path path = paths.get(i);
+            if (compactedTables.contains(path)) {
+                lastCompactedIndex = i;
+                paths.set(i, Utils.withSuffix(path, COMPACTED));
+            }
+        }
+        return lastCompactedIndex;
+    }
+
 
     private static SSTable mapToTable(Path path) {
         try {
@@ -169,5 +204,13 @@ public final class SSTable implements Closeable {
      */
     public record Sizes(long tableSize, long indexSize) {
         //empty
+    }
+
+    public record Directory(List<SSTable> ssTables, int indexOfLastCompacted) {
+
+    }
+
+    public static Integer getTableNum(Path path) {
+        return Integer.parseInt(path.getFileName().toString());
     }
 }

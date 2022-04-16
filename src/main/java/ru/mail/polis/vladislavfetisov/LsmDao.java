@@ -1,39 +1,45 @@
 package ru.mail.polis.vladislavfetisov;
 
 import jdk.incubator.foreign.MemorySegment;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NavigableMap;
-import java.util.SortedMap;
+import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private final Config config;
     private List<SSTable> tables;
-    private final AtomicLong ssTableNum;
+    private final AtomicLong nextTableNum;
     private NavigableMap<MemorySegment, Entry<MemorySegment>> storage = getNewStorage();
-    public static final Logger logger = LoggerFactory.getLogger(LsmDao.class);
 
-    public LsmDao(Config config) {
+    /**
+     * Получаем все таблицы из директории, удаляем все до индекса последнего файла compacted,
+     * больше 2 файлов compacted в директории быть не может.
+     */
+    public LsmDao(Config config) throws IOException {
         this.config = config;
-        List<SSTable> fromDisc = SSTable.getAllTables(config.basePath());
-        this.tables = fromDisc;
+        SSTable.Directory directory = SSTable.retrieveDir(config.basePath());
+        List<SSTable> fromDisc = directory.ssTables();
         if (fromDisc.isEmpty()) {
-            ssTableNum = new AtomicLong(0);
+            nextTableNum = new AtomicLong(0);
+            this.tables = Collections.emptyList();
             return;
         }
-        String tableName = fromDisc.get(fromDisc.size() - 1).getTableName().getFileName().toString();
-        ssTableNum = new AtomicLong(Long.parseLong(tableName) + 1);
+        this.tables = fromDisc;
+        if (directory.indexOfLastCompacted() != 0) {
+            this.tables = fromDisc.subList(directory.indexOfLastCompacted(), fromDisc.size());
+            Utils.deleteTablesToIndex(fromDisc, directory.indexOfLastCompacted());
+        }
+        String lastTable = tables.get(tables.size() - 1).getTableName().getFileName().toString();
+        if (lastTable.endsWith(SSTable.COMPACTED)) {
+            lastTable = Utils.removeSuffix(lastTable, SSTable.COMPACTED);
+        }
+        nextTableNum = new AtomicLong(Long.parseLong(lastTable) + 1);
     }
 
     @Override
@@ -81,10 +87,6 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return storage.subMap(from, to);
     }
 
-    /**
-     * Compact all SSTables.
-     * It will work properly only if {@link #flush()} will be called after this method.
-     */
     @Override
     public void compact() throws IOException {
         List<SSTable> fixed = this.tables;
@@ -94,9 +96,14 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
         SSTable.Sizes sizes = Utils.getSizes(forSize);
 
-        this.tables = List.of(writeSSTable(forWrite, sizes.tableSize(), sizes.indexSize())); //immutable
+        this.tables = List.of(writeSSTable(
+                nextCompactedTable(),
+                forWrite,
+                sizes.tableSize(),
+                sizes.indexSize())
+        );
         this.storage = getNewStorage();
-        Utils.deleteTables(fixed);
+        Utils.deleteTablesToIndex(fixed, fixed.size());
     }
 
     @Override
@@ -124,7 +131,12 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         }
         NavigableMap<MemorySegment, Entry<MemorySegment>> readOnlyStorage = this.storage;
         SSTable.Sizes sizes = Utils.getSizes(readOnlyStorage.values().iterator());
-        SSTable table = writeSSTable(readOnlyStorage.values().iterator(), sizes.tableSize(), sizes.indexSize());
+        SSTable table = writeSSTable(
+                nextOrdinaryTable(),
+                readOnlyStorage.values().iterator(),
+                sizes.tableSize(),
+                sizes.indexSize()
+        );
 
         tablesAtomicAdd(table); //need for concurrent get
         this.storage = getNewStorage();
@@ -145,16 +157,23 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         }
     }
 
-    private SSTable writeSSTable(Iterator<Entry<MemorySegment>> iterator,
+    private SSTable writeSSTable(Path table,
+                                 Iterator<Entry<MemorySegment>> iterator,
                                  long tableSize,
                                  long indexSize) throws IOException {
-
-        Path tableName = nextTableName();
-        return SSTable.writeTable(tableName, iterator, tableSize, indexSize);
+        return SSTable.writeTable(table, iterator, tableSize, indexSize);
     }
 
-    private Path nextTableName() {
-        return config.basePath().resolve(String.valueOf(ssTableNum.getAndIncrement()));
+    private Path nextOrdinaryTable() {
+        return nextTable(String.valueOf(nextTableNum.getAndIncrement()));
+    }
+
+    private Path nextCompactedTable() {
+        return nextTable(nextTableNum.getAndIncrement() + SSTable.COMPACTED);
+    }
+
+    private Path nextTable(String name) {
+        return config.basePath().resolve(name);
     }
 
     private static ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> getNewStorage() {
