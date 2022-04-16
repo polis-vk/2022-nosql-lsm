@@ -13,10 +13,9 @@ public class DaoFile {
     private final boolean isCompacted;
     private final Path pathToFile;
     private final Path pathToMeta;
-    private final int number;
     private int maxEntrySize;
 
-    public DaoFile(Path pathToFile, Path pathToMeta, boolean isCompacted, int number) throws IOException {
+    public DaoFile(Path pathToFile, Path pathToMeta, boolean isCompacted) throws IOException {
         this.pathToFile = pathToFile;
         this.pathToMeta = pathToMeta;
         this.reader = new RandomAccessFile(pathToFile.toFile(), "r");
@@ -24,7 +23,6 @@ public class DaoFile {
         this.size = offsets[offsets.length - 1];
         this.entries = offsets.length - 1;
         this.isCompacted = isCompacted;
-        this.number = number;
     }
 
     public boolean isCompacted() {
@@ -97,14 +95,4 @@ public class DaoFile {
         return pathToMeta;
     }
 
-//    public int getNumber() {
-//        return number;
-//    }
-
-    @Override
-    public String toString() {
-        return "DaoFile{" +
-                "path=" + pathToFile +
-                ", " + isCompacted + "}";
-    }
 }
