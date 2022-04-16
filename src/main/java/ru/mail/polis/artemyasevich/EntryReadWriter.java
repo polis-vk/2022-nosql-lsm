@@ -85,6 +85,25 @@ public class EntryReadWriter {
         searchedKeyBuffer = CharBuffer.allocate(newCapacity);
     }
 
+    int getEntryIndex(String key, DaoFile daoFile) throws IOException {
+        int left = 0;
+        int right = daoFile.getLastIndex();
+        while (left <= right) {
+            int middle = (right - left) / 2 + left;
+            CharBuffer middleKey = bufferAsKeyOnly(daoFile, middle);
+            CharBuffer keyToFind = fillAndGetKeyBuffer(key);
+            int comparison = keyToFind.compareTo(middleKey);
+            if (comparison < 0) {
+                right = middle - 1;
+            } else if (comparison > 0) {
+                left = middle + 1;
+            } else {
+                return middle;
+            }
+        }
+        return left;
+    }
+
     static long sizeOfEntry(BaseEntry<String> entry) {
         int valueSize = entry.value() == null ? 0 : entry.value().length();
         return (entry.key().length() + valueSize) * 2L;

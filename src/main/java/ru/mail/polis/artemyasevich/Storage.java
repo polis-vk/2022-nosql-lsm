@@ -53,7 +53,7 @@ public class Storage {
             return null;
         }
         for (DaoFile daoFile : daoFiles) {
-            int entryIndex = getEntryIndex(key, daoFile);
+            int entryIndex = entryReader.getEntryIndex(key, daoFile);
             if (entryIndex > daoFile.getLastIndex()) {
                 continue;
             }
@@ -171,26 +171,6 @@ public class Storage {
         return maxEntrySize;
     }
 
-    private int getEntryIndex(String key, DaoFile daoFile) throws IOException {
-        EntryReadWriter entryReader = getEntryReadWriter();
-        int left = 0;
-        int right = daoFile.getLastIndex();
-        while (left <= right) {
-            int middle = (right - left) / 2 + left;
-            CharBuffer middleKey = entryReader.bufferAsKeyOnly(daoFile, middle);
-            CharBuffer keyToFind = entryReader.fillAndGetKeyBuffer(key);
-            int comparison = keyToFind.compareTo(middleKey);
-            if (comparison < 0) {
-                right = middle - 1;
-            } else if (comparison > 0) {
-                left = middle + 1;
-            } else {
-                return middle;
-            }
-        }
-        return left;
-    }
-
     private EntryReadWriter getEntryReadWriter() {
         return entryReadWriter.computeIfAbsent(Thread.currentThread(), thread -> new EntryReadWriter(bufferSize));
     }
@@ -246,7 +226,8 @@ public class Storage {
         public FileIterator(String from, String to, DaoFile daoFile) throws IOException {
             this.daoFile = daoFile;
             this.to = to;
-            this.entryToRead = from == null ? 0 : getEntryIndex(from, daoFile);
+            EntryReadWriter entryReader = getEntryReadWriter();
+            this.entryToRead = from == null ? 0 : entryReader.getEntryIndex(from, daoFile);
             this.entryReader = getEntryReadWriter();
             this.next = getNext();
         }
