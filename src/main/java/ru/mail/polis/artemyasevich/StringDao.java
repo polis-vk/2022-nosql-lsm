@@ -13,8 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -26,10 +24,8 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     private final Storage storage;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock memoryLock = new ReentrantLock();
-    private final Lock backgroundFlushLock = new ReentrantLock();
+    private final Lock backgroundLock = new ReentrantLock();
     private final AtomicLong memoryUsage = new AtomicLong();
-    //private final Executor autoFlusher = Executors.newSingleThreadExecutor();
-    //private final Executor compacter = Executors.newSingleThreadExecutor();
     private volatile ConcurrentNavigableMap<String, BaseEntry<String>> memory = new ConcurrentSkipListMap<>();
     private volatile ConcurrentNavigableMap<String, BaseEntry<String>> reserveMemory = new ConcurrentSkipListMap<>();
 
@@ -45,8 +41,8 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
-        memoryLock.lock(); //Хотелось бы дождаться фонового флаша
         lock.readLock().lock();
+        memoryLock.lock(); //Хотелось бы дождаться фонового флаша
         List<PeekIterator> iterators = new ArrayList<>(3);
         try {
             if (to != null && to.equals(from)) {
@@ -59,8 +55,8 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
                 iterators.add(new PeekIterator(storage.iterate(from, to), 1));
             }
         } finally {
-            lock.readLock().unlock();
             memoryLock.unlock();
+            lock.readLock().unlock();
         }
         return new MergeIterator(iterators);
     }
@@ -101,7 +97,6 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
                 return;
             }
             if (currentMemoryUsage > config.flushThresholdBytes()) {
-                //autoFlusher.execute(() -> autoFlush(currentMemoryUsage - entrySize));
                 new Thread(() -> autoFlush(currentMemoryUsage - entrySize)).start();
                 reserveMemory.put(entry.key(), entry);
                 return;
@@ -119,11 +114,13 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         }
         new Thread(() -> {
             lock.readLock().lock();
-            backgroundFlushLock.lock(); //Делаем фоновый компакт, если не идёт фоновый флаш
+            backgroundLock.lock(); //Делаем фоновый компакт, если не идёт фоновый флаш
             try {
                 storage.compact();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
             } finally {
-                backgroundFlushLock.unlock();
+                backgroundLock.unlock();
                 lock.readLock().unlock();
             }
         }).start();
@@ -173,9 +170,9 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     }
 
     private void autoFlush(long memoryFlushed) {
-        memoryLock.lock(); // Не флашим, пока есть итераторы по памяти
         lock.readLock().lock();
-        backgroundFlushLock.lock(); //Не флашим, пока идёт компакт
+        backgroundLock.lock(); //Не флашим, пока идёт компакт
+        memoryLock.lock(); // Не флашим, пока есть итераторы по памяти
         try {
             if (storage == null || memory.isEmpty()) {
                 return;
@@ -189,9 +186,9 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } finally {
-            backgroundFlushLock.unlock();
-            lock.readLock().unlock();
             memoryLock.unlock();
+            backgroundLock.unlock();
+            lock.readLock().unlock();
         }
     }
 

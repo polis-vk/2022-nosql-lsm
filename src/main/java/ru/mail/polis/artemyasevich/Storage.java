@@ -23,7 +23,6 @@ import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class Storage {
     private static final String DATA_FILE = "data";
@@ -31,18 +30,18 @@ public class Storage {
     private static final String FILE_EXTENSION = ".txt";
     private static final int DEFAULT_BUFFER_SIZE = 64;
     private static final OpenOption[] writeOptions = {StandardOpenOption.CREATE, StandardOpenOption.WRITE};
-    private final AtomicInteger daoFilesCount = new AtomicInteger();
     private final Map<Thread, EntryReadWriter> entryReadWriter;
     private final Path pathToDirectory;
     private final List<DaoFile> filesToRemove;
     private final Deque<DaoFile> daoFiles;
+    private int daoFilesCount;
     private int bufferSize;
 
     Storage(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
         this.daoFiles = new ConcurrentLinkedDeque<>();
         int maxEntrySize = initFiles();
-        this.daoFilesCount.set(daoFiles.size());
+        this.daoFilesCount = daoFiles.size();
         this.filesToRemove = new ArrayList<>();
         this.bufferSize = maxEntrySize == 0 ? DEFAULT_BUFFER_SIZE : maxEntrySize;
         this.entryReadWriter = Collections.synchronizedMap(new WeakHashMap<>());
@@ -73,8 +72,7 @@ public class Storage {
         List<PeekIterator> peekIterators = new ArrayList<>(daoFiles.size());
         int i = 0;
         for (DaoFile daoFile : daoFiles) {
-            int sourceNumber = i;
-            peekIterators.add(new PeekIterator(new FileIterator(from, to, daoFile), sourceNumber));
+            peekIterators.add(new PeekIterator(new FileIterator(from, to, daoFile), i));
             i++;
             if (daoFile.isCompacted()) {
                 break;
@@ -83,33 +81,28 @@ public class Storage {
         return new MergeIterator(peekIterators);
     }
 
-    void compact() {
-        if (daoFiles.peek() == null || daoFiles.peek().isCompacted()) {
+    void compact() throws IOException {
+        if (daoFiles.size() <= 1 || daoFiles.peek().isCompacted()) {
             return;
         }
-        int number = daoFilesCount.getAndIncrement();
-        Path compactedData = pathToData(number);
-        Path compactedMeta = pathToMeta(number);
+        Path compactedData = pathToData(daoFilesCount);
+        Path compactedMeta = pathToMeta(daoFilesCount);
+        daoFilesCount++;
         int sizeBefore = daoFiles.size();
-        try {
-            savaData(iterate(null, null), compactedData, compactedMeta);
-            daoFiles.addFirst(new DaoFile(compactedData, compactedMeta, true));
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        savaData(iterate(null, null), compactedData, compactedMeta);
+        daoFiles.addFirst(new DaoFile(compactedData, compactedMeta, true));
         for (int i = 0; i < sizeBefore; i++) {
             DaoFile removed = daoFiles.removeLast();
             filesToRemove.add(removed);
         }
-        //Теперь все новые запросы get будут идти на новый компакт файл, старые когда-нибудь завершатся
+        //Теперь все новые запросы get будут идти на новый компакт файл, старые продолжают работу
     }
 
     void flush(Iterator<BaseEntry<String>> dataIterator) throws IOException {
-        int number = daoFilesCount.getAndIncrement();
-        Path pathToData = pathToData(number);
-        Path pathToMeta = pathToMeta(number);
+        Path pathToData = pathToData(daoFilesCount);
+        Path pathToMeta = pathToMeta(daoFilesCount);
+        daoFilesCount++;
         int maxEntrySize = savaData(dataIterator, pathToData, pathToMeta);
-
         if (maxEntrySize > bufferSize) {
             entryReadWriter.forEach((key, value) -> value.increaseBufferSize(maxEntrySize));
             bufferSize = maxEntrySize;
