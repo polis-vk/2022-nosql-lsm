@@ -33,8 +33,9 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
         for (; priority <= sstablesSize; ++priority) {
             iterators.add(new PeekIterator<>(
-                    new FileIterator(serializer.get(sstablesSize - priority + 1), serializer, from1, to), priority)
-            );
+                    new FileIterator(serializer.get(sstablesSize - priority + 1), serializer, from1, to),
+                    priority
+            ));
         }
     }
 
@@ -82,7 +83,12 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
                 skipLastOneStanding();
                 return;
             }
-            skipPairStanding();
+
+            PeekIterator<Entry<ByteBuffer>> first = iterators.peek();
+            while (first != null && Utils.isTombstone(first.peek()) && first.hasNext()) {
+                fallAndRefresh(first.peek());
+                first = iterators.peek();
+            }
         }
     }
 
@@ -90,7 +96,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         if (iterators.isEmpty()) {
             return;
         }
-        
+
         PeekIterator<Entry<ByteBuffer>> first = iterators.peek();
         while (Utils.isTombstone(first.peek()) && first.hasNext()) {
             first.next();
@@ -98,28 +104,6 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
         if (!first.hasNext()) {
             iterators.remove(first);
-        }
-    }
-
-    private void skipPairStanding() {
-        PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
-        PeekIterator<Entry<ByteBuffer>> second = iterators.remove();
-
-        while (first != null && Utils.isTombstone(first.peek())) {
-            iterators.add(first);
-            if (second != null && second.hasNext()) {
-                iterators.add(second);
-            }
-            fallAndRefresh(first.peek());
-            first = iterators.poll();
-            second = iterators.poll();
-        }
-
-        if (first != null && first.hasNext()) {
-            iterators.add(first);
-        }
-        if (second != null && second.hasNext()) {
-            iterators.add(second);
         }
     }
 

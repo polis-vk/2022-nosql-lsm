@@ -42,7 +42,7 @@ public final class Utils {
     }
 
     public static boolean isTombstone(Entry<ByteBuffer> entry) {
-        return entry != null && entry.value() == null;
+        return entry.value() == null;
     }
 
     public static boolean isTombstone(byte b) {
