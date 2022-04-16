@@ -85,7 +85,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
             }
 
             PeekIterator<Entry<ByteBuffer>> first = iterators.peek();
-            while (first != null && Utils.isTombstone(first.peek()) && first.hasNext()) {
+            while (first != null && first.hasNext() && Utils.isTombstone(first.peek())) {
                 fallAndRefresh(first.peek());
                 first = iterators.peek();
             }
@@ -98,7 +98,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         }
 
         PeekIterator<Entry<ByteBuffer>> first = iterators.peek();
-        while (Utils.isTombstone(first.peek()) && first.hasNext()) {
+        while (first.hasNext() && Utils.isTombstone(first.peek())) {
             first.next();
         }
 

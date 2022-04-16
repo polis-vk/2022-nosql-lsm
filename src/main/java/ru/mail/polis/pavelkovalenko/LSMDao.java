@@ -47,7 +47,12 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void upsert(Entry<ByteBuffer> entry) {
-        memorySSTable.put(entry.key(), entry);
+        rwlock.writeLock().lock();
+        try {
+            memorySSTable.put(entry.key(), entry);
+        } finally {
+            rwlock.writeLock().unlock();
+        }
     }
 
     @Override
