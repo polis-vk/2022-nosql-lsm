@@ -1,7 +1,5 @@
 package ru.mail.polis.test.glebkomissarov;
 
-import java.io.IOException;
-
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
@@ -10,7 +8,9 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.glebkomissarov.SegmentDao;
 import ru.mail.polis.test.DaoFactory;
 
-@DaoFactory(stage = 4, week = 2)
+import java.io.IOException;
+
+@DaoFactory(stage = 4, week = 100500)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
     @Override
     public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) throws IOException {

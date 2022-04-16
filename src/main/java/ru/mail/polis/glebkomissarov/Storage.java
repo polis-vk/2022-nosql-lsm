@@ -17,8 +17,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 
-class Storage implements Closeable {
+final class Storage implements Closeable {
 
     // File structure
     // [Entries count][Entry1 offset]...[EntryN offset] | [KeySize][Key][ValueSize][Value]
@@ -30,15 +31,16 @@ class Storage implements Closeable {
 
     // Value to detect tombstones
     private static final int TOMBSTONE = -1;
+    private static final int MAGIC_NUM_FOR_CC = Integer.MAX_VALUE;
 
     // Fresh files first
     // Created once at load read-only mapped files
-    private final List<MemorySegment> SSTables;
+    private final List<MemorySegment> ssTables;
     // NewSharedScope support deterministic deallocation
-    private final ResourceScope scope;
+    private final ResourceScope resourceScope;
 
     public static Storage load(Path basePath) throws IOException {
-        List<MemorySegment> SSTables = new ArrayList<>();
+        List<MemorySegment> ssTables = new ArrayList<>();
         ResourceScope scope = ResourceScope.newSharedScope();
         FileChannel.MapMode mode = FileChannel.MapMode.READ_ONLY;
 
@@ -48,24 +50,24 @@ class Storage implements Closeable {
             deleteAndMove(basePath, temp);
         }
 
-        for (int i = 0; ; i++) {
+        for (int i = 0; i < MAGIC_NUM_FOR_CC; i++) {
             Path dataFile = basePath.resolve(DATA_NAME + i + DATA_EXT);
             // Minimize count of system calls
             try {
                 long dataSize = Files.size(dataFile);
-                SSTables.add(getMappedFile(dataFile, scope, dataSize, mode));
+                ssTables.add(getMappedFile(dataFile, scope, dataSize, mode));
             } catch (NoSuchFileException e) {
                 break;
             }
         }
 
-        Collections.reverse(SSTables);
-        return new Storage(SSTables, scope);
+        Collections.reverse(ssTables);
+        return new Storage(ssTables, scope);
     }
 
-    private Storage(List<MemorySegment> SSTables, ResourceScope scope) {
-        this.SSTables = SSTables;
-        this.scope = scope;
+    private Storage(List<MemorySegment> ssTables, ResourceScope resourceScope) {
+        this.ssTables = ssTables;
+        this.resourceScope = resourceScope;
     }
 
     public Path save(Collection<BaseEntry<MemorySegment>> entries, Path basePath) throws IOException {
@@ -73,7 +75,7 @@ class Storage implements Closeable {
             return null;
         }
 
-        try(ResourceScope scope = ResourceScope.newConfinedScope()) {
+        try (ResourceScope scope = ResourceScope.newConfinedScope()) {
             // Count of records + offsets
             long offset = Long.BYTES * (entries.size() + 1L);
             // Size of records + all meta
@@ -89,7 +91,7 @@ class Storage implements Closeable {
             long index = 0L;
             FileChannel.MapMode mode = FileChannel.MapMode.READ_WRITE;
 
-            Path dataFile = basePath.resolve(DATA_NAME + SSTablesCount() + DATA_EXT);
+            Path dataFile = basePath.resolve(DATA_NAME + ssTablesCount() + DATA_EXT);
             Files.deleteIfExists(dataFile);
             Files.createFile(dataFile);
 
@@ -111,7 +113,7 @@ class Storage implements Closeable {
             return null;
         }
 
-        for (MemorySegment table : SSTables) {
+        for (MemorySegment table : ssTables) {
             long index = binarySearch(key, table);
             if (index >= 0) {
                 BaseEntry<MemorySegment> result = entryAt(table, index);
@@ -125,21 +127,21 @@ class Storage implements Closeable {
         List<PeekIterator> iterators = new ArrayList<>();
         long index = 1;
 
-        for (MemorySegment table : SSTables) {
+        for (MemorySegment table : ssTables) {
             iterators.add(new PeekIterator(getIterator(table, from, to), index++));
         }
         return iterators;
     }
 
-    public long SSTablesCount() {
-        return SSTables.size();
+    public long ssTablesCount() {
+        return ssTables.size();
     }
 
     public boolean compact(Iterator<BaseEntry<MemorySegment>> all,
                            Path basePath,
                            boolean isEmpty) throws IOException {
         // Nothing to compact
-        if (SSTablesCount() == 0 || (SSTablesCount() == 1 && isEmpty)) {
+        if (ssTablesCount() == 0 || (ssTablesCount() == 1 && isEmpty)) {
             return false;
         }
 
@@ -156,7 +158,7 @@ class Storage implements Closeable {
 
         // Can be restored -> After Files.move reading new file
         Path temp = basePath.resolve(COMPACT);
-        Files.move(compactFile, temp, StandardCopyOption.ATOMIC_MOVE);
+        Files.move(Objects.requireNonNull(compactFile), temp, StandardCopyOption.ATOMIC_MOVE);
 
         // Delete old files + move temp file as default
         deleteAndMove(basePath, temp);
@@ -170,16 +172,16 @@ class Storage implements Closeable {
      */
     @Override
     public void close() throws IOException {
-        scope.close();
+        resourceScope.close();
     }
 
     public boolean isClosed() {
-        return !scope.isAlive();
+        return !resourceScope.isAlive();
     }
 
     private static void deleteAndMove(Path basePath, Path temp) throws IOException {
         // Deleting old files
-        for (int i = 0; ; i++) {
+        for (int i = 0; i < MAGIC_NUM_FOR_CC; i++) {
             try {
                 Files.delete(basePath.resolve(DATA_NAME + i + DATA_EXT));
             } catch (NoSuchFileException e) {
@@ -235,47 +237,48 @@ class Storage implements Closeable {
         };
     }
 
-    private BaseEntry<MemorySegment> entryAt(MemorySegment SSTable, long index) {
-        long offset = MemoryAccess.getLongAtIndex(SSTable, index);
+    private BaseEntry<MemorySegment> entryAt(MemorySegment ssTable, long index) {
+        long offset = MemoryAccess.getLongAtIndex(ssTable, index);
 
-        long keySize = MemoryAccess.getLongAtOffset(SSTable, offset);
+        long keySize = MemoryAccess.getLongAtOffset(ssTable, offset);
         offset += Long.BYTES;
-        MemorySegment key = SSTable.asSlice(offset, keySize);
+        MemorySegment key = ssTable.asSlice(offset, keySize);
         offset += keySize;
 
-        long valueSize = MemoryAccess.getLongAtOffset(SSTable, offset);
+        long valueSize = MemoryAccess.getLongAtOffset(ssTable, offset);
         offset += Long.BYTES;
-        MemorySegment value = valueSize == TOMBSTONE ? null : SSTable.asSlice(offset, valueSize);
+        MemorySegment value = valueSize == TOMBSTONE ? null : ssTable.asSlice(offset, valueSize);
 
         return new BaseEntry<>(key, value);
     }
 
-    private long setEntry(MemorySegment SSTable, BaseEntry<MemorySegment> entry, long offset) {
-        MemoryAccess.setLongAtOffset(SSTable, offset, entry.key().byteSize());
+    private long setEntry(MemorySegment ssTable, BaseEntry<MemorySegment> entry, long start) {
+        long offset = start;
+        MemoryAccess.setLongAtOffset(ssTable, offset, entry.key().byteSize());
         offset += Long.BYTES;
 
-        SSTable.asSlice(offset).copyFrom(entry.key());
+        ssTable.asSlice(offset).copyFrom(entry.key());
         offset += entry.key().byteSize();
 
         long valueSize = entry.value() == null ? TOMBSTONE : entry.value().byteSize();
-        MemoryAccess.setLongAtOffset(SSTable, offset, valueSize);
+        MemoryAccess.setLongAtOffset(ssTable, offset, valueSize);
         offset += Long.BYTES;
 
         if (valueSize != TOMBSTONE) {
-            SSTable.asSlice(offset).copyFrom(entry.value());
+            ssTable.asSlice(offset).copyFrom(entry.value());
             offset += entry.value().byteSize();
         }
         return offset;
     }
 
     // Return index with offset
-    private long binarySearch(MemorySegment key, MemorySegment SSTable) {
+    private long binarySearch(MemorySegment key, MemorySegment ssTable) {
         long left = 1;
-        long right = MemoryAccess.getLongAtIndex(SSTable, 0);
+        long right = MemoryAccess.getLongAtIndex(ssTable, 0);
 
         while (left <= right) {
             long mid = (left + right) >>> 1;
-           BaseEntry<MemorySegment> current = entryAt(SSTable, mid);
+           BaseEntry<MemorySegment> current = entryAt(ssTable, mid);
             int result = Comparator.compare(current.key(), key);
             if (result < 0) {
                 left = mid + 1;
