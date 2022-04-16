@@ -10,8 +10,8 @@ import java.nio.channels.FileChannel;
 
 //Solving allocations issue in process
 public class EntryReadWriter {
-    private ByteBuffer buffer;
-    private CharBuffer searchedKeyBuffer;
+    private volatile ByteBuffer buffer;
+    private volatile CharBuffer searchedKeyBuffer;
 
     EntryReadWriter(int bufferSize) {
         this.buffer = ByteBuffer.allocate(bufferSize);
