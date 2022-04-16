@@ -9,7 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
+import java.util.Iterator;
 import java.util.Set;
 
 import static java.nio.file.StandardOpenOption.CREATE_NEW;
@@ -22,9 +22,22 @@ public class MapSerializeStream implements Closeable {
     private final FileChannel mapChannel;
     private final FileChannel indexesChannel;
 
-    public MapSerializeStream(Config config, int dataCount) throws IOException {
-        Path mapPath = config.basePath().resolve(DATA_FILE_NAME + dataCount);
-        Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + dataCount);
+    public MapSerializeStream(Config config, int dataCount, int startIndexFile) throws IOException {
+        int newIndex = (startIndexFile == -1) ? 0 : startIndexFile + dataCount;
+        Path mapPath = config.basePath().resolve(DATA_FILE_NAME + newIndex);
+        Path indexesPath = config.basePath().resolve(INDEX_FILE_NAME + newIndex);
+        Files.deleteIfExists(indexesPath);
+        Files.deleteIfExists(mapPath);
+        mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE_NEW));
+        indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE_NEW));
+    }
+
+    //Constructor for compact method
+    public MapSerializeStream(Config config, String prefix) throws IOException {
+        Path mapPath = config.basePath().resolve(prefix + DATA_FILE_NAME);
+        Path indexesPath = config.basePath().resolve(prefix + INDEX_FILE_NAME);
+        Files.deleteIfExists(indexesPath);
+        Files.deleteIfExists(mapPath);
         mapChannel = (FileChannel) Files.newByteChannel(mapPath, Set.of(WRITE, CREATE_NEW));
         indexesChannel = (FileChannel) Files.newByteChannel(indexesPath, Set.of(WRITE, CREATE_NEW));
     }
@@ -35,13 +48,15 @@ public class MapSerializeStream implements Closeable {
         indexesChannel.close();
     }
 
-    public void serializeMap(Map<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
+    public void serializeData(Iterator<BaseEntry<ByteBuffer>> dataIterator) throws IOException {
         int indexObjPosition = 0;
         ByteBuffer localBuffer = ByteBuffer.allocate(512);
         ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
-        for (Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry : data.entrySet()) {
-            int valueCapacity = (entry.getValue().value() == null) ? 0 : entry.getValue().value().capacity();
-            int bufferSize = entry.getKey().capacity() + valueCapacity + Integer.BYTES * 2;
+        while (dataIterator.hasNext()) {
+            BaseEntry<ByteBuffer> entry = dataIterator.next();
+            int valueCapacity = (entry.value() == null) ? 0 : entry.value().capacity();
+            int bufferSize = entry.key().capacity() + valueCapacity + Integer.BYTES * 2;
+
             if (localBuffer.capacity() < bufferSize) {
                 localBuffer = ByteBuffer.allocate(bufferSize);
             } else {
@@ -60,23 +75,18 @@ public class MapSerializeStream implements Closeable {
         indexesChannel.force(false);
     }
 
-    private void writeEntry(Map.Entry<ByteBuffer, BaseEntry<ByteBuffer>> entry, ByteBuffer localBuffer) {
-        writeByteBuffer(entry.getKey(), localBuffer);
-        writeByteBuffer(entry.getValue().value(), localBuffer);
+    private void writeEntry(BaseEntry<ByteBuffer> entry, ByteBuffer localBuffer) {
+        writeByteBuffer(entry.key(), localBuffer);
+        writeByteBuffer(entry.value(), localBuffer);
     }
 
     private void writeByteBuffer(ByteBuffer buffer, ByteBuffer localBuffer) {
         if (buffer == null) {
-            writeInt(-1, localBuffer);
+            localBuffer.putInt(-1);
             return;
         }
-        buffer.position(buffer.arrayOffset());
-        writeInt(buffer.capacity(), localBuffer);
+        localBuffer.putInt(buffer.capacity());
         localBuffer.put(buffer);
-    }
-
-    private void writeInt(int i, ByteBuffer localBuffer) {
-        localBuffer.putInt(i);
     }
 
 }

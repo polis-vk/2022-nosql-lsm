@@ -11,22 +11,75 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.stream.Stream;
+
+import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 
 public class Storage implements Closeable {
 
     public static final String DATA_FILE_NAME = "myData";
     public static final String INDEX_FILE_NAME = "indexes";
+    public static final String COMPACT_TMP_PREFIX = "tmpCompact_";
 
-    private final int numOfFiles;
-    private final MapsDeserializeStream deserialize;
+    private int numOfFiles;
+    private int startIndexFile;
+    private MapsDeserializeStream deserialize;
     private final Config config;
 
     protected Storage(Config config) throws IOException {
         this.config = config;
-        numOfFiles = calcCountOfIndexFiles();
-        deserialize = new MapsDeserializeStream(config, numOfFiles);
+        this.numOfFiles = calcCountOfIndexFiles();
+        this.startIndexFile = calcMinIndexOfFiles();
+        deserialize = new MapsDeserializeStream(config, numOfFiles, startIndexFile);
+    }
 
+    public void compact(PeekIterator<BaseEntry<ByteBuffer>> inMemoryIterator) throws IOException {
+        if (numOfFiles <= 1 && !inMemoryIterator.hasNext()) {
+            return;
+        }
+        List<PeekIterator<BaseEntry<ByteBuffer>>> iterators = getFileIterators(null, null);
+        iterators.add(inMemoryIterator);
+        MergeIterator<ByteBuffer> mergeIterator = new MergeIterator<>(iterators);
+        if (!mergeIterator.hasNext()) {
+            return;
+        }
+        MapSerializeStream writer = new MapSerializeStream(config, COMPACT_TMP_PREFIX);
+        writer.serializeData(mergeIterator);
+        writer.close();
+
+        Path basePath = config.basePath();
+        int newFileIndex = (startIndexFile == -1) ? 0 : startIndexFile + numOfFiles;
+        Files.move(
+                basePath.resolve(COMPACT_TMP_PREFIX + DATA_FILE_NAME),
+                basePath.resolve(DATA_FILE_NAME + newFileIndex),
+                ATOMIC_MOVE
+        );
+        Files.move(
+                basePath.resolve(COMPACT_TMP_PREFIX + INDEX_FILE_NAME),
+                basePath.resolve(INDEX_FILE_NAME + newFileIndex),
+                ATOMIC_MOVE
+        );
+        if (startIndexFile == -1) {
+            startIndexFile = 0;
+            numOfFiles = 1;
+            deserialize = new MapsDeserializeStream(config, numOfFiles, startIndexFile);
+            return;
+        }
+        deserialize.close();
+        for (int i = startIndexFile; i < startIndexFile + numOfFiles; i++) {
+            Files.delete(basePath.resolve(INDEX_FILE_NAME + i));
+            Files.delete(basePath.resolve(DATA_FILE_NAME + i));
+        }
+
+        Files.copy(basePath.resolve(DATA_FILE_NAME + newFileIndex), basePath.resolve(DATA_FILE_NAME + 0));
+        Files.move(
+                basePath.resolve(INDEX_FILE_NAME + newFileIndex), basePath.resolve(INDEX_FILE_NAME + 0), ATOMIC_MOVE
+        );
+        Files.delete(basePath.resolve(DATA_FILE_NAME + newFileIndex));
+        startIndexFile = 0;
+        numOfFiles = 1;
+        deserialize = new MapsDeserializeStream(config, numOfFiles, startIndexFile);
     }
 
     public List<PeekIterator<BaseEntry<ByteBuffer>>> getFileIterators(ByteBuffer from, ByteBuffer to) {
@@ -51,9 +104,12 @@ public class Storage implements Closeable {
 
     public void flush(Map<ByteBuffer, BaseEntry<ByteBuffer>> data) throws IOException {
         if (data.isEmpty()) return;
-        MapSerializeStream writer = new MapSerializeStream(config, numOfFiles);
-        writer.serializeMap(data);
+        MapSerializeStream writer = new MapSerializeStream(config, numOfFiles, startIndexFile);
+        writer.serializeData(data.values().iterator());
         writer.close();
+        int newFileIndex = (startIndexFile == -1) ? 0 : startIndexFile + numOfFiles;
+        deserialize.addMappedFile(newFileIndex, config.basePath());
+        deserialize.updateNumOfFiles(++numOfFiles);
     }
 
     private int calcCountOfIndexFiles() throws IOException {
@@ -62,6 +118,22 @@ public class Storage implements Closeable {
             return (int) files.count();
         } catch (NoSuchFileException e) {
             return 0;
+        }
+    }
+
+    private int calcMinIndexOfFiles() throws IOException {
+        try (Stream<Path> files = Files.list(config.basePath())
+                .filter(it -> it.getFileName().toString().startsWith(INDEX_FILE_NAME))) {
+            Path minFile = files.min((o1, o2) -> {
+                int index1 =
+                        Integer.parseInt(o1.getFileName().toString().replaceFirst(INDEX_FILE_NAME, ""));
+                int index2 =
+                        Integer.parseInt(o2.getFileName().toString().replaceFirst(INDEX_FILE_NAME, ""));
+                return Integer.compare(index1, index2);
+            }).orElseThrow().getFileName();
+            return Integer.parseInt(minFile.toString().replaceFirst(INDEX_FILE_NAME, ""));
+        } catch (NoSuchElementException e) {
+            return -1;
         }
     }
 
