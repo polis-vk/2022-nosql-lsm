@@ -166,10 +166,9 @@ final class Storage implements Closeable {
         return true;
     }
 
-    /**
-     * When a resource scope is closed, it is no longer alive
-     * and subsequent operations on resources associated with that scope will fail
-     */
+
+    // When a resource scope is closed, it is no longer alive
+    // and subsequent operations on resources associated with that scope will fail
     @Override
     public void close() throws IOException {
         resourceScope.close();
@@ -207,20 +206,20 @@ final class Storage implements Closeable {
         );
     }
 
-    private long indexForRange(MemorySegment SSTable, MemorySegment key) {
-        long index = binarySearch(key, SSTable);
+    private long indexForRange(MemorySegment ssTable, MemorySegment key) {
+        long index = binarySearch(key, ssTable);
         if (index < 0) {
             return ~index;
         }
         return index;
     }
 
-    private Iterator<BaseEntry<MemorySegment>> getIterator(MemorySegment SSTable,
+    private Iterator<BaseEntry<MemorySegment>> getIterator(MemorySegment ssTable,
                                                            MemorySegment from, MemorySegment to) {
-        long boarder = MemoryAccess.getLongAtIndex(SSTable, 0);
+        long boarder = MemoryAccess.getLongAtIndex(ssTable, 0);
 
-        long fromIndex = from == null ? 1 : indexForRange(SSTable, from);
-        long toIndex = to == null ? boarder + 1 : indexForRange(SSTable, to);
+        long fromIndex = from == null ? 1 : indexForRange(ssTable, from);
+        long toIndex = to == null ? boarder + 1 : indexForRange(ssTable, to);
 
         return new Iterator<>() {
             long current = fromIndex;
@@ -232,7 +231,7 @@ final class Storage implements Closeable {
 
             @Override
             public BaseEntry<MemorySegment> next() {
-                return entryAt(SSTable, current++);
+                return entryAt(ssTable, current++);
             }
         };
     }
