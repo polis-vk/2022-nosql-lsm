@@ -85,7 +85,7 @@ public class MemStorage {
         return memTables.get(1).iterator(from, to);
     }
 
-    public  Iterator<BaseEntry<String>> iterator(String from, String to) {
+    public Iterator<BaseEntry<String>> iterator(String from, String to) {
         Iterator<BaseEntry<String>> firstTableIterator = memTables.get(0).iterator(from, to);
         Iterator<BaseEntry<String>> secondTableIterator = memTables.get(1).iterator(from, to);
         if (!firstTableIterator.hasNext() && !secondTableIterator.hasNext()) {
@@ -100,14 +100,12 @@ public class MemStorage {
         return new Iterator<>() {
 
             private final NavigableMap<String, BaseEntry<String>> tempData = new TreeMap<>();
-            private String firstTableLastReadKey;
-            private String secondTableLastReadKey;
+            private final BaseEntry<String> firstTableEntry = firstTableIterator.next();
+            private final BaseEntry<String> secondTableEntry = secondTableIterator.next();
+            private String firstTableLastReadKey = firstTableEntry.key();
+            private String secondTableLastReadKey = secondTableEntry.key();
 
             {
-                BaseEntry<String> firstTableEntry = firstTableIterator.next();
-                BaseEntry<String> secondTableEntry = secondTableIterator.next();
-                firstTableLastReadKey = firstTableEntry.key();
-                secondTableLastReadKey = secondTableEntry.key();
                 tempData.put(firstTableLastReadKey, firstTableEntry);
                 tempData.put(secondTableLastReadKey, secondTableEntry);
             }

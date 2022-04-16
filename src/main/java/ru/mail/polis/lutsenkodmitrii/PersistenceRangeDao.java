@@ -66,7 +66,6 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     public static final String TEMP_FILE_EXTENSION = ".tmp";
     public static final AtomicInteger tmpCounter = new AtomicInteger(0);
     private final AtomicInteger currentFileNumber = new AtomicInteger(0);
-    ;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final AtomicBoolean isClosed = new AtomicBoolean(false);
     private final Config config;
@@ -144,7 +143,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                 }
             } catch (IOException e) {
                 e.printStackTrace();
-                throw new RuntimeException("Flush first table failed");
+                throw new RuntimeException("Flush first table failed", e);
             }
         });
     }
@@ -189,7 +188,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                 }
             } catch (IOException e) {
                 e.printStackTrace();
-                throw new RuntimeException("Flush fail");
+                throw new RuntimeException("Flush fail", e);
             }
         });
     }
@@ -226,21 +225,21 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
             Path tempCompactionFilePath = generateTempPath(COMPACTION_FILE_NAME);
             Path lastFilePath = generateNextFilePath();
             Set<Map.Entry<Path, FileInputStream>> compactionFilesMapEntries;
-            try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(tempCompactionFilePath, UTF_8, writeOptions)) {
+            try (BufferedWriter bufferedWriter = Files.newBufferedWriter(tempCompactionFilePath, UTF_8, writeOptions)) {
                 MergeIterator allEntriesIterator = new MergeIterator(this, null, null, false);
                 compactionFilesMapEntries = allEntriesIterator.getFilesMapEntries();
-                DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
+                DaoUtils.writeUnsignedInt(0, bufferedWriter);
                 while (allEntriesIterator.hasNext()) {
                     BaseEntry<String> baseEntry = allEntriesIterator.next();
                     String key = preprocess(baseEntry.key());
-                    writeKey(key, bufferedFileWriter);
+                    writeKey(key, bufferedWriter);
                     String value = preprocess(baseEntry.value());
-                    writeValue(value, bufferedFileWriter);
+                    writeValue(value, bufferedWriter);
                     DaoUtils.writeUnsignedInt(DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT
-                            + key.length() + value.length() + 1, bufferedFileWriter); // +1 из-за EXISTING_MARK
+                            + key.length() + value.length() + 1, bufferedWriter); // +1 из-за EXISTING_MARK
                 }
             } catch (IOException e) {
-                throw new RuntimeException("Write " + tempCompactionFilePath + " failed");
+                throw new RuntimeException("Write " + tempCompactionFilePath + " failed", e);
             }
             lock.writeLock().lock();
             try {
@@ -252,7 +251,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                 }
                 filesMap.put(lastFilePath, new FileInputStream(lastFilePath.toString()));
             } catch (IOException e) {
-                throw new RuntimeException("Renaming compaction file or deleting old files failed");
+                throw new RuntimeException("Renaming compaction file or deleting old files failed", e);
             } finally {
                 lock.writeLock().unlock();
             }
@@ -362,7 +361,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                 throw new RuntimeException("Await termination too long");
             }
         } catch (InterruptedException e) {
-            throw new RuntimeException("");
+            throw new RuntimeException("AwaitTermination interrupted", e);
         }
     }
 }
