@@ -101,6 +101,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         while (first.hasNext() && Utils.isTombstone(first.peek())) {
             first.next();
         }
+        
         if (!first.hasNext()) {
             iterators.remove(first);
         }
