@@ -63,12 +63,25 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     @Override
     public void flush() throws IOException {
-        throw new UnsupportedOperationException("Flush is not supported!");
+        if (pairs.size() == 0) {
+            return;
+        }
+        fileOperations.flush(pairs);
+    }
+
+    @Override
+    public void compact() throws IOException {
+        Iterator<BaseEntry<byte[]>> iterator = get(null, null);
+        if (!iterator.hasNext()) {
+            return;
+        }
+        fileOperations.compact(iterator, pairs.size() != 0);
     }
 
     @Override
     public void close() throws IOException {
-        fileOperations.save(pairs);
+        flush();
+        fileOperations.clearFileIterators();
         pairs.clear();
     }
 }
