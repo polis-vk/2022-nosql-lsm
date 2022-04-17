@@ -2,7 +2,6 @@ package ru.mail.polis.pavelkovalenko.comparators;
 
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.iterators.PeekIterator;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.nio.ByteBuffer;
 import java.util.Comparator;
@@ -17,7 +16,7 @@ public final class IteratorComparator implements Comparator<PeekIterator<Entry<B
     @Override
     public int compare(PeekIterator<Entry<ByteBuffer>> it1, PeekIterator<Entry<ByteBuffer>> it2) {
         if (it1.hasNext() && it2.hasNext()) {
-            int compare = Utils.entryComparator.compare(it1.peek(), it2.peek());
+            int compare = EntryComparator.INSTANSE.compare(it1.peek(), it2.peek());
             if (compare == 0) {
                 compare = Integer.compare(it1.getPriority(), it2.getPriority());
             }

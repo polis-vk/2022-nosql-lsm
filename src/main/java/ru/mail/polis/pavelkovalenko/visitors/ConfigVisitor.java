@@ -1,10 +1,11 @@
 package ru.mail.polis.pavelkovalenko.visitors;
 
+import ru.mail.polis.Config;
 import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.comparators.PathComparator;
-import ru.mail.polis.pavelkovalenko.dto.PairedFiles;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.FileVisitResult;
@@ -13,36 +14,60 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Iterator;
-import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ConfigVisitor extends SimpleFileVisitor<Path> {
 
     private final NavigableSet<Path> dataFiles = new TreeSet<>(PathComparator.INSTANSE);
     private final NavigableSet<Path> indexesFiles = new TreeSet<>(PathComparator.INSTANSE);
-    private final NavigableMap<Integer, PairedFiles> sstables;
     private final Serializer serializer;
+    private final AtomicInteger sstablesSize;
 
-    public ConfigVisitor(NavigableMap<Integer, PairedFiles> sstables, Serializer serializer) {
-        this.sstables = sstables;
+    private Path compactedDataPath;
+    private Path compactedIndexesPath;
+    private final Path dataPathToBeSet;
+    private final Path indexesPathToBeSet;
+
+    public ConfigVisitor(Config config, AtomicInteger sstablesSize, Serializer serializer) {
+        this.sstablesSize = sstablesSize;
         this.serializer = serializer;
+        this.dataPathToBeSet = config.basePath()
+                .resolve(Utils.getDataFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
+        this.indexesPathToBeSet = config.basePath()
+                .resolve(Utils.getIndexesFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
     }
 
     @Override
-    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws FileNotFoundException {
         if (Utils.isDataFile(file)) {
-            dataFiles.add(file);
+            this.dataFiles.add(file);
         } else if (Utils.isIndexesFile(file)) {
-            indexesFiles.add(file);
+            this.indexesFiles.add(file);
+        } else if (Utils.isCompactDataFile(file)) {
+            this.compactedDataPath = file;
+        } else if (Utils.isCompactIndexesFile(file)) {
+            this.compactedIndexesPath = file;
+        } else {
+            throw new IllegalStateException("Config folder contains unresolved file: " + file);
         }
         return FileVisitResult.CONTINUE;
     }
 
     @Override
     public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+        boolean isNeedToExit = finishCompact();
+        if (isNeedToExit) {
+            return FileVisitResult.CONTINUE;
+        }
+
+        deleteEmptyOrUnfinishedFiles(dataFiles.iterator());
+        deleteEmptyOrUnfinishedFiles(indexesFiles.iterator());
+
         if (dataFiles.size() != indexesFiles.size()) {
-            throw new IllegalStateException("Mismatch in the number of data-files and indexes-files (must be equal)");
+            throw new IllegalStateException("Mismatch in the number of data- and indexes-files.\n"
+                    + "GOT: " + dataFiles.size() + ":" + indexesFiles.size());
         }
 
         Iterator<Path> dataIterator = dataFiles.iterator();
@@ -51,19 +76,72 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
             Path dataFile = dataIterator.next();
             Path indexesFile = indexesIterator.next();
             if (!isPairedFiles(dataFile, indexesFile, priority)) {
-                throw new IllegalStateException("Illegal order of data- and indexes-files");
+                throw new IllegalStateException("Illegal order of data- and indexes-files.\n"
+                        + "GOT: " + dataFile.getFileName() + " and " + indexesFile.getFileName());
             }
+            sstablesSize.incrementAndGet();
+        }
+        return FileVisitResult.CONTINUE;
+    }
 
-            if (!serializer.hasSuccessMeta(new RandomAccessFile(dataFile.toString(), "r"))) {
-                Files.delete(dataFile);
-                Files.delete(indexesFile);
-                continue;
-            }
+    private boolean finishCompact() throws IOException {
+        return finishFullCompact() || finishPartialCompact();
+    }
 
-            sstables.put(priority, new PairedFiles(dataFile, indexesFile));
+    private boolean finishFullCompact() throws IOException {
+        if (this.compactedDataPath == null) {
+            return false;
         }
 
-        return FileVisitResult.CONTINUE;
+        // It is guaranteed that this.compactedIndexesPath != null
+        // We have to check only Meta's success
+        if (!serializer.hasFinishedMeta(new RandomAccessFile(this.compactedDataPath.toString(), "r"))) {
+            Files.delete(this.compactedDataPath);
+            Files.delete(this.compactedIndexesPath);
+            return false;
+        }
+
+        for (Path dataFile : this.dataFiles) {
+            Files.delete(dataFile);
+        }
+        for (Path indexesFile : this.indexesFiles) {
+            Files.delete(indexesFile);
+        }
+        Files.move(this.compactedDataPath, this.dataPathToBeSet);
+        Files.move(this.compactedIndexesPath, this.indexesPathToBeSet);
+        sstablesSize.incrementAndGet();
+        return true;
+    }
+
+    private boolean finishPartialCompact() throws IOException {
+        if (this.compactedIndexesPath == null) {
+            return false;
+        }
+
+        String compactedDataFilename = Utils.getDataFilename(String.valueOf(1));
+        for (Path dataFile : this.dataFiles) {
+            if (!dataFile.getFileName().toString().equals(compactedDataFilename)) {
+                Files.delete(dataFile);
+            }
+        }
+        for (Path indexesFile : this.indexesFiles) {
+            Files.delete(indexesFile);
+        }
+        // It is guaranteed that compacted data has success Meta
+        Files.move(this.compactedIndexesPath, this.indexesPathToBeSet);
+        sstablesSize.incrementAndGet();
+        return true;
+    }
+
+    private void deleteEmptyOrUnfinishedFiles(Iterator<Path> files) throws IOException {
+        while (files.hasNext()) {
+            Path file = files.next();
+            RandomAccessFile raf = new RandomAccessFile(file.toString(), "r");
+            if (raf.length() == 0 || !serializer.hasFinishedMeta(raf)) {
+                raf.close();
+                Files.delete(file);
+            }
+        }
     }
 
     private boolean isPairedFiles(Path dataFile, Path indexesFile, int priority) {
