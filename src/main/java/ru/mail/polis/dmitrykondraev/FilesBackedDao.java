@@ -32,7 +32,7 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     private final Path compactDir;
     private final Path compactDirTmp;
     /**
-     * ordered from most recent to the earliest
+     * ordered from most recent to the earliest.
      */
     private final Deque<SortedStringTable> sortedStringTables = new ArrayDeque<>();
     private ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map = newMemoryTable();
