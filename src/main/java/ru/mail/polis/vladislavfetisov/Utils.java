@@ -21,8 +21,8 @@ public final class Utils {
 
     }
 
-    private static long sizeOfEntry(Entry<MemorySegment> entry) {
-        long valueSize = (entry.value() == null) ? 0 : entry.value().byteSize();
+    public static long sizeOfEntry(Entry<MemorySegment> entry) {
+        long valueSize = entry.isTombstone() ? 0 : entry.value().byteSize();
         return 2L * Long.BYTES + entry.key().byteSize() + valueSize;
     }
 
@@ -137,5 +137,4 @@ public final class Utils {
     public static String removeSuffix(String source, String suffix) {
         return source.substring(0, source.length() - suffix.length());
     }
-
 }

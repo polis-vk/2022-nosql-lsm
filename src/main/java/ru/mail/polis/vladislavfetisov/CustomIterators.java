@@ -25,7 +25,7 @@ public final class CustomIterators {
         };
     }
 
-    private static PeekingIterator<Entry<MemorySegment>> mergeList(
+    public static PeekingIterator<Entry<MemorySegment>> mergeList(
             List<Iterator<Entry<MemorySegment>>> iterators) {
         return iterators
                 .stream()

@@ -1,21 +1,35 @@
 package ru.mail.polis.vladislavfetisov;
 
 import jdk.incubator.foreign.MemorySegment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
+    public static final int THREADS = 2; //1 for compact
+    public static final int EXCLUSIVE_PERMISSION = 1;
     private final Config config;
-    private List<SSTable> tables;
+    private List<SSTable> ssTables;
     private final AtomicLong nextTableNum;
-    private NavigableMap<MemorySegment, Entry<MemorySegment>> storage = getNewStorage();
+    private final AtomicLong memoryConsumption = new AtomicLong(0);
+    private final ExecutorService service = Executors.newFixedThreadPool(THREADS);
+    private final Storage storage = new Storage();
+    private final AtomicBoolean isFlush = new AtomicBoolean();
+    private final AtomicBoolean isCompact = new AtomicBoolean();
+    private volatile List<SSTable> duringCompactionTables = new ArrayList<>();
+
+    private final Semaphore semaphore = new Semaphore(EXCLUSIVE_PERMISSION);
+    private final Logger logger = LoggerFactory.getLogger(LsmDao.class);
 
     /**
      * Получаем все таблицы из директории, удаляем все до индекса последнего файла compacted,
@@ -27,15 +41,15 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         List<SSTable> fromDisc = directory.ssTables();
         if (fromDisc.isEmpty()) {
             nextTableNum = new AtomicLong(0);
-            this.tables = Collections.emptyList();
+            this.ssTables = Collections.emptyList();
             return;
         }
-        this.tables = fromDisc;
+        this.ssTables = fromDisc;
         if (directory.indexOfLastCompacted() != 0) {
-            this.tables = fromDisc.subList(directory.indexOfLastCompacted(), fromDisc.size());
+            this.ssTables = fromDisc.subList(directory.indexOfLastCompacted(), fromDisc.size());
             Utils.deleteTablesToIndex(fromDisc, directory.indexOfLastCompacted());
         }
-        String lastTable = tables.get(tables.size() - 1).getTableName().getFileName().toString();
+        String lastTable = ssTables.get(ssTables.size() - 1).getTableName().getFileName().toString();
         if (lastTable.endsWith(SSTable.COMPACTED)) {
             lastTable = Utils.removeSuffix(lastTable, SSTable.COMPACTED);
         }
@@ -44,19 +58,20 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
-        return get(from, to, storage, tables);
+        return get(from, to, storage.memTable, storage.readOnlyMemTable, ssTables);
     }
 
     private Iterator<Entry<MemorySegment>> get(MemorySegment from,
                                                MemorySegment to,
-                                               NavigableMap<MemorySegment, Entry<MemorySegment>> storage,
+                                               ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> memTable,
+                                               ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> readOnlyMemTable,
                                                List<SSTable> tables) {
 
-        Iterator<Entry<MemorySegment>> memory = fromMemory(from, to, storage);
+        Iterator<Entry<MemorySegment>> memory = fromMemory(from, to, memTable);
+        Iterator<Entry<MemorySegment>> readOnly = fromMemory(from, to, readOnlyMemTable);
         Iterator<Entry<MemorySegment>> disc = tablesRange(from, to, tables);
 
-        PeekingIterator<Entry<MemorySegment>> merged = CustomIterators.mergeTwo(new PeekingIterator<>(disc),
-                new PeekingIterator<>(memory));
+        PeekingIterator<Entry<MemorySegment>> merged = CustomIterators.mergeList(List.of(disc, readOnly, memory));
         return CustomIterators.skipTombstones(merged);
     }
 
@@ -68,16 +83,23 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return CustomIterators.merge(iterators);
     }
 
-    private Iterator<Entry<MemorySegment>> fromMemory(MemorySegment from,
-                                                      MemorySegment to,
-                                                      NavigableMap<MemorySegment, Entry<MemorySegment>> storage) {
+
+    private Iterator<Entry<MemorySegment>> fromMemory(
+            MemorySegment from,
+            MemorySegment to,
+            ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> storage) {
+
         if (from == null && to == null) {
             return storage.values().iterator();
         }
-        return subMap(from, to).values().iterator();
+        return subMap(from, to, storage).values().iterator();
     }
 
-    private SortedMap<MemorySegment, Entry<MemorySegment>> subMap(MemorySegment from, MemorySegment to) {
+    private SortedMap<MemorySegment, Entry<MemorySegment>> subMap(
+            MemorySegment from,
+            MemorySegment to,
+            ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> storage) {
+
         if (from == null) {
             return storage.headMap(to);
         }
@@ -87,29 +109,108 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return storage.subMap(from, to);
     }
 
+
     @Override
     public void compact() throws IOException {
-        List<SSTable> fixed = this.tables;
-        NavigableMap<MemorySegment, Entry<MemorySegment>> readOnlyStorage = this.storage;
-        Iterator<Entry<MemorySegment>> forSize = get(null, null, readOnlyStorage, fixed);
-        Iterator<Entry<MemorySegment>> forWrite = get(null, null, readOnlyStorage, fixed);
+        service.execute(() -> {
+            synchronized (this) { //only one compact per time
+                try {
+                    logger.info("compact");
+                    performCompact();
+                } catch (IOException | InterruptedException e) {
+                    logger.error("Compact is broken", e);
+                    Thread.currentThread().interrupt();
+                }
+            }
+        });
+    }
 
-        SSTable.Sizes sizes = Utils.getSizes(forSize);
+    /**
+     * Compact will be blocked until latest flush is done
+     */
+    private void performCompact() throws IOException, InterruptedException {
+        semaphore.acquire(EXCLUSIVE_PERMISSION);
+        List<SSTable> fixed = this.ssTables;
+        Path compactedPath = nextCompactedTable();
+        duringCompactionTables = new ArrayList<>();
+        duringCompactionTables.add(null);//for compacted table in future
+        isCompact.set(true);
+        semaphore.release(EXCLUSIVE_PERMISSION);
 
-        this.tables = List.of(writeSSTable(
-                nextCompactedTable(),
-                forWrite,
-                sizes.tableSize(),
-                sizes.indexSize())
-        );
-        this.storage = getNewStorage();
+        SSTable.Sizes sizes = Utils.getSizes(tablesFilteredFullRange(fixed));
+        Iterator<Entry<MemorySegment>> forWrite = tablesFilteredFullRange(fixed);
+        SSTable compacted = writeSSTable(compactedPath, forWrite, sizes.tableSize(), sizes.indexSize());
+
+        synchronized (isCompact) { //sync between concurrent flush and compact
+            duringCompactionTables.set(0, compacted);
+            isCompact.set(false);
+            this.ssTables = duringCompactionTables;
+        }
         Utils.deleteTablesToIndex(fixed, fixed.size());
+    }
+
+    /**
+     * We flush only readOnlyTable
+     */
+    private void performFlush() throws IOException {
+        if (storage.readOnlyMemTable.isEmpty()) {
+            return;
+        }
+        SSTable.Sizes sizes = Utils.getSizes(storage.readOnlyMemTable.values().iterator());
+        SSTable table = writeSSTable(
+                nextOrdinaryTable(),
+                storage.readOnlyMemTable.values().iterator(),
+                sizes.tableSize(),
+                sizes.indexSize()
+        );
+        synchronized (isCompact) { //sync between concurrent flush and compact
+            if (isCompact.get()) {
+                duringCompactionTables.add(table);
+            }
+            tablesAtomicAdd(table); //need for concurrent get
+        }
     }
 
     @Override
     public void upsert(Entry<MemorySegment> entry) {
-        storage.put(entry.key(), entry);
+        long size = Utils.sizeOfEntry(entry);
+        if (memoryConsumption.addAndGet(size) > config.flushThresholdBytes()) {
+            if (isFlush.get()) {
+                throw new IllegalStateException("So many upserts");
+            }
+            if (semaphore.tryAcquire(EXCLUSIVE_PERMISSION)) {
+                asyncFlush(size);
+            } else {
+                logger.info("Program flush is rejected");
+            }
+        }
+        storage.memTable.put(entry.key(), entry);
     }
+
+// synchronized () { //short synchronized for latecomers FIXME
+
+//                if (memoryConsumption.get() > config.flushThresholdBytes()) {
+
+    /**
+     * If user's flush is running, then this method will be cancelled.
+     */
+    private void asyncFlush(long size) {
+        storage.beforeFlush();
+        memoryConsumption.set(size);
+        isFlush.set(true);
+        service.execute(() -> {
+            try {
+                performFlush();
+                storage.afterFlush();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            } finally {
+                semaphore.release(EXCLUSIVE_PERMISSION);
+                isFlush.set(false);
+            }
+        });
+    }
+
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) {
@@ -124,38 +225,66 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return desired;
     }
 
+    /**
+     * only one flush per time, this flush may be blocked until it could be performed
+     */
     @Override
     public void flush() throws IOException {
-        if (storage.isEmpty()) {
-            return;
+        try {
+            logger.info("User want to flush");
+            semaphore.acquire(EXCLUSIVE_PERMISSION);
+            logger.info("User's flush is started");
+            processFlush();
+        } catch (InterruptedException e) {
+            logger.error("Flush semaphore was interrupted", e);
+            Thread.currentThread().interrupt();
+        } finally {
+            semaphore.release(EXCLUSIVE_PERMISSION);
+            isFlush.set(false);
+            logger.info("User's flush is finished");
         }
-        NavigableMap<MemorySegment, Entry<MemorySegment>> readOnlyStorage = this.storage;
-        SSTable.Sizes sizes = Utils.getSizes(readOnlyStorage.values().iterator());
-        SSTable table = writeSSTable(
-                nextOrdinaryTable(),
-                readOnlyStorage.values().iterator(),
-                sizes.tableSize(),
-                sizes.indexSize()
-        );
+    }
 
-        tablesAtomicAdd(table); //need for concurrent get
-        this.storage = getNewStorage();
+    private void processFlush() throws IOException {
+        isFlush.set(true);
+        storage.beforeFlush();
+        memoryConsumption.set(0);
+        performFlush();
+        storage.afterFlush();
     }
 
     private void tablesAtomicAdd(SSTable table) {
-        ArrayList<SSTable> newTables = new ArrayList<>(tables.size() + 1);
-        newTables.addAll(tables);
+        ArrayList<SSTable> newTables = new ArrayList<>(ssTables.size() + 1);
+        newTables.addAll(ssTables);
         newTables.add(table);
-        tables = newTables;
+        ssTables = newTables;
     }
 
     @Override
     public void close() throws IOException {
-        flush();
-        for (SSTable table : tables) {
+        service.shutdown();
+        try {
+            if (!service.awaitTermination(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Cant await termination");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Cant await termination");
+        }
+        try {
+            semaphore.acquire(EXCLUSIVE_PERMISSION);
+        } catch (InterruptedException e) {
+            logger.error("Cant take semaphore", e);
+            Thread.currentThread().interrupt();
+        }
+        processFlush();
+        for (SSTable table : ssTables) {
             table.close();
         }
+        semaphore.release(EXCLUSIVE_PERMISSION);
+        isFlush.set(false);
     }
+
 
     private SSTable writeSSTable(Path table,
                                  Iterator<Entry<MemorySegment>> iterator,
@@ -176,7 +305,27 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return config.basePath().resolve(name);
     }
 
-    private static ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> getNewStorage() {
-        return new ConcurrentSkipListMap<>(Utils::compareMemorySegments);
+    private Iterator<Entry<MemorySegment>> tablesFilteredFullRange(List<SSTable> fixed) {
+        Iterator<Entry<MemorySegment>> discIterator = tablesRange(null, null, fixed);
+        return CustomIterators.skipTombstones(new PeekingIterator<>(discIterator));
+    }
+
+    private static class Storage {
+        private volatile ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> memTable = getNewMemTable();
+        private volatile ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> readOnlyMemTable = getNewMemTable();
+
+        private void beforeFlush() {
+            this.readOnlyMemTable = this.memTable;
+            this.memTable = getNewMemTable();
+        }
+
+        private void afterFlush() {
+            this.readOnlyMemTable = getNewMemTable();
+        }
+
+        private static ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> getNewMemTable() {
+            return new ConcurrentSkipListMap<>(Utils::compareMemorySegments);
+        }
+
     }
 }
