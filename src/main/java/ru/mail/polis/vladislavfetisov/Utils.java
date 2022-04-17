@@ -11,9 +11,11 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-
+import java.util.SortedMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 public final class Utils {
 
@@ -112,7 +114,6 @@ public final class Utils {
         return path.resolveSibling(path.getFileName() + suffix);
     }
 
-
     public static void deleteTablesToIndex(List<SSTable> tableList, int toIndex) throws IOException {
         for (int i = 0; i < toIndex; i++) {
             SSTable table = tableList.get(i);
@@ -133,5 +134,38 @@ public final class Utils {
 
     public static String removeSuffix(String source, String suffix) {
         return source.substring(0, source.length() - suffix.length());
+    }
+
+    public static Iterator<Entry<MemorySegment>> tablesRange(MemorySegment from, MemorySegment to, List<SSTable> tables) {
+        List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(tables.size());
+        for (SSTable table : tables) {
+            iterators.add(table.range(from, to));
+        }
+        return CustomIterators.merge(iterators);
+    }
+
+    public static Iterator<Entry<MemorySegment>> fromMemory(
+            MemorySegment from,
+            MemorySegment to,
+            ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> storage) {
+
+        if (from == null && to == null) {
+            return storage.values().iterator();
+        }
+        return subMap(from, to, storage).values().iterator();
+    }
+
+    public static SortedMap<MemorySegment, Entry<MemorySegment>> subMap(
+            MemorySegment from,
+            MemorySegment to,
+            ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> storage) {
+
+        if (from == null) {
+            return storage.headMap(to);
+        }
+        if (to == null) {
+            return storage.tailMap(from);
+        }
+        return storage.subMap(from, to);
     }
 }

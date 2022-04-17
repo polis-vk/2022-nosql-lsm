@@ -12,7 +12,12 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -42,7 +47,6 @@ public final class SSTable implements Closeable {
         mapIndex = Utils.map(indexName, indexSize, FileChannel.MapMode.READ_ONLY, sharedScope);
         this.indexName = indexName;
     }
-
 
     public static Directory retrieveDir(Path dir) throws IOException {
         try (Stream<Path> files = Files.list(dir)) {
@@ -96,7 +100,6 @@ public final class SSTable implements Closeable {
         }
         return lastCompactedIndex;
     }
-
 
     private static SSTable mapToTable(Path path) {
         try {
@@ -207,7 +210,7 @@ public final class SSTable implements Closeable {
     }
 
     public record Directory(List<SSTable> ssTables, int indexOfLastCompacted) {
-
+        //empty
     }
 
     public static Integer getTableNum(Path path) {
