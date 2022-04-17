@@ -109,7 +109,6 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return storage.subMap(from, to);
     }
 
-
     @Override
     public void compact() throws IOException {
         service.execute(() -> {
@@ -131,6 +130,11 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private void performCompact() throws IOException, InterruptedException {
         semaphore.acquire(EXCLUSIVE_PERMISSION);
         List<SSTable> fixed = this.ssTables;
+        if (fixed.isEmpty()) {
+            logger.info("Trying to compact empty ssTables");
+            semaphore.release(EXCLUSIVE_PERMISSION);
+            return;
+        }
         Path compactedPath = nextCompactedTable();
         duringCompactionTables = new ArrayList<>();
         duringCompactionTables.add(null);//for compacted table in future
@@ -187,10 +191,6 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         }
         storage.memTable.put(entry.key(), entry);
     }
-
-// synchronized () { //short synchronized for latecomers
-
-//                if (memoryConsumption.get() > config.flushThresholdBytes()) {
 
     /**
      * If user's flush is running, then this method will be cancelled.
