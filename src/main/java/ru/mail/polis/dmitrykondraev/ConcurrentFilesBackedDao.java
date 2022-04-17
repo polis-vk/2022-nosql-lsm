@@ -27,7 +27,7 @@ import java.util.stream.Stream;
  * Author: Dmitry Kondraev.
  */
 
-public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
+public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     private final Path basePath;
     private final Path compactDir;
     private final Path compactDirTmp;
@@ -41,14 +41,14 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     private static final String TABLE_PREFIX = "table";
     private static final String TMP_SUFFIX = "-temp";
 
-    public FilesBackedDao(Config config) throws IOException {
+    public ConcurrentFilesBackedDao(Config config) throws IOException {
         basePath = config.basePath();
         compactDirTmp = basePath.resolve(COMPACT_NAME + TMP_SUFFIX);
         compactDir = basePath.resolve(COMPACT_NAME);
         try (Stream<Path> stream = Files.list(basePath)) {
             stream
                     .filter(subDirectory -> filenameOf(subDirectory).startsWith(TABLE_PREFIX))
-                    .sorted(Comparator.comparing(FilesBackedDao::filenameOf).reversed())
+                    .sorted(Comparator.comparing(ConcurrentFilesBackedDao::filenameOf).reversed())
                     .forEachOrdered(subDirectory -> sortedStringTables.add(SortedStringTable.of(subDirectory)));
         }
         if (Files.exists(compactDirTmp)) {
