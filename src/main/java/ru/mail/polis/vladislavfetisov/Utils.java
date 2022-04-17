@@ -112,9 +112,6 @@ public final class Utils {
         return path.resolveSibling(path.getFileName() + suffix);
     }
 
-    public static boolean isTombstone(Entry<MemorySegment> entry) {
-        return entry.value() == null;
-    }
 
     public static void deleteTablesToIndex(List<SSTable> tableList, int toIndex) throws IOException {
         for (int i = 0; i < toIndex; i++) {

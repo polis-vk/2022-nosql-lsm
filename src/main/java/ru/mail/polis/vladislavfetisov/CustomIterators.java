@@ -93,7 +93,7 @@ public final class CustomIterators {
                         return false;
                     }
                     Entry<MemorySegment> entry = iterator.peek();
-                    if (!Utils.isTombstone(entry)) {
+                    if (!entry.isTombstone()) {
                         return true;
                     }
                     iterator.next();

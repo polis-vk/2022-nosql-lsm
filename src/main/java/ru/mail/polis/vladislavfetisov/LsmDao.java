@@ -179,6 +179,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
                 throw new IllegalStateException("So many upserts");
             }
             if (semaphore.tryAcquire(EXCLUSIVE_PERMISSION)) {
+                logger.info("program flush is started");
                 asyncFlush(size);
             } else {
                 logger.info("Program flush is rejected");
@@ -187,7 +188,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         storage.memTable.put(entry.key(), entry);
     }
 
-// synchronized () { //short synchronized for latecomers FIXME
+// synchronized () { //short synchronized for latecomers
 
 //                if (memoryConsumption.get() > config.flushThresholdBytes()) {
 
@@ -202,6 +203,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             try {
                 performFlush();
                 storage.afterFlush();
+                logger.info("program flush is finished");
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             } finally {
