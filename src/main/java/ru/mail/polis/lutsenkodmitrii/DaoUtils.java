@@ -209,12 +209,12 @@ public final class DaoUtils {
         return stringBuilder.toString();
     }
 
-    public static  void writeKey(String key, BufferedWriter bufferedFileWriter) throws IOException {
+    public static void writeKey(String key, BufferedWriter bufferedFileWriter) throws IOException {
         writeUnsignedInt(key.length(), bufferedFileWriter);
         bufferedFileWriter.write(key);
     }
 
-    public static  void writeValue(String value, BufferedWriter bufferedFileWriter) throws IOException {
+    public static void writeValue(String value, BufferedWriter bufferedFileWriter) throws IOException {
         bufferedFileWriter.write(EXISTING_MARK);
         bufferedFileWriter.write(value + '\n');
     }

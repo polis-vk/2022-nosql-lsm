@@ -47,7 +47,6 @@ import java.util.stream.Stream;
  **/
 public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
-
     public static final String DATA_FILE_NAME = "daoData";
     public static final String MEMORY_FILE_NAME = "memory";
     public static final String COMPACTION_FILE_NAME = "compaction";
