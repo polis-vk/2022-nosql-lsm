@@ -14,7 +14,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.Set;
 import java.util.TreeMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -24,7 +23,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
     private final NavigableMap<String, BaseEntry<String>> tempData = new TreeMap<>();
     private final Map<String, Integer> tempDataPriorities = new HashMap<>();
     private final Map<String, List<FileInfo>> lastElementWithFilesMap = new HashMap<>();
-    private final Set<Map.Entry<Path, FileInputStream>> filesMapEntries;
+    private final List<Map.Entry<Path, FileInputStream>> filesMapEntries = new ArrayList<>();
     private final Iterator<BaseEntry<String>> inMemoryIterator;
     private final String to;
     private final boolean isFromNull;
@@ -38,7 +37,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         this.to = to;
         this.isFromNull = from == null;
         this.isToNull = to == null;
-        this.filesMapEntries = dao.getFilesMap().entrySet();
+        this.filesMapEntries.addAll(dao.getFilesMap().entrySet());
         int priority = 1;
         for (Map.Entry<Path, FileInputStream> filesMapEntry : filesMapEntries) {
             filesMapEntry.getValue().getChannel().position(0);
@@ -133,7 +132,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         lastElementWithFilesMap.remove(polledEntry.key());
     }
 
-    public Set<Map.Entry<Path, FileInputStream>> getFilesMapEntries() {
+    public List<Map.Entry<Path, FileInputStream>> getFilesMapEntries() {
         return filesMapEntries;
     }
 

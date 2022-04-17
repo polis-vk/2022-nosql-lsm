@@ -4,19 +4,15 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.BufferedWriter;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
-import java.nio.file.OpenOption;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,9 +22,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Stream;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.preprocess;
 
 /**
  * ----------------------------------------------------------------------------------------------*
@@ -54,11 +47,7 @@ import static ru.mail.polis.lutsenkodmitrii.DaoUtils.preprocess;
  **/
 public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
-    private static final OpenOption[] writeOptions = new OpenOption[]{
-            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE
-    };
-    public static final int DELETED_MARK = 0;
-    public static final int EXISTING_MARK = 1;
+
     public static final String DATA_FILE_NAME = "daoData";
     public static final String MEMORY_FILE_NAME = "memory";
     public static final String COMPACTION_FILE_NAME = "compaction";
@@ -94,6 +83,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
+        checkNotClosed();
         lock.readLock().lock();
         try {
             return new MergeIterator(this, from, to, true);
@@ -104,6 +94,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void upsert(BaseEntry<String> entry) {
+        checkNotClosed();
         lock.readLock().lock();
         try {
             if (!memStorage.firstTableFull() && !memStorage.firstTableOnFlush()) {
@@ -114,11 +105,11 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
             }
             if (memStorage.firstTableOnFlush()) {
                 if (memStorage.secondTableOnFlush()) {
-                    throw new RuntimeException("Can`t upsert now, try later");
+                    memStorage.rejectUpsert();
                 }
                 memStorage.upsertIfFitsSecondTable(entry);
                 if (memStorage.secondTableIsFull()) {
-                    throw new RuntimeException("Can`t upsert now, try later");
+                    memStorage.rejectUpsert();
                 }
             }
         } finally {
@@ -127,10 +118,11 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     }
 
     private void flushFirstMemTable() {
+        //autoflush
         flushExecutor.execute(() -> {
             try {
                 Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
-                writeMemoryToFile(tempMemoryFilePath, firstTableIterator());
+                DaoUtils.writeToFile(tempMemoryFilePath, firstTableIterator());
                 Path dataFilePath = generateNextFilePath();
                 Files.move(tempMemoryFilePath, dataFilePath);
                 FileInputStream inputStream = new FileInputStream(dataFilePath.toString());
@@ -150,6 +142,8 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void flush() throws IOException {
+        //ручной flush
+        checkNotClosed();
         if (memStorage.isEmpty()) {
             return;
         }
@@ -165,9 +159,9 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                 boolean notSecondOnFlush = memStorage.secondTableNotOnFlushAndSetTrue();
                 boolean isFlushingBothTables = memStorage.firstTableNotOnFlushAndSetTrue() && notSecondOnFlush;
                 if (isFlushingBothTables) {
-                    writeMemoryToFile(tempMemoryFilePath, inMemoryDataIterator());
+                    DaoUtils.writeToFile(tempMemoryFilePath, inMemoryDataIterator());
                 } else if (notSecondOnFlush) {
-                    writeMemoryToFile(tempMemoryFilePath, secondTableIterator());
+                    DaoUtils.writeToFile(tempMemoryFilePath, secondTableIterator());
                 } else {
                     return; //Обе таблицы уже flush-ся, в это время все новые upsert-ы отклоняются
                 }
@@ -201,7 +195,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         shutdownAndAwaitTermination(flushExecutor);
         shutdownAndAwaitTermination(compactionExecutor);
         if (!memStorage.isEmpty()) {
-            writeMemoryToFile(generateNextFilePath(), inMemoryDataIterator());
+            DaoUtils.writeToFile(generateNextFilePath(), inMemoryDataIterator());
         }
         for (FileInputStream inputStream : filesMap.values()) {
             inputStream.close();
@@ -210,6 +204,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void compact() throws IOException {
+        checkNotClosed();
         if (filesMap.isEmpty() || (filesMap.size() == 1 && memStorage.isEmpty())) {
             return;
         }
@@ -224,32 +219,23 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         compactionExecutor.execute(() -> {
             Path tempCompactionFilePath = generateTempPath(COMPACTION_FILE_NAME);
             Path lastFilePath = generateNextFilePath();
-            Set<Map.Entry<Path, FileInputStream>> compactionFilesMapEntries;
-            try (BufferedWriter bufferedWriter = Files.newBufferedWriter(tempCompactionFilePath, UTF_8, writeOptions)) {
+            List<Map.Entry<Path, FileInputStream>> compactionFilesMapEntries;
+            try {
                 MergeIterator allEntriesIterator = new MergeIterator(this, null, null, false);
                 compactionFilesMapEntries = allEntriesIterator.getFilesMapEntries();
-                DaoUtils.writeUnsignedInt(0, bufferedWriter);
-                while (allEntriesIterator.hasNext()) {
-                    BaseEntry<String> baseEntry = allEntriesIterator.next();
-                    String key = preprocess(baseEntry.key());
-                    writeKey(key, bufferedWriter);
-                    String value = preprocess(baseEntry.value());
-                    writeValue(value, bufferedWriter);
-                    DaoUtils.writeUnsignedInt(DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT
-                            + key.length() + value.length() + 1, bufferedWriter); // +1 из-за EXISTING_MARK
-                }
+                DaoUtils.writeToFile(tempCompactionFilePath, allEntriesIterator);
             } catch (IOException e) {
-                throw new RuntimeException("Write " + tempCompactionFilePath + " failed", e);
+                throw new RuntimeException("Writing to temp file failed", e);
             }
             lock.writeLock().lock();
             try {
                 Files.move(tempCompactionFilePath, lastFilePath);
+                filesMap.put(lastFilePath, new FileInputStream(lastFilePath.toString()));
                 for (Map.Entry<Path, FileInputStream> filesMapEntry : compactionFilesMapEntries) {
                     filesMap.remove(filesMapEntry.getKey());
                     filesMapEntry.getValue().close();
                     Files.delete(filesMapEntry.getKey());
                 }
-                filesMap.put(lastFilePath, new FileInputStream(lastFilePath.toString()));
             } catch (IOException e) {
                 throw new RuntimeException("Renaming compaction file or deleting old files failed", e);
             } finally {
@@ -294,37 +280,6 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         }
     }
 
-    private void writeMemoryToFile(Path dataFilePath, Iterator<BaseEntry<String>> memoryIterator) throws IOException {
-        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(dataFilePath, UTF_8, writeOptions)) {
-            DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
-            while (memoryIterator.hasNext()) {
-                BaseEntry<String> baseEntry = memoryIterator.next();
-                String key = preprocess(baseEntry.key());
-                writeKey(key, bufferedFileWriter);
-                int keyWrittenSize = DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT + key.length() + 1;
-                // +1 из-за DELETED_MARK или EXISTING_MARK
-                if (baseEntry.value() == null) {
-                    bufferedFileWriter.write(DELETED_MARK + '\n');
-                    DaoUtils.writeUnsignedInt(keyWrittenSize, bufferedFileWriter);
-                    continue;
-                }
-                String value = preprocess(baseEntry.value());
-                writeValue(value, bufferedFileWriter);
-                DaoUtils.writeUnsignedInt(keyWrittenSize + value.length(), bufferedFileWriter);
-            }
-        }
-    }
-
-    private void writeKey(String key, BufferedWriter bufferedFileWriter) throws IOException {
-        DaoUtils.writeUnsignedInt(key.length(), bufferedFileWriter);
-        bufferedFileWriter.write(key);
-    }
-
-    private void writeValue(String value, BufferedWriter bufferedFileWriter) throws IOException {
-        bufferedFileWriter.write(EXISTING_MARK);
-        bufferedFileWriter.write(value + '\n');
-    }
-
     private Path generateNextFilePath() {
         return config.basePath().resolve(DATA_FILE_NAME + currentFileNumber.getAndIncrement() + DATA_FILE_EXTENSION);
     }
@@ -361,7 +316,14 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                 throw new RuntimeException("Await termination too long");
             }
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new RuntimeException("AwaitTermination interrupted", e);
+        }
+    }
+
+    private void checkNotClosed() {
+        if (isClosed.get()) {
+            throw new RuntimeException("Cannot operate on closed dao");
         }
     }
 }

@@ -77,6 +77,10 @@ public class MemStorage {
         return memTables.get(1).isEmpty();
     }
 
+    public void rejectUpsert() {
+        throw new RuntimeException("Can`t upsert now, try later");
+    }
+
     public Iterator<BaseEntry<String>> firstTableIterator(String from, String to) {
         return memTables.get(0).iterator(from, to);
     }
@@ -100,8 +104,8 @@ public class MemStorage {
         return new Iterator<>() {
 
             private final NavigableMap<String, BaseEntry<String>> tempData = new TreeMap<>();
-            private final BaseEntry<String> firstTableEntry = firstTableIterator.next();
-            private final BaseEntry<String> secondTableEntry = secondTableIterator.next();
+            private BaseEntry<String> firstTableEntry = firstTableIterator.next();
+            private BaseEntry<String> secondTableEntry = secondTableIterator.next();
             private String firstTableLastReadKey = firstTableEntry.key();
             private String secondTableLastReadKey = secondTableEntry.key();
 
@@ -119,12 +123,12 @@ public class MemStorage {
             public BaseEntry<String> next() {
                 BaseEntry<String> removed = tempData.pollFirstEntry().getValue();
                 if (removed.key().equals(firstTableLastReadKey) && firstTableIterator.hasNext()) {
-                    BaseEntry<String> firstTableEntry = firstTableIterator.next();
+                    firstTableEntry = firstTableIterator.next();
                     tempData.put(firstTableEntry.key(), firstTableEntry);
                     firstTableLastReadKey = firstTableEntry.key();
                 }
                 if (removed.key().equals(secondTableLastReadKey) && secondTableIterator.hasNext()) {
-                    BaseEntry<String> secondTableEntry = secondTableIterator.next();
+                    secondTableEntry = secondTableIterator.next();
                     tempData.put(secondTableEntry.key(), secondTableEntry);
                     secondTableLastReadKey = secondTableEntry.key();
                 }

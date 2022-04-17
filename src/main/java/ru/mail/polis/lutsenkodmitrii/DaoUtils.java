@@ -6,12 +6,22 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.Iterator;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 public final class DaoUtils {
 
     public static final int CHARS_IN_INT = Integer.SIZE / Character.SIZE + 1;
     public static final int OVERFLOW_LIMIT = Integer.MAX_VALUE - '0';
+    public static final int DELETED_MARK = 0;
+    public static final int EXISTING_MARK = 1;
+    private static final OpenOption[] writeOptions = new OpenOption[]{
+            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE
+    };
 
     private DaoUtils() {
     }
@@ -54,7 +64,7 @@ public final class DaoUtils {
     }
 
     public static String readValue(BufferedReader bufferedReader) throws IOException {
-        return bufferedReader.read() == PersistenceRangeDao.EXISTING_MARK
+        return bufferedReader.read() == EXISTING_MARK
                 ? postprocess(bufferedReader.readLine())
                 : null;
     }
@@ -197,5 +207,36 @@ public final class DaoUtils {
             }
         }
         return stringBuilder.toString();
+    }
+
+    public static  void writeKey(String key, BufferedWriter bufferedFileWriter) throws IOException {
+        writeUnsignedInt(key.length(), bufferedFileWriter);
+        bufferedFileWriter.write(key);
+    }
+
+    public static  void writeValue(String value, BufferedWriter bufferedFileWriter) throws IOException {
+        bufferedFileWriter.write(EXISTING_MARK);
+        bufferedFileWriter.write(value + '\n');
+    }
+
+    public static void writeToFile(Path dataFilePath, Iterator<BaseEntry<String>> iterator) throws IOException {
+        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(dataFilePath, UTF_8, writeOptions)) {
+            DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
+            while (iterator.hasNext()) {
+                BaseEntry<String> baseEntry = iterator.next();
+                String key = preprocess(baseEntry.key());
+                writeKey(key, bufferedFileWriter);
+                int keyWrittenSize = DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT + key.length() + 1;
+                // +1 из-за DELETED_MARK или EXISTING_MARK
+                if (baseEntry.value() == null) {
+                    bufferedFileWriter.write(DELETED_MARK + '\n');
+                    DaoUtils.writeUnsignedInt(keyWrittenSize, bufferedFileWriter);
+                    continue;
+                }
+                String value = preprocess(baseEntry.value());
+                writeValue(value, bufferedFileWriter);
+                DaoUtils.writeUnsignedInt(keyWrittenSize + value.length(), bufferedFileWriter);
+            }
+        }
     }
 }
