@@ -8,9 +8,11 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.NavigableMap;
@@ -85,7 +87,6 @@ public final class FileUtils {
 
     public static void writeOnDisk(
             NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, Path path) throws IOException {
-        int size;
         ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
         ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
         int fileNumber = getPaths(path).size() + 1;
@@ -93,6 +94,7 @@ public final class FileUtils {
                 StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
              FileChannel indexOut = FileChannel.open(getIndexPath(path, fileNumber),
                      StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+            int size;
             for (BaseEntry<ByteBuffer> entry : collection.values()) {
                 size = sizeOfEntry(entry);
                 if (buffer.remaining() < size) {
@@ -109,6 +111,43 @@ public final class FileUtils {
         }
     }
 
+    public static void compact(Iterator<BaseEntry<ByteBuffer>> iter, Path path) throws IOException {
+        int fileNumber = getPaths(path).size() + 1;
+        if (iter.hasNext()) {
+            ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
+            ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
+            try (FileChannel dataOut = FileChannel.open(getDataPath(path, fileNumber),
+                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+                 FileChannel indexOut = FileChannel.open(getIndexPath(path, fileNumber),
+                         StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+                int size;
+                while (iter.hasNext()) {
+                    BaseEntry<ByteBuffer> entry = iter.next();
+                    size = sizeOfEntry(entry);
+                    if (buffer.remaining() < size) {
+                        buffer = ByteBuffer.allocate(size);
+                    } else {
+                        buffer.clear();
+                    }
+                    indexBuffer.clear();
+                    indexBuffer.putInt((int) dataOut.position());
+                    indexBuffer.flip();
+                    indexOut.write(indexBuffer);
+                    dataOut.write(writeEntryToBuffer(buffer, entry));
+                }
+            }
+            Files.move(getIndexPath(path, fileNumber), getIndexPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
+            Files.move(getDataPath(path, fileNumber), getDataPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
+
+        }
+
+        for (int i = 2; i <= fileNumber; ++i) {
+            Files.deleteIfExists(getIndexPath(path, i));
+            Files.deleteIfExists(getDataPath(path, i));
+        }
+
+    }
+  
     public static Collection<BaseEntry<ByteBuffer>> getInMemoryCollection(
             NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, ByteBuffer from, ByteBuffer to) {
 

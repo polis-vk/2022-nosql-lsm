@@ -1,6 +1,5 @@
 package ru.mail.polis.artyomtrofimov;
 
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -45,10 +44,7 @@ public class FileIterator implements Iterator<Entry<String>> {
         Entry<String> retval = nextEntry;
         try {
             if (raf.getFilePointer() < fileLength) {
-                byte tombstone = raf.readByte();
-                String currentKey = raf.readUTF();
-                String currentValue = tombstone < 0 ? null : raf.readUTF();
-                nextEntry = new BaseEntry<>(currentKey, currentValue);
+                nextEntry = Utils.readEntry(raf);
             } else {
                 nextEntry = null;
             }

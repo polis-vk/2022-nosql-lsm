@@ -9,22 +9,12 @@ public final class Utils {
     private Utils() {
     }
 
-    public static class MappedBuffersPair {
-        private final ByteBuffer dataBuffer;
-        private final ByteBuffer indexBuffer;
+    public record BufferPair(ByteBuffer data, ByteBuffer index) {
+        //empty body
+    }
 
-        public MappedBuffersPair(ByteBuffer dataBuffer, ByteBuffer indexBuffer) {
-            this.dataBuffer = dataBuffer;
-            this.indexBuffer = indexBuffer;
-        }
-
-        public ByteBuffer getDataBuffer() {
-            return dataBuffer;
-        }
-
-        public ByteBuffer getIndexBuffer() {
-            return indexBuffer;
-        }
+    public record BufferSizePair(int dataBufferSize, int indexBufferSize) {
+        //empty body
     }
 
     public static BaseEntry<ByteBuffer> readEntry(ByteBuffer dataBuffer, int sourceOffset) {
@@ -39,6 +29,6 @@ public final class Utils {
             offset += Integer.BYTES;
             curValue = dataBuffer.slice(offset, valueSize);
         }
-        return new BaseEntry<ByteBuffer>(curKey, curValue);
+        return new BaseEntry<>(curKey, curValue);
     }
 }
