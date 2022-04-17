@@ -21,7 +21,7 @@ public final class StorageSystem implements AutoCloseable {
     private static final String COMPACTED_MEM_FILE = COMPACTED_PREFIX + MEM_FILENAME;
     private static final String TMP_PREFIX = "tmp_";
     // Order is important, fresh in begin
-    private final List<StoragePart> storageParts;
+    private List<StoragePart> storageParts;
     private final Path location;
 
     private StorageSystem(List<StoragePart> storageParts, Path location) {
@@ -71,16 +71,20 @@ public final class StorageSystem implements AutoCloseable {
         return res;
     }
 
-    public void compact(ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> localEntrys) throws IOException {
+    public void compact() throws IOException {
         Path indCompPath = location.resolve(COMPACTED_IND_FILE);
         Path memCompPath = location.resolve(COMPACTED_MEM_FILE);
-        save(indCompPath, memCompPath, getMergedEntrys(localEntrys, null, null));
+        save(indCompPath, memCompPath, getMergedEntrys(null, null));
 
-        // TODO: In stage5 close will be not so simple, so here we won't use close
-        close();
+        // Not correct for windows, because of deleting files
         finishCompact(location, indCompPath, memCompPath);
 
-        storageParts.add(StoragePart.load(getIndexFilePath(0), getMemFilePath(0), 0));
+        // Excluding risk of unvalid storageSystem and setting to compact file:
+        List<StoragePart> newStParts = new ArrayList<>();
+        newStParts.add(StoragePart.load(getIndexFilePath(0), getMemFilePath(0), 0));
+        var oldStParts = storageParts;
+        storageParts = newStParts;
+        closeParts(oldStParts);
     }
 
     private static void finishCompact(Path location, Path compactedInd, Path compactedMem) throws IOException {
@@ -98,8 +102,14 @@ public final class StorageSystem implements AutoCloseable {
         Files.move(compactedMem, getMemFilePath(location, 0), StandardCopyOption.ATOMIC_MOVE);
     }
 
-    public Iterator<Entry<ByteBuffer>> getMergedEntrys(
-            ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> localEntrys, ByteBuffer from, ByteBuffer to) {
+    /**
+     * Gives iterator for given range.
+     *
+     * @param memTables attention: fresh memtables should be on first positions. Order is important
+     */
+    @SafeVarargs
+    public final Iterator<Entry<ByteBuffer>> getMergedEntrys(
+            ByteBuffer from, ByteBuffer to, ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>>... memTables) {
         PriorityQueue<IndexedPeekIterator> binaryHeap = new PriorityQueue<>(
                 Comparator.comparing(it -> it.peek().key()));
 
@@ -110,9 +120,17 @@ public final class StorageSystem implements AutoCloseable {
             }
         }
 
-        IndexedPeekIterator localIter = new IndexedPeekIterator(localEntrys.values().iterator(), Integer.MAX_VALUE);
-        if (localIter.peek() != null) {
-            binaryHeap.add(localIter);
+        int priority = 0;
+        for (var memTable : memTables) {
+            if (memTable == null) {
+                continue;
+            }
+
+            IndexedPeekIterator localIter = new IndexedPeekIterator(memTable.values().iterator(), Integer.MAX_VALUE - priority);
+            if (localIter.peek() != null) {
+                binaryHeap.add(localIter);
+            }
+            priority++;
         }
 
         return new StorageSystemIterator(binaryHeap);
@@ -138,10 +156,14 @@ public final class StorageSystem implements AutoCloseable {
 
     @Override
     public void close() {
+        closeParts(storageParts);
+        storageParts.clear();
+    }
+
+    private static void closeParts(List<StoragePart> storageParts) {
         for (StoragePart storagePart : storageParts) {
             storagePart.close();
         }
-        storageParts.clear();
     }
 
     private Path getMemFilePath(int num) {
