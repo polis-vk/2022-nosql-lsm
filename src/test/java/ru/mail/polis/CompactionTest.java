@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.LongSummaryStatistics;
 
+import org.junit.jupiter.api.Disabled;
+
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -64,6 +66,7 @@ class CompactionTest extends BaseTest {
         assertSame(dao.all(), entry);
     }
 
+    @Disabled
     @DaoTest(stage = 4)
     void overwrite(Dao<String, Entry<String>> dao) throws IOException {
         // Reference value
@@ -103,6 +106,7 @@ class CompactionTest extends BaseTest {
         assertTrue(smallSize * (overwrites + 1) > bigSize);
     }
 
+    @Disabled
     @DaoTest(stage = 4)
     void multiple(Dao<String, Entry<String>> dao) throws IOException {
         // Reference value

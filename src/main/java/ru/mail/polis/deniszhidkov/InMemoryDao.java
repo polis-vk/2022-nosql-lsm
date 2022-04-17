@@ -32,32 +32,38 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final DaoWriter writer;
     private final List<DaoReader> readers;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final int filesCounter;
+    private int filesCounter;
+    private volatile boolean isClosed;
 
     public InMemoryDao(Config config) throws IOException {
         this.directoryPath = config.basePath();
         finishCompactIfNecessary();
         int numberOfStorages = 0;
+        // Удаляем файлы из директории, не относящиеся к нашей DAO, и считаем количество storage
         try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directoryPath)) {
             for (Path file : directoryStream) {
                 String fileName = file.getFileName().toString();
                 if (fileName.startsWith(DATA_FILE_NAME)) {
                     numberOfStorages++;
-                } else if (!fileName.startsWith(OFFSETS_FILE_NAME) && !fileName.startsWith(TMP_FILE_NAME)) {
+                } else if (!fileName.startsWith(OFFSETS_FILE_NAME)) {
                     Files.delete(file);
                 }
             }
-        } // Удаляем файлы из директории, не относящиеся к нашей DAO, и считаем количество storage
+        }
         this.filesCounter = numberOfStorages;
         this.readers = initDaoReaders();
         this.writer = new DaoWriter(
                 directoryPath.resolve(DATA_FILE_NAME + filesCounter + FILE_EXTENSION),
                 directoryPath.resolve(OFFSETS_FILE_NAME + filesCounter + FILE_EXTENSION)
         );
+        this.isClosed = false;
     }
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
+        if (!isClosed) {
+            throw new IllegalStateException("DAO has been closed");
+        }
         Queue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
                 Comparator.comparing((PriorityPeekIterator o) ->
                         o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
@@ -82,6 +88,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public BaseEntry<String> get(String key) throws IOException {
+        if (!isClosed) {
+            throw new IllegalStateException("DAO has been closed");
+        }
         BaseEntry<String> value = storage.get(key);
         if (value == null) {
             lock.readLock().lock();
@@ -101,29 +110,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public void flush() throws IOException {
-        lock.writeLock().lock();
-        try {
-            writer.writeDAO(storage);
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
-    @Override
-    public void close() throws IOException {
-        if (readers == null) {
-            return;
-        }
-        if (!storage.isEmpty()) {
-            flush();
-            storage.clear();
-        }
-        closeReaders();
-    }
-
-    @Override
     public void upsert(BaseEntry<String> entry) {
+        if (!isClosed) {
+            throw new IllegalStateException("DAO has been closed");
+        }
         lock.readLock().lock();
         try {
             storage.put(entry.key(), entry);
@@ -133,7 +123,27 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
+    public void flush() throws IOException {
+        if (!isClosed) {
+            throw new IllegalStateException("DAO has been closed");
+        }
+        if (storage.isEmpty()) {
+            return;
+        }
+        lock.writeLock().lock();
+        try {
+            writer.writeDAO(storage);
+        } finally {
+            lock.writeLock().unlock();
+        }
+        storage.clear();
+    }
+
+    @Override
     public void compact() throws IOException {
+        if (!isClosed) {
+            throw new IllegalStateException("DAO has been closed");
+        }
         if (readers.size() <= 1 && storage.isEmpty()) {
             return;
         } else if (readers.isEmpty()) {
@@ -179,6 +189,16 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         } finally {
             lock.writeLock().unlock();
         }
+    }
+
+    @Override
+    public synchronized void close() throws IOException {
+        if (!isClosed) {
+            return;
+        }
+        flush();
+        closeReaders();
+        isClosed = true;
     }
 
     private void finishCompactIfNecessary() throws IOException {

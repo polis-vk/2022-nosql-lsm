@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class DaoReader implements Closeable {
 
@@ -18,6 +19,7 @@ public class DaoReader implements Closeable {
     private final long[] offsets;
     private String endReadFactor;
     private int startReadIndex;
+    private final ReentrantLock lock = new ReentrantLock();
 
     public DaoReader(Path pathToDataFile, Path pathToOffsetsFile) throws IOException {
         this.reader = new RandomAccessFile(pathToDataFile.toString(), "r");
@@ -32,22 +34,27 @@ public class DaoReader implements Closeable {
             if (middle >= offsets.length) {
                 return null;
             }
-            reader.seek(offsets[middle]);
-            String currentKey = readNextString();
-            if (currentKey == null) {
-                return null;
-            }
-            int comparison = currentKey.compareTo(key);
-            if (comparison < 0) {
-                start = middle + 1;
-            } else if (comparison == 0) {
-                String value = readNextString();
-                if (value == null) {
-                    return new BaseEntry<>(currentKey, null);
+            lock.lock();
+            try {
+                reader.seek(offsets[middle]);
+                String currentKey = readNextString();
+                if (currentKey == null) {
+                    return null;
                 }
-                return new BaseEntry<>(currentKey, value);
-            } else {
-                finish = middle - 1;
+                int comparison = currentKey.compareTo(key);
+                if (comparison < 0) {
+                    start = middle + 1;
+                } else if (comparison == 0) {
+                    String value = readNextString();
+                    if (value == null) {
+                        return new BaseEntry<>(currentKey, null);
+                    }
+                    return new BaseEntry<>(currentKey, value);
+                } else {
+                    finish = middle - 1;
+                }
+            } finally {
+                lock.unlock();
             }
         }
         return null;
@@ -55,20 +62,25 @@ public class DaoReader implements Closeable {
 
     public BaseEntry<String> readNextEntry() throws IOException {
         if (startReadIndex < offsets.length && startReadIndex != -1) {
-            reader.seek(offsets[startReadIndex]);
-            startReadIndex += 1;
-            String currentKey = readNextString();
-            if (currentKey == null) {
-                return null;
-            }
-            if (endReadFactor != null && currentKey.compareTo(endReadFactor) >= 0) {
-                return null;
-            } else {
-                String value = readNextString();
-                if (value == null) {
-                    return new BaseEntry<>(currentKey, null);
+            lock.lock();
+            try {
+                reader.seek(offsets[startReadIndex]);
+                startReadIndex += 1;
+                String currentKey = readNextString();
+                if (currentKey == null) {
+                    return null;
                 }
-                return new BaseEntry<>(currentKey, value);
+                if (endReadFactor != null && currentKey.compareTo(endReadFactor) >= 0) {
+                    return null;
+                } else {
+                    String value = readNextString();
+                    if (value == null) {
+                        return new BaseEntry<>(currentKey, null);
+                    }
+                    return new BaseEntry<>(currentKey, value);
+                }
+            } finally {
+                lock.unlock();
             }
         } else {
             return null;
@@ -84,22 +96,27 @@ public class DaoReader implements Closeable {
             if (middle >= offsets.length) {
                 return resultIndex;
             }
-            reader.seek(offsets[middle]);
-            String currentKey = readNextString();
-            if (currentKey == null) {
-                return -1;
-            }
-            int comparisonWithFrom = currentKey.compareTo(from);
-            if (comparisonWithFrom < 0) {
-                start = middle + 1;
-            } else if (comparisonWithFrom == 0) {
-                resultIndex = middle;
-                break;
-            } else {
-                finish = middle - 1;
-                if (to == null || currentKey.compareTo(to) < 0) {
-                    resultIndex = middle;
+            lock.lock();
+            try {
+                reader.seek(offsets[middle]);
+                String currentKey = readNextString();
+                if (currentKey == null) {
+                    return -1;
                 }
+                int comparisonWithFrom = currentKey.compareTo(from);
+                if (comparisonWithFrom < 0) {
+                    start = middle + 1;
+                } else if (comparisonWithFrom == 0) {
+                    resultIndex = middle;
+                    break;
+                } else {
+                    finish = middle - 1;
+                    if (to == null || currentKey.compareTo(to) < 0) {
+                        resultIndex = middle;
+                    }
+                }
+            } finally {
+                lock.unlock();
             }
         }
         return resultIndex;
