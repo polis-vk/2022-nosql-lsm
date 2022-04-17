@@ -48,12 +48,6 @@ final class SortedStringTable implements Closeable {
         Files.delete(table.dataFile.getParent());
     }
 
-    public static void destroyFiles(Path basePath) throws IOException {
-        Files.deleteIfExists(basePath.resolve(DATA_FILENAME));
-        Files.deleteIfExists(basePath.resolve(INDEX_FILENAME));
-        Files.delete(basePath);
-    }
-
     public SortedStringTable write(Collection<MemorySegmentEntry> entries) throws IOException {
         writeIndex(entries);
         dataSegment = MemorySegment.mapFile(

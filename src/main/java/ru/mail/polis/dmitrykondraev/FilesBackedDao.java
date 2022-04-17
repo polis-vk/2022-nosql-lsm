@@ -52,8 +52,10 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
                     .forEachOrdered(subDirectory -> sortedStringTables.add(SortedStringTable.of(subDirectory)));
         }
         if (Files.exists(compactDirTmp)) {
-            SortedStringTable.destroyFiles(compactDirTmp);
-            compact();
+            Files.deleteIfExists(compactDirTmp.resolve(SortedStringTable.DATA_FILENAME));
+            Files.deleteIfExists(compactDirTmp.resolve(SortedStringTable.INDEX_FILENAME));
+            Files.delete(compactDirTmp);
+            compactImpl();
             return;
         }
         if (Files.exists(compactDir)) {
@@ -114,6 +116,10 @@ public class FilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
 
     @Override
     public void compact() throws IOException {
+        compactImpl();
+    }
+
+    private void compactImpl() throws IOException {
         SortedStringTable.of(Files.createDirectory(compactDirTmp))
                 .write(all())
                 .close();
