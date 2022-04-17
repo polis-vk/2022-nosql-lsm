@@ -55,7 +55,7 @@ public class DaoWriter {
         }
     }
 
-    public void writeTmp(Iterator<BaseEntry<String>> iterator, int size) throws IOException {
+    public void writeDAOWithoutTombstones(Iterator<BaseEntry<String>> iterator, int size) throws IOException {
         try (DataOutputStream dataWriter = new DataOutputStream(
                 new BufferedOutputStream(
                         Files.newOutputStream(
