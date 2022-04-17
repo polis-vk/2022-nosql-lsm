@@ -42,6 +42,18 @@ final class SortedStringTable implements Closeable {
         );
     }
 
+    public static void destroyFiles(SortedStringTable table) throws IOException {
+        Files.delete(table.dataFile);
+        Files.delete(table.indexFile);
+        Files.delete(table.dataFile.getParent());
+    }
+
+    public static void destroyFiles(Path basePath) throws IOException {
+        Files.deleteIfExists(basePath.resolve(DATA_FILENAME));
+        Files.deleteIfExists(basePath.resolve(INDEX_FILENAME));
+        Files.delete(basePath);
+    }
+
     public SortedStringTable write(Collection<MemorySegmentEntry> entries) throws IOException {
         writeIndex(entries);
         dataSegment = MemorySegment.mapFile(
@@ -74,7 +86,7 @@ final class SortedStringTable implements Closeable {
      * @param first inclusive
      * @param last  exclusive
      * @return first index such that key of entry with that index is equal to key,
-     *         if no such index exists, result < 0, in that case use
+     * if no such index exists, result < 0, in that case use
      * {@link SortedStringTable#insertionPoint(int)} to recover insertion point
      */
     private int binarySearch(int first, int last, MemorySegment key) {
@@ -124,8 +136,9 @@ final class SortedStringTable implements Closeable {
 
     /**
      * Get single entry.
+     *
      * @return null if either indexFile or dataFile does not exist,
-     *         null if key does not exist in table
+     * null if key does not exist in table
      * @throws IOException if other I/O error occurs
      */
     public MemorySegmentEntry get(MemorySegment key) throws IOException {
