@@ -14,11 +14,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -65,14 +61,14 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
-        return get(from, to, storage.memTable, storage.readOnlyMemTable, ssTables);
+        return get(from, to, storage.getMemTable(), storage.getReadOnlyMemTable(), ssTables);
     }
 
     private Iterator<Entry<MemorySegment>> get(
             MemorySegment from,
             MemorySegment to,
-            ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> memTable,
-            ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> readOnlyMemTable,
+            ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> memTable,
+            ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> readOnlyMemTable,
             List<SSTable> tables) {
 
         Iterator<Entry<MemorySegment>> memory = Utils.fromMemory(from, to, memTable);
@@ -82,7 +78,6 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         PeekingIterator<Entry<MemorySegment>> merged = CustomIterators.mergeList(List.of(disc, readOnly, memory));
         return CustomIterators.skipTombstones(merged);
     }
-
 
     @Override
     public void compact() throws IOException {
@@ -132,13 +127,13 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
      * We flush only readOnlyTable.
      */
     private void performFlush() throws IOException {
-        if (storage.readOnlyMemTable.isEmpty()) {
+        if (storage.getReadOnlyMemTable().isEmpty()) {
             return;
         }
-        SSTable.Sizes sizes = Utils.getSizes(storage.readOnlyMemTable.values().iterator());
+        SSTable.Sizes sizes = Utils.getSizes(storage.getReadOnlyMemTable().values().iterator());
         SSTable table = writeSSTable(
                 nextOrdinaryTable(),
-                storage.readOnlyMemTable.values().iterator(),
+                storage.getReadOnlyMemTable().values().iterator(),
                 sizes.tableSize(),
                 sizes.indexSize()
         );
@@ -164,7 +159,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
                 logger.info("Program flush is rejected");
             }
         }
-        storage.memTable.put(entry.key(), entry);
+        storage.getMemTable().put(entry.key(), entry);
     }
 
     /**
@@ -245,9 +240,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            IllegalStateException exc = new IllegalStateException("Cant await termination");
-            exc.addSuppressed(e);
-            throw exc;
+            logger.error("Cant await termination", e);
         }
         try {
             semaphore.acquire(EXCLUSIVE_PERMISSION);
@@ -287,22 +280,4 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return CustomIterators.skipTombstones(new PeekingIterator<>(discIterator));
     }
 
-    private static class Storage {
-        private volatile ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> memTable = getNewMemTable();
-        private volatile ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> readOnlyMemTable = getNewMemTable();
-
-        private void beforeFlush() {
-            this.readOnlyMemTable = this.memTable;
-            this.memTable = getNewMemTable();
-        }
-
-        private void afterFlush() {
-            this.readOnlyMemTable = getNewMemTable();
-        }
-
-        private static ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> getNewMemTable() {
-            return new ConcurrentSkipListMap<>(Utils::compareMemorySegments);
-        }
-
-    }
 }

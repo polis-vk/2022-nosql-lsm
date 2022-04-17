@@ -14,8 +14,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.SortedMap;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentNavigableMap;
 
 public final class Utils {
 
@@ -136,7 +135,8 @@ public final class Utils {
         return source.substring(0, source.length() - suffix.length());
     }
 
-    public static Iterator<Entry<MemorySegment>> tablesRange(MemorySegment from, MemorySegment to, List<SSTable> tables) {
+    public static Iterator<Entry<MemorySegment>> tablesRange(
+            MemorySegment from, MemorySegment to, List<SSTable> tables) {
         List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(tables.size());
         for (SSTable table : tables) {
             iterators.add(table.range(from, to));
@@ -147,7 +147,7 @@ public final class Utils {
     public static Iterator<Entry<MemorySegment>> fromMemory(
             MemorySegment from,
             MemorySegment to,
-            ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> storage) {
+            ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage) {
 
         if (from == null && to == null) {
             return storage.values().iterator();
@@ -155,10 +155,10 @@ public final class Utils {
         return subMap(from, to, storage).values().iterator();
     }
 
-    public static SortedMap<MemorySegment, Entry<MemorySegment>> subMap(
+    public static ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> subMap(
             MemorySegment from,
             MemorySegment to,
-            ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> storage) {
+            ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage) {
 
         if (from == null) {
             return storage.headMap(to);

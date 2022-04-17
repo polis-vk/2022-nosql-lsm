@@ -77,8 +77,9 @@ public final class SSTable implements Closeable {
 
     private static int processFileName(Set<Path> compactedTables, Path path) {
         if (path.toString().endsWith(COMPACTED)) {
-            path = Path.of(Utils.removeSuffix(path.toString(), COMPACTED));
-            compactedTables.add(path);
+            Path removedSuffix = Path.of(Utils.removeSuffix(path.toString(), COMPACTED));
+            compactedTables.add(removedSuffix);
+            return getTableNum(removedSuffix);
         }
         return getTableNum(path);
     }
