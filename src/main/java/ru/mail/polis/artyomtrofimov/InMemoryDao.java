@@ -6,12 +6,12 @@ import ru.mail.polis.Entry;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -23,7 +23,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     private static final Random rnd = new Random();
     private final ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
     private final Path basePath;
-    private volatile boolean commit;
+    private volatile boolean commit = true;
     private final Deque<String> filesList = new ArrayDeque<>();
 
     public InMemoryDao(Config config) throws IOException {
@@ -54,7 +54,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         } else {
             dataIterator = data.subMap(start, to).values().iterator();
         }
-        List<PeekingIterator> iterators = new ArrayList<>();
+        ArrayList<PeekingIterator> iterators = new ArrayList<>(filesList.size() + 1);
         int priority = 0;
         iterators.add(new PeekingIterator(dataIterator, priority++));
         for (String file : filesList) {
@@ -91,8 +91,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     @Override
     public void upsert(Entry<String> entry) {
-        data.put(entry.key(), entry);
-        commit = false;
+            data.put(entry.key(), entry);
+            commit = false;
     }
 
     private void loadFilesList() throws IOException {
@@ -111,14 +111,10 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         if (commit) {
             return;
         }
-        String name;
-        do {
-            name = generateString();
-        } while (filesList.contains(name));
+        String name = getUniqueFileName();
         Path file = basePath.resolve(name + DATA_EXT);
         Path index = basePath.resolve(name + INDEX_EXT);
         filesList.addFirst(name);
-
         try (RandomAccessFile output = new RandomAccessFile(file.toString(), "rw");
              RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
              RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw")
@@ -126,22 +122,75 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             output.seek(0);
             output.writeInt(data.size());
             for (Entry<String> value : data.values()) {
-                String val = value.value();
                 indexOut.writeLong(output.getFilePointer());
-                if (val == null) {
-                    output.writeByte(-1);
-                    output.writeUTF(value.key());
-                } else {
-                    output.writeByte(1);
-                    output.writeUTF(value.key());
-                    output.writeUTF(val);
-                }
+                Utils.writeEntry(output, value);
             }
             allFilesOut.setLength(0);
-            while (!filesList.isEmpty()) {
-                allFilesOut.writeUTF(filesList.pollLast());
+            loadFilesList();
+            Iterator<String> filesListIterator = filesList.descendingIterator();
+            while (filesListIterator.hasNext()) {
+                allFilesOut.writeUTF(filesListIterator.next());
             }
+            commit = true;
+            data.clear();
         }
-        commit = true;
+    }
+
+    @Override
+    public void compact() throws IOException {
+        if (filesList.size() <= 1 && data.isEmpty()) {
+            return;
+        }
+        String name = getUniqueFileName();
+        Path file = basePath.resolve(name + DATA_EXT);
+        Path index = basePath.resolve(name + INDEX_EXT);
+        try (RandomAccessFile output = new RandomAccessFile(file.toString(), "rw");
+             RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
+             RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw")
+        ) {
+            Iterator<Entry<String>> iterator = all();
+            output.seek(Integer.BYTES);
+            output.writeInt(data.size());
+            int count = 0;
+            while (iterator.hasNext()) {
+                Entry<String> entry = iterator.next();
+                count++;
+                if (entry != null) {
+                    indexOut.writeLong(output.getFilePointer());
+                    Utils.writeEntry(output, entry);
+                }
+            }
+            output.seek(0);
+            output.writeInt(count);
+
+            allFilesOut.setLength(0);
+            allFilesOut.writeUTF(name);
+
+            Deque<String> filesListCopy = new ArrayDeque<>(filesList);
+            filesList.clear();
+            filesList.add(name);
+
+            IOException exception = null;
+            for (String fileToDelete : filesListCopy) {
+                try {
+                    Files.deleteIfExists(basePath.resolve(fileToDelete + DATA_EXT));
+                    Files.deleteIfExists(basePath.resolve(fileToDelete + INDEX_EXT));
+                } catch (IOException e) {
+                    exception = e;
+                }
+            }
+            if (exception != null) {
+                throw exception;
+            }
+            commit = true;
+        }
+    }
+
+    private String getUniqueFileName() {
+        String name;
+        do {
+            name = generateString();
+        } while (filesList.contains(name));
+        return name;
     }
 }
