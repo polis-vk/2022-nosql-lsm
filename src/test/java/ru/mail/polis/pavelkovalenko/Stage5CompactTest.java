@@ -18,7 +18,7 @@ public class Stage5CompactTest extends BaseTest {
         List<Entry<String>> entries = entries("k", "v", count);
 
         for (int i = 0; i < 3; ++i) {
-            runInParallel(nThreads, count, value -> dao.upsert(entries.get(value))).close();
+            runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
             dao.flush();
         }
 
@@ -40,7 +40,6 @@ public class Stage5CompactTest extends BaseTest {
     void emptyCompactFromDisk(Dao<String, Entry<String>> dao) throws Exception {
         int count = 20_000;
         final int nThreads = 100;
-        List<Entry<String>> entries = entries("k", "v", count);
 
         runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
 
@@ -56,9 +55,8 @@ public class Stage5CompactTest extends BaseTest {
     void manyCompacts(Dao<String, Entry<String>> dao) throws Exception {
         int count = 10_000;
         final int nThreads = 100;
-        List<Entry<String>> entries = entries("k", "v", count);
 
-        runInParallel(nThreads, count, value -> dao.upsert(entries.get(value))).close();
+        runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
         dao.flush();
 
         long millisElapsed = Timer.elapseMs(() -> runInParallel(nThreads, task -> dao.compact()));

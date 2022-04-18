@@ -15,9 +15,8 @@ public class Stage5CloseTest extends BaseTest {
     void blockingClose(Dao<String, Entry<String>> dao) throws Exception {
         int count = 40_000;
         final int nThreads = 100;
-        List<Entry<String>> entries = entries("k", "v", count);
 
-        runInParallel(nThreads, count, value -> dao.upsert(entries.get(value))).close();
+        runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
         dao.flush();
 
         long millisElapsed = Timer.elapseMs(dao::close);
