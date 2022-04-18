@@ -14,7 +14,7 @@ public class Stage5Test extends BaseTest {
 
     @DaoTest(stage = 5)
     void asyncFlushTest(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 40000;
+        int count = 20000;
         List<Entry<String>> entries1 = entries("k", "v", count);
         List<Entry<String>> entries2 = entries("q", "w", count);
         entries1.forEach(dao::upsert);

@@ -52,7 +52,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     public static final String COMPACTION_FILE_NAME = "compaction";
     public static final String DATA_FILE_EXTENSION = ".txt";
     public static final String TEMP_FILE_EXTENSION = ".tmp";
-    public static final AtomicInteger tmpCounter = new AtomicInteger(0);
+    private final AtomicInteger tmpCounter = new AtomicInteger(0);
     private final AtomicInteger currentFileNumber = new AtomicInteger(0);
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final AtomicBoolean isClosed = new AtomicBoolean(false);
@@ -61,7 +61,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     private final ConcurrentSkipListMap<Path, FileInputStream> filesMap = new ConcurrentSkipListMap<>(
             Comparator.comparingInt(this::getFileNumber)
     );
-    private final ExecutorService flushExecutor = Executors.newCachedThreadPool();
+    private final ExecutorService flushExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService compactionExecutor = Executors.newSingleThreadExecutor();
 
     public PersistenceRangeDao(Config config) throws IOException {
@@ -96,94 +96,50 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         checkNotClosed();
         lock.readLock().lock();
         try {
-            if (!memStorage.firstTableFull() && !memStorage.firstTableOnFlush()) {
+            if (!memStorage.firstTableOnFlush()) {
                 memStorage.upsertIfFitsFirstTable(entry);
-            }
-            if (memStorage.firstTableFull() && memStorage.firstTableNotOnFlushAndSetTrue()) {
-                flushFirstMemTable();
-            }
-            if (memStorage.firstTableOnFlush()) {
-                if (memStorage.secondTableOnFlush()) {
-                    memStorage.rejectUpsert();
+                if (memStorage.firstTableFull()) {
+                    flush();
+                    memStorage.upsertToSecondTable(entry);
                 }
-                memStorage.upsertIfFitsSecondTable(entry);
-                if (memStorage.secondTableIsFull()) {
-                    memStorage.rejectUpsert();
-                }
+            } else {
+                memStorage.upsertToSecondTable(entry);
             }
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private void flushFirstMemTable() {
-        //autoflush
-        flushExecutor.execute(() -> {
-            try {
-                Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
-                DaoUtils.writeToFile(tempMemoryFilePath, firstTableIterator());
-                Path dataFilePath = generateNextFilePath();
-                Files.move(tempMemoryFilePath, dataFilePath);
-                FileInputStream inputStream = new FileInputStream(dataFilePath.toString());
-                lock.writeLock().lock();
-                try {
-                    filesMap.put(dataFilePath, inputStream);
-                    memStorage.clearFirstTable();
-                } finally {
-                    lock.writeLock().unlock();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-                throw new RuntimeException("Flush first table failed", e);
-            }
-        });
-    }
-
     @Override
-    public void flush() throws IOException {
-        //ручной flush
+    public void flush() {
+        // Автоматический flush записывает первую таблицу на диск и upsert идет во вторую.
+        // Ручной flush: если вторая таблица пустая, то аналогичен автоматическому
+        // если вторая не пустая, значит первая уже на авто-flush,
+        // так как одновременно выполняется один flush,
+        // то в таком случае будет ожидание выполнения авто-flush,
+        // вторая таблица на момент вызова ручного flush станет первой и запишется на диск
+        // ротация таблиц всегда происходит под write lock.
         checkNotClosed();
-        if (memStorage.isEmpty()) {
-            return;
-        }
-        if (memStorage.isSecondTableEmpty()) {
-            if (memStorage.firstTableNotOnFlushAndSetTrue()) {
-                flushFirstMemTable();
-            }
-            return;
-        }
-        flushExecutor.execute(() -> {
-            try {
-                Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
-                boolean notSecondOnFlush = memStorage.secondTableNotOnFlushAndSetTrue();
-                boolean isFlushingBothTables = memStorage.firstTableNotOnFlushAndSetTrue() && notSecondOnFlush;
-                if (isFlushingBothTables) {
-                    DaoUtils.writeToFile(tempMemoryFilePath, inMemoryDataIterator());
-                } else if (notSecondOnFlush) {
-                    DaoUtils.writeToFile(tempMemoryFilePath, secondTableIterator());
-                } else {
-                    return; //Обе таблицы уже flush-ся, в это время все новые upsert-ы отклоняются
-                }
-                Path dataFilePath = generateNextFilePath();
-                Files.move(tempMemoryFilePath, dataFilePath);
-                FileInputStream inputStream = new FileInputStream(dataFilePath.toString());
-                lock.writeLock().lock();
+        if (memStorage.firstTableNotOnFlushAndSetTrue()) {
+            flushExecutor.execute(() -> {
                 try {
+                    Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
+                    DaoUtils.writeToFile(tempMemoryFilePath, firstTableIterator());
+                    Path dataFilePath = generateNextFilePath();
                     Files.move(tempMemoryFilePath, dataFilePath);
-                    filesMap.put(dataFilePath, inputStream);
-                    if (isFlushingBothTables) {
-                        memStorage.clear();
-                    } else {
-                        memStorage.clearSecondTable();
+                    FileInputStream inputStream = new FileInputStream(dataFilePath.toString());
+                    lock.writeLock().lock();
+                    try {
+                        filesMap.put(dataFilePath, inputStream);
+                        memStorage.clearFirstTable();
+                    } finally {
+                        lock.writeLock().unlock();
                     }
-                } finally {
-                    lock.writeLock().unlock();
+                } catch (IOException e) {
+                    throw new RuntimeException("Flush first table failed", e);
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
-                throw new RuntimeException("Flush fail", e);
-            }
-        });
+            });
+        }
     }
 
     @Override
@@ -265,15 +221,6 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         lock.readLock().lock();
         try {
             return memStorage.firstTableIterator(null, null);
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    private Iterator<BaseEntry<String>> secondTableIterator() {
-        lock.readLock().lock();
-        try {
-            return memStorage.secondTableIterator(null, null);
         } finally {
             lock.readLock().unlock();
         }

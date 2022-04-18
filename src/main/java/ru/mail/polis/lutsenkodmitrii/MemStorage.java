@@ -24,8 +24,11 @@ public class MemStorage {
         memTables.get(0).upsertIfFits(entry);
     }
 
-    public void upsertIfFitsSecondTable(BaseEntry<String> entry) {
+    public void upsertToSecondTable(BaseEntry<String> entry) {
         memTables.get(1).upsertIfFits(entry);
+        if (secondTableIsFull()) {
+            rejectUpsert();
+        }
     }
 
     public boolean firstTableFull() {
@@ -40,16 +43,8 @@ public class MemStorage {
         return memTables.get(0).onFlush().get();
     }
 
-    public boolean secondTableOnFlush() {
-        return memTables.get(1).onFlush().get();
-    }
-
     public boolean firstTableNotOnFlushAndSetTrue() {
         return !memTables.get(0).onFlush().getAndSet(true);
-    }
-
-    public boolean secondTableNotOnFlushAndSetTrue() {
-        return !memTables.get(1).onFlush().getAndSet(true);
     }
 
     public void clearFirstTable() {
@@ -71,10 +66,6 @@ public class MemStorage {
 
     public boolean isEmpty() {
         return memTables.get(0).isEmpty() && memTables.get(1).isEmpty();
-    }
-
-    public boolean isSecondTableEmpty() {
-        return memTables.get(1).isEmpty();
     }
 
     public void rejectUpsert() {
