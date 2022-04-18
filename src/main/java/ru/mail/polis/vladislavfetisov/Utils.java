@@ -47,6 +47,7 @@ public final class Utils {
     public static long binarySearch(MemorySegment key,
                                     MemorySegment mapFile,
                                     MemorySegment mapIndex) {
+
         long l = 0;
         long rightBound = mapIndex.byteSize() / Long.BYTES;
         long r = rightBound - 1;
