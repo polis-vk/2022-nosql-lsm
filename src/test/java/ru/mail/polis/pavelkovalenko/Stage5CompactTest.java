@@ -1,12 +1,10 @@
 package ru.mail.polis.pavelkovalenko;
 
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.BaseTest;
 import ru.mail.polis.Dao;
 import ru.mail.polis.DaoTest;
 import ru.mail.polis.Entry;
 
-import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -44,7 +42,7 @@ public class Stage5CompactTest extends BaseTest {
         final int nThreads = 100;
         List<Entry<String>> entries = entries("k", "v", count);
 
-        runInParallel(nThreads, count, value -> dao.upsert(entries.get(value))).close();
+        runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
 
         long millisElapsed = Timer.elapseMs(() -> {
             for (int i = 0; i < 5_000; ++i) {
@@ -52,10 +50,6 @@ public class Stage5CompactTest extends BaseTest {
             }
         });
         assertTrue(millisElapsed < 50);
-
-        Thread.sleep(500);
-        runInParallel(nThreads, count, value -> dao.upsert(new BaseEntry<>(entries.get(value).key(), null))).close();
-        assertSame(dao.all(), Collections.emptyList());
     }
 
     @DaoTest(stage = 5)
