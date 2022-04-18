@@ -96,14 +96,14 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         checkNotClosed();
         lock.readLock().lock();
         try {
-            if (!memStorage.firstTableOnFlush()) {
+            if (memStorage.firstTableOnFlush()) {
+                memStorage.upsertToSecondTable(entry);
+            } else {
                 memStorage.upsertIfFitsFirstTable(entry);
                 if (memStorage.firstTableFull()) {
                     flush();
                     memStorage.upsertToSecondTable(entry);
                 }
-            } else {
-                memStorage.upsertToSecondTable(entry);
             }
         } finally {
             lock.readLock().unlock();
