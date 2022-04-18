@@ -78,8 +78,14 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         Iterator<Entry<MemorySegment>> memory = Utils.fromMemory(from, to, memTable);
         Iterator<Entry<MemorySegment>> readOnly = Utils.fromMemory(from, to, readOnlyMemTable);
         Iterator<Entry<MemorySegment>> disc = Utils.tablesRange(from, to, tables);
-
-        PeekingIterator<Entry<MemorySegment>> merged = CustomIterators.mergeList(List.of(disc, readOnly, memory));
+        PeekingIterator<Entry<MemorySegment>> merged = CustomIterators.mergeTwo(
+                new PeekingIterator<>(readOnly),
+                new PeekingIterator<>(memory));
+        if (!tables.isEmpty()) {
+            merged = CustomIterators.mergeTwo(
+                    new PeekingIterator<>(disc),
+                    merged);
+        }
         return CustomIterators.skipTombstones(merged);
     }
 
@@ -88,7 +94,6 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         service.execute(() -> {
             synchronized (this) { //only one compact per time
                 try {
-                    logger.info("compact");
                     performCompact();
                 } catch (IOException | InterruptedException e) {
                     logger.error("Compact is broken", e);
