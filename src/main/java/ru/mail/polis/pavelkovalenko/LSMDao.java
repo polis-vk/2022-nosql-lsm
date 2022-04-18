@@ -138,7 +138,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             }
 
             if (!sstablesForWrite.peek().isEmpty()) {
-                service.submit(runnables.FLUSH).get();
+                service.submit(runnables.FLUSH).get(); // ДАТЬ ПИЛЮЛЮ, сервис уже ничего не принимает
             }
 
             sstablesForWrite.clear();
