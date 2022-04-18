@@ -28,6 +28,10 @@ import java.util.stream.Stream;
  */
 
 public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
+    private static final String COMPACT_NAME = "compacted";
+    private static final String TABLE_PREFIX = "table";
+    private static final String TMP_SUFFIX = "-temp";
+
     private final Path basePath;
     private final Path compactDir;
     private final Path compactDirTmp;
@@ -37,11 +41,8 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
     private final Deque<SortedStringTable> sortedStringTables = new ArrayDeque<>();
     private ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map = newMemoryTable();
 
-    private static final String COMPACT_NAME = "compacted";
-    private static final String TABLE_PREFIX = "table";
-    private static final String TMP_SUFFIX = "-temp";
-
     public ConcurrentFilesBackedDao(Config config) throws IOException {
+        long USE_ME_PLEASE = config.flushThresholdBytes();
         basePath = config.basePath();
         compactDirTmp = basePath.resolve(COMPACT_NAME + TMP_SUFFIX);
         compactDir = basePath.resolve(COMPACT_NAME);
