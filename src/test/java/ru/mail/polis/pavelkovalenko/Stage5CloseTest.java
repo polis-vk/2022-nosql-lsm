@@ -7,9 +7,9 @@ import ru.mail.polis.Entry;
 
 import java.util.List;
 
-public class Stage5Close extends BaseTest {
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-    private final Timer timer = Timer.INSTANSE;
+public class Stage5CloseTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void blockingClose(Dao<String, Entry<String>> dao) throws Exception {
@@ -20,10 +20,8 @@ public class Stage5Close extends BaseTest {
         runInParallel(nThreads, count, value -> dao.upsert(entries.get(value))).close();
         dao.flush();
 
-        timer.set();
-        dao.close();
-        long millisElapsed = timer.elapse();
-        assert(millisElapsed > 500);
+        long millisElapsed = Timer.elapseMs(dao::close);
+        assertTrue(millisElapsed > 500);
     }
 
 }

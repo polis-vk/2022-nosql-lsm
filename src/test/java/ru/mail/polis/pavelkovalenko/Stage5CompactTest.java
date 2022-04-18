@@ -9,9 +9,9 @@ import ru.mail.polis.Entry;
 import java.util.Collections;
 import java.util.List;
 
-public class Stage5Compact extends BaseTest {
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-    private final Timer timer = Timer.INSTANSE;
+public class Stage5CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void backgroundCompact(Dao<String, Entry<String>> dao) throws Exception {
@@ -24,22 +24,18 @@ public class Stage5Compact extends BaseTest {
             dao.flush();
         }
 
-        timer.set();
-        dao.compact();
-        long millisElapsed = timer.elapse();
-        assert (millisElapsed < 50);
+        long millisElapsed = Timer.elapseMs(dao::compact);
+        assertTrue(millisElapsed < 50);
 
-        timer.set();
-        assertSame(dao.all(), entries);
-        millisElapsed = timer.elapse();
-        assert(millisElapsed < 1_000);
+        millisElapsed = Timer.elapseMs(() -> assertSame(dao.all(), entries));
+        assertTrue(millisElapsed < 1_000);
 
         Entry<String> newEntry = entryAt(count + 1);
-        timer.set();
-        dao.upsert(newEntry);
-        assertSame(dao.get(newEntry.key()), newEntry);
-        millisElapsed = timer.elapse();
-        assert (millisElapsed < 50);
+        millisElapsed = Timer.elapseMs(() -> {
+            dao.upsert(newEntry);
+            assertSame(dao.get(newEntry.key()), newEntry);
+        });
+        assertTrue(millisElapsed < 50);
     }
 
     @DaoTest(stage = 5)
@@ -50,12 +46,12 @@ public class Stage5Compact extends BaseTest {
 
         runInParallel(nThreads, count, value -> dao.upsert(entries.get(value))).close();
 
-        timer.set();
-        for (int i = 0; i < 5_000; ++i) {
-            dao.compact();
-        }
-        long millisElapsed = timer.elapse();
-        assert(millisElapsed < 50);
+        long millisElapsed = Timer.elapseMs(() -> {
+            for (int i = 0; i < 5_000; ++i) {
+                dao.compact();
+            }
+        });
+        assertTrue(millisElapsed < 50);
 
         Thread.sleep(500);
         runInParallel(nThreads, count, value -> dao.upsert(new BaseEntry<>(entries.get(value).key(), null))).close();
@@ -71,10 +67,8 @@ public class Stage5Compact extends BaseTest {
         runInParallel(nThreads, count, value -> dao.upsert(entries.get(value))).close();
         dao.flush();
 
-        timer.set();
-        runInParallel(nThreads, task -> dao.compact());
-        long millisElapsed = timer.elapse();
-        assert(millisElapsed < 50 + nThreads*3);
+        long millisElapsed = Timer.elapseMs(() -> runInParallel(nThreads, task -> dao.compact()));
+        assertTrue(millisElapsed < 50 + nThreads*3);
     }
 
 }

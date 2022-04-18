@@ -7,10 +7,9 @@ import ru.mail.polis.Entry;
 
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class Stage5Flush extends BaseTest {
-
-    private final Timer timer = Timer.INSTANSE;
+public class Stage5FlushTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void backgroundFlush(Dao<String, Entry<String>> dao) throws Exception {
@@ -19,27 +18,23 @@ public class Stage5Flush extends BaseTest {
 
         runInParallel(100, count, value -> dao.upsert(entries.get(value))).close();
 
-        timer.set();
-        dao.flush();
-        long millisElapsed = timer.elapse();
-        assert(millisElapsed < 50);
+        long millisElapsed = Timer.elapseMs(dao::flush);
+        assertTrue(millisElapsed < 50);
 
-        timer.set();
-        assertSame(dao.all(), entries);
-        millisElapsed = timer.elapse();
-        assert(millisElapsed < 1_000);
+        millisElapsed = Timer.elapseMs(() -> assertSame(dao.all(), entries));
+        assertTrue(millisElapsed < 1_000);
 
         Entry<String> newEntry = entryAt(count + 1);
-        timer.set();
-        dao.upsert(newEntry);
-        assertSame(dao.get(newEntry.key()), newEntry);
-        millisElapsed = timer.elapse();
-        assert (millisElapsed < 50);
+        millisElapsed = Timer.elapseMs(() -> {
+            dao.upsert(newEntry);
+            assertSame(dao.get(newEntry.key()), newEntry);
+        });
+        assertTrue(millisElapsed < 50);
     }
 
     @DaoTest(stage = 5)
     void flushOverfill(Dao<String, Entry<String>> dao) {
-        int count = 50_000; // > 2 MB
+        int count = 1_000_000;
         List<Entry<String>> entries = entries("k", "v", count);
 
         assertThrows(Exception.class,
@@ -54,10 +49,8 @@ public class Stage5Flush extends BaseTest {
 
         runInParallel(nThreads, count, value -> dao.upsert(entries.get(value))).close();
 
-        timer.set();
-        runInParallel(nThreads, task -> dao.flush()).close();
-        long millisElapsed = timer.elapse();
-        assert(millisElapsed < 50 + nThreads*3);
+        long millisElapsed = Timer.elapseMs(() -> runInParallel(nThreads, task -> dao.flush()).close());
+        assertTrue(millisElapsed < 50 + nThreads*3);
     }
 
 }
