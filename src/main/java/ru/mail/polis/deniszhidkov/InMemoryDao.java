@@ -25,8 +25,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private static final String DATA_FILE_NAME = "storage";
     private static final String OFFSETS_FILE_NAME = "offsets";
-    private static final String TMP_FILE_NAME = "tmp";
-    private static final String COMPACTED_QUALIFIER = "_compacted_";
+    private static final String TMP_QUALIFIER = "tmp_";
+    private static final String COMPACTED_QUALIFIER = "compacted_";
     private static final String FILE_EXTENSION = ".txt";
     private final ConcurrentNavigableMap<String, BaseEntry<String>> storage = new ConcurrentSkipListMap<>();
     private final List<DaoReader> readers;
@@ -37,13 +37,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     public InMemoryDao(Config config) throws IOException {
         this.directoryPath = config.basePath();
-        finishCompactIfNecessary();
+        finishCompact();
         this.filesCounter = validateDAOFiles();
         this.readers = initDaoReaders();
-        this.writer = new DaoWriter(
-                directoryPath.resolve(DATA_FILE_NAME + filesCounter + FILE_EXTENSION),
-                directoryPath.resolve(OFFSETS_FILE_NAME + filesCounter + FILE_EXTENSION)
-        );
+        this.writer = new DaoWriter(getStoragePath(filesCounter), getOffsetsPath(filesCounter));
     }
 
     @Override
@@ -108,11 +105,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         lock.writeLock().lock();
         try {
             writer.writeDAO(storage);
+            readers.add(0, new DaoReader(getStoragePath(filesCounter), getOffsetsPath(filesCounter)));
             filesCounter++;
-            writer = new DaoWriter(
-                    directoryPath.resolve(DATA_FILE_NAME + filesCounter + FILE_EXTENSION),
-                    directoryPath.resolve(OFFSETS_FILE_NAME + filesCounter + FILE_EXTENSION)
-            );
+            writer = new DaoWriter(getStoragePath(filesCounter), getOffsetsPath(filesCounter));
             storage.clear();
         } finally {
             lock.writeLock().unlock();
@@ -121,7 +116,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void compact() throws IOException {
-        if (readers.size() <= 1 && storage.isEmpty()) {
+        if (readers.size() <= 1 && storage.isEmpty() ) {
+            return;
+        } else if (readers.isEmpty()) {
+            flush();
             return;
         }
         flush(); // Флашим данные, чтобы не потерять при падении
@@ -134,35 +132,18 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 allData.next();
             }
             allData = all();
-            Path pathToTmpDataFile = directoryPath.resolve(TMP_FILE_NAME + DATA_FILE_NAME + FILE_EXTENSION);
-            Path pathToTmpOffsetsFile = directoryPath.resolve(TMP_FILE_NAME + OFFSETS_FILE_NAME + FILE_EXTENSION);
-            DaoWriter tmpWriter = new DaoWriter(
-                    pathToTmpDataFile,
-                    pathToTmpOffsetsFile
-            );
+            Path pathToTmpDataFile = getStoragePath(TMP_QUALIFIER);
+            Path pathToTmpOffsetsFile = getOffsetsPath(TMP_QUALIFIER);
+
+            DaoWriter tmpWriter = new DaoWriter(pathToTmpDataFile, pathToTmpOffsetsFile);
             tmpWriter.writeDAOWithoutTombstones(allData, allDataSize);
-            Files.move(
-                    pathToTmpDataFile,
-                    directoryPath.resolve(COMPACTED_QUALIFIER + DATA_FILE_NAME + FILE_EXTENSION),
-                    StandardCopyOption.ATOMIC_MOVE
-            );
-            Files.move(
-                    pathToTmpOffsetsFile,
-                    directoryPath.resolve(COMPACTED_QUALIFIER + OFFSETS_FILE_NAME + FILE_EXTENSION),
-                    StandardCopyOption.ATOMIC_MOVE
-            );
+            /* Если есть хотя бы один compacted файл, значит все данные были записаны.
+            *  До этого не будем учитывать tmp файлы при восстановлении. */
+            Files.move(pathToTmpDataFile, getStoragePath(COMPACTED_QUALIFIER), StandardCopyOption.ATOMIC_MOVE);
+            Files.move(pathToTmpOffsetsFile, getOffsetsPath(COMPACTED_QUALIFIER), StandardCopyOption.ATOMIC_MOVE);
+
             closeReaders();
-            removeOldFiles();
-            Files.move(
-                    directoryPath.resolve(COMPACTED_QUALIFIER + DATA_FILE_NAME + FILE_EXTENSION),
-                    directoryPath.resolve(DATA_FILE_NAME + 0 + FILE_EXTENSION),
-                    StandardCopyOption.ATOMIC_MOVE
-            );
-            Files.move(
-                    directoryPath.resolve(COMPACTED_QUALIFIER + OFFSETS_FILE_NAME + FILE_EXTENSION),
-                    directoryPath.resolve(OFFSETS_FILE_NAME + 0 + FILE_EXTENSION),
-                    StandardCopyOption.ATOMIC_MOVE
-            );
+            finishCompact();
         } finally {
             lock.writeLock().unlock();
         }
@@ -172,6 +153,62 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     public void close() throws IOException {
         flush();
         closeReaders();
+    }
+
+    private void finishCompact() throws IOException {
+        Path pathToCompactedDataFile = getStoragePath(COMPACTED_QUALIFIER);
+        Path pathToCompactedOffsetsFile = getOffsetsPath(COMPACTED_QUALIFIER);
+
+        boolean isDataCompacted = Files.exists(pathToCompactedDataFile);
+        boolean isOffsetsCompacted = Files.exists(pathToCompactedOffsetsFile);
+        /* Если нет ни одного compacted файла, значит либо данные уже compacted, либо упали, не записав всех данных. */
+        if (!isDataCompacted && !isOffsetsCompacted) {
+            return;
+        }
+        /* Если только offsets файл compacted, то в соответствии с последовательностью на строках 185-186 значит,
+        *  что мы упали между переводом файла storage и файла offsets из compacted в нормальное состояние */
+        if (!isDataCompacted) {
+            Files.move(pathToCompactedOffsetsFile, getOffsetsPath(0), StandardCopyOption.ATOMIC_MOVE);
+            return;
+        }
+        Path pathToTmpOffsetsFile = getOffsetsPath(TMP_QUALIFIER);
+        /* Если data файл compacted и offsets файл не compacted, значит, что не успели перевести файл offsets из tmp в
+        *  compacted. При этом запись полностью прошла в соответствии с последовательностью на строках 144-145 */
+        if (Files.exists(pathToTmpOffsetsFile)) {
+            Files.move(pathToTmpOffsetsFile, pathToCompactedOffsetsFile, StandardCopyOption.ATOMIC_MOVE);
+        }
+        /* Код на строках 184-187 выполниться и в том случае, если мы зайдём в данный метод из метода compact, поскольку
+        *  в таком случае у нас оба файла будут compacted. */
+        removeOldFiles();
+        Files.move(pathToCompactedDataFile, getStoragePath(0), StandardCopyOption.ATOMIC_MOVE);
+        Files.move(pathToCompactedOffsetsFile, getOffsetsPath(0), StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    private void removeOldFiles() throws IOException {
+        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directoryPath)) {
+            for (Path file : directoryStream) {
+                String fileName = file.getFileName().toString();
+                if (fileName.startsWith(DATA_FILE_NAME) || fileName.startsWith(OFFSETS_FILE_NAME)) {
+                    Files.delete(file);
+                }
+            }
+        }
+    }
+
+    private Path getStoragePath(int index) {
+        return directoryPath.resolve(DATA_FILE_NAME + index + FILE_EXTENSION);
+    }
+
+    private Path getOffsetsPath(int index) {
+        return directoryPath.resolve(OFFSETS_FILE_NAME + index + FILE_EXTENSION);
+    }
+
+    private Path getStoragePath(String qualifier) {
+        return directoryPath.resolve(qualifier + DATA_FILE_NAME + FILE_EXTENSION);
+    }
+
+    private Path getOffsetsPath(String qualifier) {
+        return directoryPath.resolve(qualifier + OFFSETS_FILE_NAME + FILE_EXTENSION);
     }
 
     private int validateDAOFiles() throws IOException {
@@ -194,7 +231,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             throw new IllegalStateException("Number of storages and offsets didn't match");
         }
         for (int i = 0; i < numberOfStorages; i++) {
-            if (!Files.exists(directoryPath.resolve(OFFSETS_FILE_NAME + i + FILE_EXTENSION))) {
+            if (!Files.exists(getOffsetsPath(i))) {
                 throw new IllegalStateException("There is no offsets file for storage");
             }
         }
@@ -204,10 +241,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private List<DaoReader> initDaoReaders() throws IOException {
         List<DaoReader> resultList = new ArrayList<>();
         for (int i = filesCounter - 1; i >= 0; i--) {
-            resultList.add(new DaoReader(
-                    directoryPath.resolve(DATA_FILE_NAME + i + FILE_EXTENSION),
-                    directoryPath.resolve(OFFSETS_FILE_NAME + i + FILE_EXTENSION)
-            ));
+            resultList.add(new DaoReader(getStoragePath(i), getOffsetsPath(i)));
         }
         return resultList;
     }
@@ -223,23 +257,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return new PriorityPeekIterator(storage.subMap(from, to).values().iterator(), 0);
         }
     }
-
-    private void finishCompactIfNecessary() throws IOException {
-
-    }
-
-
-    private void removeOldFiles() throws IOException {
-        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directoryPath)) {
-            for (Path file : directoryStream) {
-                String fileName = file.getFileName().toString();
-                if (fileName.startsWith(DATA_FILE_NAME) || fileName.startsWith(OFFSETS_FILE_NAME)) {
-                    Files.delete(file);
-                }
-            }
-        }
-    }
-
 
     private void closeReaders() throws IOException {
         for (DaoReader reader : readers) {
