@@ -8,16 +8,7 @@ import java.util.PriorityQueue;
 import java.util.Queue;
 
 public class MergeIterator implements Iterator<Entry<String>> {
-    private final Queue<PeekingIterator> queue = new PriorityQueue<>((l, r) -> {
-        if (l.hasNext() && r.hasNext()) {
-            int comparing = l.peek().key().compareTo(r.peek().key());
-            if (comparing == 0) {
-                return Integer.compare(l.getPriority(), r.getPriority());
-            }
-            return comparing;
-        }
-        return l.hasNext() ? -1 : 1;
-    });
+    private final Queue<PeekingIterator> queue = new PriorityQueue<>(PeekingIteratorComparator.INSTANCE);
 
     public MergeIterator(List<PeekingIterator> iterators) {
         queue.addAll(iterators);
