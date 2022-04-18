@@ -7,7 +7,6 @@ import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,10 +32,8 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
     public ConfigVisitor(Config config, AtomicInteger sstablesSize, Serializer serializer) {
         this.sstablesSize = sstablesSize;
         this.serializer = serializer;
-        this.dataPathToBeSet = config.basePath()
-                .resolve(Utils.getDataFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
-        this.indexesPathToBeSet = config.basePath()
-                .resolve(Utils.getIndexesFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
+        this.dataPathToBeSet = config.basePath().resolve(Utils.COMPACT_DATA_FILENAME_TO_BE_SET);
+        this.indexesPathToBeSet = config.basePath().resolve(Utils.COMPACT_INDEXES_FILENAME_TO_BE_SET);
     }
 
     @Override
@@ -95,7 +92,7 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
 
         // It is guaranteed that this.compactedIndexesPath != null
         // We have to check only Meta's success
-        if (!serializer.hasFinishedMeta(new RandomAccessFile(this.compactedDataPath.toString(), "r"))) {
+        if (!serializer.hasFinishedMeta(this.compactedDataPath)) {
             Files.delete(this.compactedDataPath);
             Files.delete(this.compactedIndexesPath);
             return false;
@@ -136,9 +133,7 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
     private void deleteEmptyOrUnfinishedFiles(Iterator<Path> files) throws IOException {
         while (files.hasNext()) {
             Path file = files.next();
-            RandomAccessFile raf = new RandomAccessFile(file.toString(), "r");
-            if (raf.length() == 0 || !serializer.hasFinishedMeta(raf)) {
-                raf.close();
+            if (!serializer.hasFinishedMeta(file)) {
                 Files.delete(file);
             }
         }

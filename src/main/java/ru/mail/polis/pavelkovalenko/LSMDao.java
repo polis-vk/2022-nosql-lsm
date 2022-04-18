@@ -6,25 +6,27 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.aliases.SSTable;
 import ru.mail.polis.pavelkovalenko.iterators.MergeIterator;
 import ru.mail.polis.pavelkovalenko.utils.Runnables;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
 import ru.mail.polis.pavelkovalenko.visitors.ConfigVisitor;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
-import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.Queue;
+import java.util.List;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
@@ -32,14 +34,15 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     private final int N_MEMORY_SSTABLES = 2;
     private final short TIMEOUT = Short.MAX_VALUE >>> 7;
     private final BlockingQueue<SSTable> sstablesForWrite = new LinkedBlockingQueue<>(N_MEMORY_SSTABLES);
-    private final BlockingQueue<SSTable> sstablesForFlush = new LinkedBlockingQueue<>(N_MEMORY_SSTABLES);
+    private final BlockingDeque<SSTable> sstablesForFlush = new LinkedBlockingDeque<>(N_MEMORY_SSTABLES);
     private final ReadWriteLock rwlock = new ReentrantReadWriteLock();
+    private final Lock interThreadedLock = new ReentrantLock();
     private final ExecutorService service = Executors.newCachedThreadPool();
     private final Runnables runnables;
 
-    private AtomicInteger sstablesSize = new AtomicInteger(0);
     private final Config config;
     private final Serializer serializer;
+    private AtomicInteger sstablesSize = new AtomicInteger(0);
 
     private long curBytesForEntries;
 
@@ -52,17 +55,26 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             sstablesForWrite.add(new SSTable());
         }
 
-        runnables = new Runnables(config, sstablesSize, serializer, rwlock, sstablesForWrite, sstablesForFlush);
+        runnables = new Runnables(config, sstablesSize, serializer, interThreadedLock, sstablesForWrite, sstablesForFlush);
     }
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
         rwlock.readLock().lock();
+        interThreadedLock.lock();
         try {
-            return new MergeIterator(from, to, serializer, memorySSTables.peek(), sstablesSize.get());
+            List<SSTable> memorySSTables = new ArrayList<>(sstablesForWrite.size() + sstablesForFlush.size());
+            memorySSTables.addAll(sstablesForWrite);
+            // The newest SSTables to be flushed is the most priority for us
+            Iterator<SSTable> sstablesForFlushIterator = sstablesForFlush.descendingIterator();
+            while (sstablesForFlushIterator.hasNext()) {
+                memorySSTables.add(sstablesForFlushIterator.next());
+            }
+            return new MergeIterator(from, to, serializer, memorySSTables, sstablesSize);
         } catch (ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
         } finally {
+            interThreadedLock.unlock();
             rwlock.readLock().unlock();
         }
     }
@@ -70,6 +82,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     @Override
     public void upsert(Entry<ByteBuffer> entry) {
         rwlock.writeLock().lock();
+        interThreadedLock.lock();
         try {
             if (curBytesForEntries >= config.flushThresholdBytes()) {
                 service.submit(runnables.FLUSH);
@@ -83,19 +96,26 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             sstablesForWrite.peek().put(entry.key(), entry);
             curBytesForEntries += (entry.key().remaining() + serializer.sizeOf(entry));
         } finally {
+            interThreadedLock.unlock();
             rwlock.writeLock().unlock();
         }
     }
 
     @Override
     public void flush() throws IOException {
+        if (sstablesForWrite.isEmpty()) {
+            return;
+        }
+
         rwlock.writeLock().lock();
+        interThreadedLock.lock();
         try {
             if (sstablesForWrite.isEmpty()) {
                 return;
             }
             service.submit(runnables.FLUSH);
         } finally {
+            interThreadedLock.unlock();
             rwlock.writeLock().unlock();
         }
     }
@@ -109,7 +129,11 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
                 throw new RuntimeException("Very large number of tasks, impossible to close Dao");
             }
 
-            if (sstablesForFlush.isEmpty()) {
+            if (!sstablesForFlush.isEmpty()) {
+                throw new InterruptedIOException("Process of SSTables' flushing was interrupted");
+            }
+
+            if (sstablesForWrite.isEmpty()) {
                 throw new InterruptedIOException("Memory SSTables were not backed to the queue");
             }
 
@@ -133,10 +157,16 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         if (sstablesSize.get() <= 1) {
             return;
         }
+
         rwlock.writeLock().lock();
+        interThreadedLock.lock();
+        if (sstablesSize.get() <= 1) {
+            return;
+        }
         try {
             service.submit(runnables.COMPACT);
         } finally {
+            interThreadedLock.unlock();
             rwlock.writeLock().unlock();
         }
     }

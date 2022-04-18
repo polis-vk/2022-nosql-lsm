@@ -4,38 +4,41 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.aliases.SSTable;
 import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
+import ru.mail.polis.pavelkovalenko.utils.MergeIteratorUtils;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
-import java.util.Map;
-import java.util.NavigableSet;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
     private final Queue<PeekIterator<Entry<ByteBuffer>>> iterators = new PriorityQueue<>(IteratorComparator.INSTANSE);
     private final TombstoneIterator tombstoneIterator;
 
-    public MergeIterator(ByteBuffer from, ByteBuffer to, Serializer serializer, SSTable memorySSTable,
-                int sstablesSize)
+    public MergeIterator(ByteBuffer from, ByteBuffer to, Serializer serializer, List<SSTable> memorySSTables,
+                         AtomicInteger sstablesSize)
             throws IOException, ReflectiveOperationException {
         ByteBuffer from1 = from == null ? Utils.EMPTY_BYTEBUFFER : from;
         int priority = 0;
 
-        if (to == null) {
-            iterators.add(new PeekIterator<>(memorySSTable.tailMap(from1).values().iterator(), priority++));
-        } else {
-            iterators.add(new PeekIterator<>(memorySSTable.subMap(from1, to).values().iterator(), priority++));
+        for (SSTable ssTable : memorySSTables) {
+            if (to == null) {
+                iterators.add(new PeekIterator<>(ssTable.tailMap(from1).values().iterator(), priority++));
+            } else {
+                iterators.add(new PeekIterator<>(ssTable.subMap(from1, to).values().iterator(), priority++));
+            }
         }
 
-        for (; priority <= sstablesSize; ++priority) {
+        int snapshottedSSTablesSize = sstablesSize.get();
+        for (; priority <= snapshottedSSTablesSize + memorySSTables.size() - 1; ++priority) {
             iterators.add(new PeekIterator<>(
-                    new FileIterator(serializer.get(sstablesSize - priority + 1), serializer, from1, to),
+                    new FileIterator(serializer.get(snapshottedSSTablesSize - priority + 1), serializer, from1, to),
                     priority
             ));
         }
@@ -55,7 +58,7 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
         }
 
         Entry<ByteBuffer> result = iterators.peek().peek();
-        Utils.fallEntry(iterators, result);
+        MergeIteratorUtils.fallEntry(iterators, result);
         return result;
     }
 

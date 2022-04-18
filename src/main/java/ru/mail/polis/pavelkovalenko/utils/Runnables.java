@@ -12,28 +12,28 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.Iterator;
-import java.util.List;
-import java.util.Queue;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.Lock;
 
 public final class Runnables {
 
     private final Config config;
     private final AtomicInteger sstablesSize;
     private final Serializer serializer;
-    private final ReadWriteLock rwlock;
+    private final Lock interThreadedLock;
     private final BlockingQueue<SSTable> sstablesForWrite;
-    private final BlockingQueue<SSTable> sstablesForFlush;
+    private final BlockingDeque<SSTable> sstablesForFlush;
 
-    public Runnables(Config config, AtomicInteger sstablesSize, Serializer serializer, ReadWriteLock rwlock,
-                     BlockingQueue<SSTable> sstablesForWrite, BlockingQueue<SSTable> sstablesForFlush) {
+    public Runnables(Config config, AtomicInteger sstablesSize, Serializer serializer, Lock interThreadedLock,
+                     BlockingQueue<SSTable> sstablesForWrite, BlockingDeque<SSTable> sstablesForFlush) {
         this.config = config;
         this.sstablesSize = sstablesSize;
         this.serializer = serializer;
-        this.rwlock = rwlock;
+        this.interThreadedLock = interThreadedLock;
         this.sstablesForWrite = sstablesForWrite;
         this.sstablesForFlush = sstablesForFlush;
     }
@@ -44,7 +44,8 @@ public final class Runnables {
             Path dataFile;
             Path indexesFile;
             try {
-                synchronized (sstablesSize) {
+                interThreadedLock.lock();
+                try {
                     int fileOrdinal = sstablesSize.get();
                     do {
                         ++fileOrdinal;
@@ -54,27 +55,31 @@ public final class Runnables {
                     } while (Files.exists(dataFile));
                     Files.createFile(dataFile);
                     Files.createFile(indexesFile);
+                } finally {
+                    interThreadedLock.unlock();
                 }
 
                 SSTable memorySSTable;
-                rwlock.writeLock().lock();
+                interThreadedLock.lock();
                 try {
                     memorySSTable = sstablesForWrite.remove();
                     sstablesForFlush.add(memorySSTable);
                 } finally {
-                    rwlock.writeLock().unlock();
+                    interThreadedLock.unlock();
                 }
 
                 serializer.write(memorySSTable.values().iterator(), dataFile, indexesFile);
 
-                rwlock.writeLock().lock();
+                interThreadedLock.lock();
                 try {
                     sstablesSize.incrementAndGet();
-                    sstablesForFlush.remove(memorySSTable);
+                    if (!sstablesForFlush.remove(memorySSTable)) {
+                        throw new ConcurrentModificationException("Unexpected SSTable's removing");
+                    }
                     memorySSTable.clear();
                     sstablesForWrite.add(memorySSTable);
                 } finally {
-                    rwlock.writeLock().unlock();
+                    interThreadedLock.unlock();
                 }
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -87,16 +92,35 @@ public final class Runnables {
         public void run() {
             try {
                 Iterator<Entry<ByteBuffer>> mergeIterator
-                        = new MergeIterator(null, null, serializer, Utils.EMPTY_SSTABLE, sstablesSize.get());
+                        = new MergeIterator(null, null, serializer, Collections.EMPTY_LIST, sstablesSize);
                 if (!mergeIterator.hasNext()) {
                     return;
                 }
 
-                Path compactDataFile = Utils.getFilePath(Utils.COMPACT_DATA_FILENAME, config);
-                Path compactIndexesFile = Utils.getFilePath(Utils.COMPACT_INDEXES_FILENAME, config);
+                Path compactDataFile;
+                Path compactIndexesFile;
+                int iteration = 0;
+                interThreadedLock.lock();
+                try {
+                    do {
+                        ++iteration;
+                        compactDataFile = Utils.getFilePath(Utils.COMPACT_DATA_FILENAME + iteration, config);
+                        compactIndexesFile = Utils.getFilePath(Utils.COMPACT_INDEXES_FILENAME + iteration, config);
+                    } while (Files.exists(compactDataFile));
+                    Files.createFile(compactDataFile);
+                    Files.createFile(compactIndexesFile);
+                } finally {
+                    interThreadedLock.unlock();
+                }
+
                 serializer.write(mergeIterator, compactDataFile, compactIndexesFile);
-                Files.walkFileTree(config.basePath(),
-                        new CompactVisitor(config, compactDataFile, compactIndexesFile, sstablesSize));
+                interThreadedLock.lock();
+                try {
+                    Files.walkFileTree(config.basePath(),
+                            new CompactVisitor(config, compactDataFile, compactIndexesFile, sstablesSize, serializer));
+                } finally {
+                    interThreadedLock.unlock();
+                }
             } catch (IOException | ReflectiveOperationException e) {
                 throw new RuntimeException(e);
             }

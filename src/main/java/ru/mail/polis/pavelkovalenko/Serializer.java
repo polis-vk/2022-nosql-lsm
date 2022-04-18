@@ -5,6 +5,7 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.dto.FileMeta;
 import ru.mail.polis.pavelkovalenko.dto.MappedPairedFiles;
+import ru.mail.polis.pavelkovalenko.utils.MergeIteratorUtils;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
@@ -54,7 +55,9 @@ public final class Serializer {
         ++dataPos;
         ByteBuffer key = readByteBuffer(mappedFilePair.dataFile(), dataPos);
         dataPos += (Integer.BYTES + key.remaining());
-        ByteBuffer value = Utils.isTombstone(tombstone) ? null : readByteBuffer(mappedFilePair.dataFile(), dataPos);
+        ByteBuffer value = MergeIteratorUtils.isTombstone(tombstone)
+                ? null
+                : readByteBuffer(mappedFilePair.dataFile(), dataPos);
         return new BaseEntry<>(key, value);
     }
 
@@ -117,8 +120,12 @@ public final class Serializer {
         file.write(meta.wasWritten());
     }
 
-    public boolean hasFinishedMeta(RandomAccessFile file) throws IOException {
-        return file.readByte() == FileMeta.finishedWrite;
+    public boolean hasFinishedMeta(Path pathToFile) throws IOException {
+        boolean hasFinishedMeta;
+        try (RandomAccessFile file = new RandomAccessFile(pathToFile.toString(), "r")) {
+            hasFinishedMeta = file.length() != 0 && file.readByte() == FileMeta.finishedWrite;
+        }
+        return hasFinishedMeta;
     }
 
     private int readDataFileOffset(MappedByteBuffer indexesFile, int indexesPos) {
@@ -127,7 +134,7 @@ public final class Serializer {
 
     private void mapSSTables()
             throws IOException, ReflectiveOperationException {
-        for (MappedPairedFiles mappedPairedFile: mappedSSTables.values()) {
+        for (MappedPairedFiles mappedPairedFile : mappedSSTables.values()) {
             unmap(mappedPairedFile.dataFile());
             unmap(mappedPairedFile.indexesFile());
         }
@@ -183,7 +190,7 @@ public final class Serializer {
     private int writePair(Entry<ByteBuffer> entry, RandomAccessFile dataFile) throws IOException {
         int bbSize = sizeOf(entry);
         ByteBuffer pair = ByteBuffer.allocate(bbSize);
-        byte tombstone = Utils.getTombstoneValue(entry);
+        byte tombstone = MergeIteratorUtils.getTombstoneValue(entry);
 
         pair.put(tombstone);
         pair.putInt(entry.key().remaining());

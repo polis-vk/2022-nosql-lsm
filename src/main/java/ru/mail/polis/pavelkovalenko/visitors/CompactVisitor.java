@@ -1,6 +1,7 @@
 package ru.mail.polis.pavelkovalenko.visitors;
 
 import ru.mail.polis.Config;
+import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
@@ -18,23 +19,23 @@ public class CompactVisitor extends SimpleFileVisitor<Path> {
     private final Path dataPathToBeSet;
     private final Path indexesPathToBeSet;
     private final AtomicInteger sstablesSize;
+    private final Serializer serializer;
 
     private int numberOfDeletedFiles;
 
     public CompactVisitor(Config config, Path compactedDataPath, Path compactedIndexesPath,
-                AtomicInteger sstablesSize) {
+                          AtomicInteger sstablesSize, Serializer serializer) {
         this.compactedDataPath = compactedDataPath;
         this.compactedIndexesPath = compactedIndexesPath;
-        this.dataPathToBeSet = config.basePath()
-                .resolve(Utils.getDataFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
-        this.indexesPathToBeSet = config.basePath()
-                .resolve(Utils.getIndexesFilename(Utils.COMPACTED_FILE_SUFFIX_TO_BE_SET));
+        this.dataPathToBeSet = config.basePath().resolve(Utils.COMPACT_DATA_FILENAME_TO_BE_SET);
+        this.indexesPathToBeSet = config.basePath().resolve(Utils.COMPACT_INDEXES_FILENAME_TO_BE_SET);
         this.sstablesSize = sstablesSize;
+        this.serializer = serializer;
     }
 
     @Override
     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-        if (isTargetFile(file)) {
+        if (isTargetFile(file) && serializer.hasFinishedMeta(file)) {
             Files.delete(file);
             ++numberOfDeletedFiles;
         }

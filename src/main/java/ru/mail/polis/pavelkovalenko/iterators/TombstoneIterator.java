@@ -1,8 +1,7 @@
 package ru.mail.polis.pavelkovalenko.iterators;
 
-import javax.security.auth.login.LoginException;
 import ru.mail.polis.Entry;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
+import ru.mail.polis.pavelkovalenko.utils.MergeIteratorUtils;
 
 import java.nio.ByteBuffer;
 import java.util.Iterator;
@@ -40,8 +39,8 @@ public class TombstoneIterator implements Iterator<Entry<ByteBuffer>> {
             }
 
             PeekIterator<Entry<ByteBuffer>> first = iterators.peek();
-            while (first != null && first.hasNext() && Utils.isTombstone(first.peek())) {
-                Utils.fallEntry(iterators, first.peek());
+            while (first != null && first.hasNext() && first.peek().isTombstone()) {
+                MergeIteratorUtils.fallEntry(iterators, first.peek());
                 first = iterators.peek();
             }
         }
@@ -50,7 +49,7 @@ public class TombstoneIterator implements Iterator<Entry<ByteBuffer>> {
     private boolean hasTombstoneForFirstElement() {
         PeekIterator<Entry<ByteBuffer>> first = iterators.remove();
         iterators.add(first);
-        return !iterators.isEmpty() && Utils.isTombstone(iterators.peek().peek());
+        return !iterators.isEmpty() && iterators.peek().peek().isTombstone();
     }
 
     private void skipLastOneStanding() {
@@ -59,7 +58,7 @@ public class TombstoneIterator implements Iterator<Entry<ByteBuffer>> {
         }
 
         PeekIterator<Entry<ByteBuffer>> first = iterators.peek();
-        while (first.hasNext() && Utils.isTombstone(first.peek())) {
+        while (first.hasNext() && first.peek().isTombstone()) {
             first.next();
         }
 
