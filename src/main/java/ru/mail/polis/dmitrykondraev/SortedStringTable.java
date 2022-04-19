@@ -7,6 +7,7 @@ import jdk.incubator.foreign.ResourceScope;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -18,14 +19,10 @@ final class SortedStringTable {
     public static final String INDEX_FILENAME = "index";
     public static final String DATA_FILENAME = "data";
 
-    private final Path indexFile;
-    private final Path dataFile;
     private final MemorySegment dataSegment;
     private final Index index;
 
-    private SortedStringTable(Path indexFile, Path dataFile, MemorySegment dataSegment, Index index) {
-        this.indexFile = indexFile;
-        this.dataFile = dataFile;
+    private SortedStringTable(MemorySegment dataSegment, Index index) {
         this.dataSegment = dataSegment;
         this.index = index;
     }
@@ -45,8 +42,6 @@ final class SortedStringTable {
                 scope
         ));
         return new SortedStringTable(
-                indexFile,
-                dataFile,
                 MemorySegment.mapFile(
                         dataFile,
                         0L,
@@ -57,10 +52,10 @@ final class SortedStringTable {
                 index);
     }
 
-    public static void destroyFiles(SortedStringTable table) throws IOException {
-        Files.delete(table.dataFile);
-        Files.delete(table.indexFile);
-        Files.delete(table.dataFile.getParent());
+    public static void destroyFiles(Path folderPath) throws IOException, NoSuchFileException {
+        Files.deleteIfExists(folderPath.resolve(DATA_FILENAME));
+        Files.deleteIfExists(folderPath.resolve(INDEX_FILENAME));
+        Files.delete(folderPath);
     }
 
     public static SortedStringTable written(Path folderPath, Collection<MemorySegmentEntry> entries, ResourceScope scope) throws IOException {
@@ -81,8 +76,6 @@ final class SortedStringTable {
         }
         dataSegment.force();
         return new SortedStringTable(
-                indexFile,
-                dataFile,
                 dataSegment.asReadOnly(),
                 index
         );

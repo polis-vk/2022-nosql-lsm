@@ -59,9 +59,7 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
             }
         }
         if (Files.exists(compactDirTmp)) {
-            Files.deleteIfExists(compactDirTmp.resolve(SortedStringTable.DATA_FILENAME));
-            Files.deleteIfExists(compactDirTmp.resolve(SortedStringTable.INDEX_FILENAME));
-            Files.delete(compactDirTmp);
+            SortedStringTable.destroyFiles(compactDirTmp);
             compactImpl();
             return;
         }
@@ -141,8 +139,8 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
     }
 
     private void finishCompaction() throws IOException {
-        for (SortedStringTable table : sortedStringTables) {
-            SortedStringTable.destroyFiles(table);
+        for (int i = sortedStringTables.size() - 1; i >= 0; i--) {
+            SortedStringTable.destroyFiles(sortedStringTablePath(i));
         }
         sortedStringTables.clear();
         Path table0 = sortedStringTablePath(0);
