@@ -35,7 +35,7 @@ public class FlushManager {
             try {
                 fileOperations.flush(pairs);
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
             pairsWrapper.clearPair(pairNum);
         }));
@@ -52,7 +52,7 @@ public class FlushManager {
                 try {
                     taskResult.get();
                 } catch (ExecutionException | InterruptedException e) {
-                    throw new RuntimeException(e);
+                    e.printStackTrace();
                 }
             }
         }

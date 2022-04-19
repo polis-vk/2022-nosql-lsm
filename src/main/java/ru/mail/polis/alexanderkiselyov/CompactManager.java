@@ -26,7 +26,7 @@ public class CompactManager {
                 try {
                     compactOperation(compactQueue.poll());
                 } catch (IOException e) {
-                    throw new RuntimeException(e);
+                    e.printStackTrace();
                 }
             }
         }, 0, 500, TimeUnit.MILLISECONDS);
@@ -44,7 +44,7 @@ public class CompactManager {
                     throw new RuntimeException("Compact operation was terminated.");
                 }
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
         }
     }
