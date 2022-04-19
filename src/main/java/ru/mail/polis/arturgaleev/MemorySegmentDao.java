@@ -86,7 +86,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
-        // If only in memory
         if (reader.hasNoReaders() && flushQueue.isEmpty() && currentlyFlushing.isEmpty()) {
             PriorityPeekingIterator<Entry<MemorySegment>> peekingIterator
                     = new PriorityPeekingIterator<>(1, getSkipListMapIterator(from, to, dataBase.get()));
@@ -117,7 +116,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                             getSkipListMapIterator(from, to, dataBase.get())
                     )
             );
-
             return new MergeIterator<>(
                     iterators,
                     MemorySegmentComparator.INSTANCE
@@ -139,12 +137,10 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                 }
             }
         }
-
         if (entry != null) {
             return entry.value() == null ? null : entry;
-        } else {
-            return reader.get(key);
         }
+        return reader.get(key);
     }
 
     @Override
@@ -245,25 +241,26 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private class CompactWorker implements Runnable {
         @Override
         public void run() {
-            while (!isClosed.get() || needToCompact.get()) {
-                try {
-                    semaphore.acquire();
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                if (reader.hasNoReaders()) {
-                    semaphore.release();
-                    return;
-                }
-                Path compactionPath = getNewFileName();
-                semaphore.release();
-                try (FileDBWriter writer = new FileDBWriter(compactionPath)) {
-                    if (writer.writeIterable(() -> reader.get(null, null))) {
-                        reader.clearAndSet(new FileDBReader(compactionPath));
+            try {
+                semaphore.acquire();
+                while (!isClosed.get() || needToCompact.get()) {
+                    if (reader.hasNoReaders()) {
+                        semaphore.release();
+                        return;
                     }
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
+                    Path compactionPath = getNewFileName();
+                    semaphore.release();
+                    try (FileDBWriter writer = new FileDBWriter(compactionPath)) {
+                        if (writer.writeIterable(() -> reader.get(null, null))) {
+                            reader.clearAndSet(new FileDBReader(compactionPath));
+                        }
+                    }
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
             }
         }
     }
@@ -280,7 +277,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                         // Waiting while compact reserving new file name
                         semaphore.acquire();
                     }
-
                     ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> current = currentlyFlushing.peek();
                     if (!current.isEmpty()) {
                         Path filePath = getNewFileName();
@@ -288,14 +284,15 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                             if (writer.writeIterable(current.values())) {
                                 reader.add(new FileDBReader(filePath));
                             }
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(e);
                         }
                     }
                     currentlyFlushing.remove();
                 }
             } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
             }
         }
     }

@@ -157,14 +157,12 @@ public class FileDBReader implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
+        // We need to read our maps even after their deletions
     }
 
     public class FileIterator implements java.util.Iterator<Entry<MemorySegment>> {
         private long lastPos = size;
         private long currentPos = -1;
-
-        private FileIterator() {
-        }
 
         private FileIterator(long currentPos) {
             this.currentPos = currentPos;
