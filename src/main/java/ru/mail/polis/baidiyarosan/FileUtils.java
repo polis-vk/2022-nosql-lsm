@@ -4,10 +4,12 @@ import ru.mail.polis.BaseEntry;
 import sun.misc.Unsafe;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -27,11 +29,15 @@ public final class FileUtils {
 
     public static final String DATA_FILE_HEADER = "data";
 
+    public static final String COMPACTED_DATA_FILE_HEADER = "comp_data";
+
     public static final String INDEX_FILE_HEADER = "index";
 
     public static final String FILE_EXTENSION = ".log";
 
     public static final int NULL_SIZE_FLAG = -1;
+
+    private static final int COMPACTED_FILE_INDEX = 0;
 
     private static Unsafe UNSAFE;
 
@@ -58,7 +64,7 @@ public final class FileUtils {
     // windows method that close files before delete
     public static void clearAllFrom(Collection<MappedByteBuffer> collection) {
         for (MappedByteBuffer map : collection) {
-            if(map != null) {
+            if (map != null) {
                 clear(map);
             }
         }
@@ -66,7 +72,7 @@ public final class FileUtils {
 
     // windows method that close files before delete
     public static void clearFrom(List<MappedByteBuffer> list, int number) {
-        if(list.size() < number) {
+        if (list.size() < number) {
             return;
         }
 
@@ -80,8 +86,16 @@ public final class FileUtils {
         }
     }
 
+    public static boolean isCompacted(Path directory, int fileNumber) {
+        return Files.exists(getCompactedDataPath(directory, fileNumber));
+    }
+
     public static Path getDataPath(Path directory, int fileNumber) {
         return directory.resolve(DATA_FILE_HEADER + fileNumber + FILE_EXTENSION);
+    }
+
+    public static Path getCompactedDataPath(Path directory, int fileNumber) {
+        return directory.resolve(COMPACTED_DATA_FILE_HEADER + fileNumber + FILE_EXTENSION);
     }
 
     public static Path getIndexPath(Path directory, int fileNumber) {
@@ -151,14 +165,51 @@ public final class FileUtils {
         }
     }
 
-    public static void compact(MemoryAndDiskDao dao, Path path) throws IOException {
+    // All files
+    public static Collection<PeekIterator<BaseEntry<ByteBuffer>>> getFilesCollection(
+            int filesCount, Path path, List<MappedByteBuffer> files, List<MappedByteBuffer> fileIndexes) throws IOException {
+        return getFilesCollection(filesCount, path, files, fileIndexes, null, null);
+    }
 
-        int fileNumber = getPaths(path).size() + 1;
-        Iterator<BaseEntry<ByteBuffer>> iter = dao.get(null, null);
+    public static Collection<PeekIterator<BaseEntry<ByteBuffer>>> getFilesCollection(
+            int filesCount, Path path, List<MappedByteBuffer> files, List<MappedByteBuffer> fileIndexes,
+            ByteBuffer from, ByteBuffer to) throws IOException {
+        List<PeekIterator<BaseEntry<ByteBuffer>>> list = new LinkedList<>();
+        Collection<BaseEntry<ByteBuffer>> temp;
+        for (int i = 0; i < filesCount; ++i) {
+            // file naming starts from 1, collections ordering starts from 0
+            Path filePath;
+            if (isCompacted(path, i + 1)) {
+                filePath = getCompactedDataPath(path, i + 1);
+            } else {
+                filePath = getDataPath(path, i + 1);
+            }
+            Path indexPath = getIndexPath(path, i + 1);
+            if (files.size() <= i || files.get(i) == null) {
+                try (FileChannel in = FileChannel.open(filePath, StandardOpenOption.READ);
+                     FileChannel indexes = FileChannel.open(indexPath, StandardOpenOption.READ)
+                ) {
+                    files.add(i, in.map(FileChannel.MapMode.READ_ONLY, 0, in.size()));
+                    fileIndexes.add(i, indexes.map(FileChannel.MapMode.READ_ONLY, 0, indexes.size()));
+                }
+            }
+
+            temp = getInFileCollection(files.get(i), fileIndexes.get(i), from, to);
+            if (!temp.isEmpty()) {
+                list.add(new PeekIterator<>(temp.iterator(), filesCount - i));
+            }
+        }
+
+        return list;
+    }
+
+    public static void compact(Iterator<? extends BaseEntry<ByteBuffer>> iter, Path path) throws IOException {
+
+        int fileNumber = COMPACTED_FILE_INDEX;
         if (iter.hasNext()) {
             ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
             ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
-            try (FileChannel dataOut = FileChannel.open(getDataPath(path, fileNumber),
+            try (FileChannel dataOut = FileChannel.open(getCompactedDataPath(path, fileNumber),
                     StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
                  FileChannel indexOut = FileChannel.open(getIndexPath(path, fileNumber),
                          StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
@@ -178,21 +229,46 @@ public final class FileUtils {
                     dataOut.write(writeEntryToBuffer(buffer, entry));
                 }
             }
-            if (fileNumber != 1) {
-                clearFrom(dao.fileIndexes, 1);
-                Files.move(getIndexPath(path, fileNumber), getIndexPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
-                clearFrom(dao.files, 1);
-                Files.move(getDataPath(path, fileNumber), getDataPath(path, 1), StandardCopyOption.ATOMIC_MOVE);
+        }
+    }
+
+    public static void clearOldFiles(int fileCount, Path path, List<MappedByteBuffer> fileIndexes, List<MappedByteBuffer> files) throws IOException {
+        Path compactedFileIndexPath = getIndexPath(path, COMPACTED_FILE_INDEX);
+        Path compactedFileDataPath = getCompactedDataPath(path, COMPACTED_FILE_INDEX);
+        if (Files.notExists(compactedFileIndexPath) || Files.notExists(compactedFileDataPath)) {
+            return; // no compaction
+        }
+        int lastFile = fileCount;
+        try {
+            // try to delete old files from last to first
+            for (; lastFile > 0; --lastFile) {
+                clearFrom(fileIndexes, lastFile);
+                Files.deleteIfExists(getIndexPath(path, lastFile));
+                clearFrom(files, lastFile);
+                Files.deleteIfExists(getDataPath(path, lastFile));
+                // in case that this file was compacted
+                Files.deleteIfExists(getCompactedDataPath(path, lastFile));
+            }
+        } catch (DirectoryNotEmptyException e) {
+            // ???
+            throw new IOException("File system corrupted");
+        } catch (IOException e) {
+            // access failed
+            throw new UncheckedIOException(e);
+        } finally { // happens anyway
+            try {
+                lastFile++; // make step forward
+                // making compacted file last, closing last file if opened
+                Files.move(compactedFileIndexPath, getIndexPath(path, lastFile), StandardCopyOption.ATOMIC_MOVE);
+                Files.move(compactedFileDataPath, getCompactedDataPath(path, lastFile), StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException e) {
+                // compaction was never an option
+                Files.deleteIfExists(compactedFileIndexPath);
+                Files.deleteIfExists(compactedFileDataPath);
+                // access failed
+                throw new UncheckedIOException(e);
             }
         }
-
-        for (int i = 2; i <= fileNumber; ++i) {
-            clearFrom(dao.fileIndexes, i);
-            Files.deleteIfExists(getIndexPath(path, i));
-            clearFrom(dao.files, i);
-            Files.deleteIfExists(getDataPath(path, i));
-        }
-
     }
 
     public static Collection<BaseEntry<ByteBuffer>> getInMemoryCollection(
