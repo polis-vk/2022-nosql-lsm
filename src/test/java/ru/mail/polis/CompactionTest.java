@@ -66,7 +66,7 @@ class CompactionTest extends BaseTest {
         assertSame(dao.all(), entry);
     }
 
-    @Disabled
+    @Disabled("В связи с написанным в чате")
     @DaoTest(stage = 4)
     void overwrite(Dao<String, Entry<String>> dao) throws IOException {
         // Reference value
@@ -106,7 +106,7 @@ class CompactionTest extends BaseTest {
         assertTrue(smallSize * (overwrites + 1) > bigSize);
     }
 
-    @Disabled
+    @Disabled("В связи с написанным в чате")
     @DaoTest(stage = 4)
     void multiple(Dao<String, Entry<String>> dao) throws IOException {
         // Reference value
