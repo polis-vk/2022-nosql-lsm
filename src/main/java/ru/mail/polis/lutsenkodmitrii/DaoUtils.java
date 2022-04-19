@@ -26,18 +26,6 @@ public final class DaoUtils {
     private DaoUtils() {
     }
 
-    public static void writeUnsignedInt(int k, BufferedWriter bufferedWriter) throws IOException {
-        if (k < OVERFLOW_LIMIT) {
-            bufferedWriter.write((k + '0') >>> 16);
-            bufferedWriter.write(k + '0');
-            bufferedWriter.write('0');
-        } else {
-            bufferedWriter.write((OVERFLOW_LIMIT + '0') >>> 16);
-            bufferedWriter.write(OVERFLOW_LIMIT + '0');
-            bufferedWriter.write((k - OVERFLOW_LIMIT) + '0');
-        }
-    }
-
     public static int readUnsignedInt(BufferedReader bufferedReader) throws IOException {
         int ch1 = bufferedReader.read();
         int ch2 = bufferedReader.read();
@@ -81,6 +69,49 @@ public final class DaoUtils {
             return null;
         }
         return new BaseEntry<>(key, readValue(bufferedReader));
+    }
+
+    public static void writeUnsignedInt(int k, BufferedWriter bufferedWriter) throws IOException {
+        if (k < OVERFLOW_LIMIT) {
+            bufferedWriter.write((k + '0') >>> 16);
+            bufferedWriter.write(k + '0');
+            bufferedWriter.write('0');
+        } else {
+            bufferedWriter.write((OVERFLOW_LIMIT + '0') >>> 16);
+            bufferedWriter.write(OVERFLOW_LIMIT + '0');
+            bufferedWriter.write((k - OVERFLOW_LIMIT) + '0');
+        }
+    }
+
+    public static void writeKey(String key, BufferedWriter bufferedFileWriter) throws IOException {
+        writeUnsignedInt(key.length(), bufferedFileWriter);
+        bufferedFileWriter.write(key);
+    }
+
+    public static void writeValue(String value, BufferedWriter bufferedFileWriter) throws IOException {
+        bufferedFileWriter.write(EXISTING_MARK);
+        bufferedFileWriter.write(value + '\n');
+    }
+
+    public static void writeToFile(Path dataFilePath, Iterator<BaseEntry<String>> iterator) throws IOException {
+        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(dataFilePath, UTF_8, writeOptions)) {
+            writeUnsignedInt(0, bufferedFileWriter);
+            while (iterator.hasNext()) {
+                BaseEntry<String> baseEntry = iterator.next();
+                String key = preprocess(baseEntry.key());
+                writeKey(key, bufferedFileWriter);
+                int keyWrittenSize = CHARS_IN_INT + CHARS_IN_INT + key.length() + 1;
+                // +1 из-за DELETED_MARK или EXISTING_MARK
+                if (baseEntry.value() == null) {
+                    bufferedFileWriter.write(DELETED_MARK + '\n');
+                    writeUnsignedInt(keyWrittenSize, bufferedFileWriter);
+                    continue;
+                }
+                String value = preprocess(baseEntry.value());
+                writeValue(value, bufferedFileWriter);
+                writeUnsignedInt(keyWrittenSize + value.length(), bufferedFileWriter);
+            }
+        }
     }
 
     /**
@@ -207,36 +238,5 @@ public final class DaoUtils {
             }
         }
         return stringBuilder.toString();
-    }
-
-    public static void writeKey(String key, BufferedWriter bufferedFileWriter) throws IOException {
-        writeUnsignedInt(key.length(), bufferedFileWriter);
-        bufferedFileWriter.write(key);
-    }
-
-    public static void writeValue(String value, BufferedWriter bufferedFileWriter) throws IOException {
-        bufferedFileWriter.write(EXISTING_MARK);
-        bufferedFileWriter.write(value + '\n');
-    }
-
-    public static void writeToFile(Path dataFilePath, Iterator<BaseEntry<String>> iterator) throws IOException {
-        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(dataFilePath, UTF_8, writeOptions)) {
-            writeUnsignedInt(0, bufferedFileWriter);
-            while (iterator.hasNext()) {
-                BaseEntry<String> baseEntry = iterator.next();
-                String key = preprocess(baseEntry.key());
-                writeKey(key, bufferedFileWriter);
-                int keyWrittenSize = CHARS_IN_INT + CHARS_IN_INT + key.length() + 1;
-                // +1 из-за DELETED_MARK или EXISTING_MARK
-                if (baseEntry.value() == null) {
-                    bufferedFileWriter.write(DELETED_MARK + '\n');
-                    writeUnsignedInt(keyWrittenSize, bufferedFileWriter);
-                    continue;
-                }
-                String value = preprocess(baseEntry.value());
-                writeValue(value, bufferedFileWriter);
-                writeUnsignedInt(keyWrittenSize + value.length(), bufferedFileWriter);
-            }
-        }
     }
 }

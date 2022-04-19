@@ -26,17 +26,13 @@ public class MemStorage {
 
     public void upsertToSecondTable(BaseEntry<String> entry) {
         memTables.get(1).upsertIfFits(entry);
-        if (secondTableIsFull()) {
+        if (memTables.get(1).isFull()) {
             rejectUpsert();
         }
     }
 
     public boolean firstTableFull() {
         return memTables.get(0).isFull();
-    }
-
-    public boolean secondTableIsFull() {
-        return memTables.get(1).isFull();
     }
 
     public boolean firstTableOnFlush() {

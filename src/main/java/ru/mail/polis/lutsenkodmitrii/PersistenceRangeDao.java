@@ -160,13 +160,13 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     @Override
     public void compact() throws IOException {
         checkNotClosed();
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            if (filesMap.isEmpty() || (filesMap.size() == 1 && memStorage.isEmpty())) {
+            if (filesMap.size() < 2) {
                 return;
             }
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
         // Comact-им только файлы существующие на момент вызова компакта.
         // Начинаем писать compact во временный файл,
