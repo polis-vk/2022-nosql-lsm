@@ -160,8 +160,13 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     @Override
     public void compact() throws IOException {
         checkNotClosed();
-        if (filesMap.isEmpty() || (filesMap.size() == 1 && memStorage.isEmpty())) {
-            return;
+        lock.writeLock().lock();
+        try {
+            if (filesMap.isEmpty() || (filesMap.size() == 1 && memStorage.isEmpty())) {
+                return;
+            }
+        } finally {
+            lock.writeLock().unlock();
         }
         // Comact-им только файлы существующие на момент вызова компакта.
         // Начинаем писать compact во временный файл,
@@ -250,7 +255,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     private void shutdownAndAwaitTermination(ExecutorService executorService) {
         executorService.shutdown();
         try {
-            if (!executorService.awaitTermination(15, TimeUnit.SECONDS)) {
+            if (!executorService.awaitTermination(Integer.MAX_VALUE, TimeUnit.HOURS)) {
                 executorService.shutdownNow();
                 throw new RuntimeException("Await termination too long");
             }

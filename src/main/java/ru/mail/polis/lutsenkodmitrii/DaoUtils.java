@@ -221,21 +221,21 @@ public final class DaoUtils {
 
     public static void writeToFile(Path dataFilePath, Iterator<BaseEntry<String>> iterator) throws IOException {
         try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(dataFilePath, UTF_8, writeOptions)) {
-            DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
+            writeUnsignedInt(0, bufferedFileWriter);
             while (iterator.hasNext()) {
                 BaseEntry<String> baseEntry = iterator.next();
                 String key = preprocess(baseEntry.key());
                 writeKey(key, bufferedFileWriter);
-                int keyWrittenSize = DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT + key.length() + 1;
+                int keyWrittenSize = CHARS_IN_INT + CHARS_IN_INT + key.length() + 1;
                 // +1 из-за DELETED_MARK или EXISTING_MARK
                 if (baseEntry.value() == null) {
                     bufferedFileWriter.write(DELETED_MARK + '\n');
-                    DaoUtils.writeUnsignedInt(keyWrittenSize, bufferedFileWriter);
+                    writeUnsignedInt(keyWrittenSize, bufferedFileWriter);
                     continue;
                 }
                 String value = preprocess(baseEntry.value());
                 writeValue(value, bufferedFileWriter);
-                DaoUtils.writeUnsignedInt(keyWrittenSize + value.length(), bufferedFileWriter);
+                writeUnsignedInt(keyWrittenSize + value.length(), bufferedFileWriter);
             }
         }
     }
