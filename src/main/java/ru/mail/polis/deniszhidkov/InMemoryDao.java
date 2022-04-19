@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -48,6 +49,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private ConcurrentNavigableMap<String, BaseEntry<String>> storage = new ConcurrentSkipListMap<>();
     private ConcurrentNavigableMap<String, BaseEntry<String>> flushingStorage = new ConcurrentSkipListMap<>();
     private DaoWriter writer;
+    private Future<?> flushResult;
 
     public InMemoryDao(Config config) throws IOException {
         this.directoryPath = config.basePath();
@@ -71,15 +73,22 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 Comparator.comparing((PriorityPeekIterator o) ->
                         o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
         );
-        PriorityPeekIterator storageIterator = findInMemoryStorageIteratorByRange(storage, from, to, 0);
-        if (storageIterator.hasNext()) {
-            iteratorsQueue.add(storageIterator);
+        lock.readLock().lock();
+        long startTime = System.currentTimeMillis();
+        try {
+            PriorityPeekIterator storageIterator = findInMemoryStorageIteratorByRange(storage, from, to, 0);
+            if (storageIterator.hasNext()) {
+                iteratorsQueue.add(storageIterator);
+            }
+            PriorityPeekIterator flushingStorageIterator = findInMemoryStorageIteratorByRange(flushingStorage, from, to, 1);
+            if (flushingStorageIterator.hasNext()) {
+                iteratorsQueue.add(flushingStorageIterator);
+            }
+            iteratorsQueue.addAll(getFilesIteratorsByRange(from, to, iteratorsQueue.size()));
+        } finally {
+            lock.readLock().unlock();
+            System.out.println("Range: " + (System.currentTimeMillis() - startTime));
         }
-        PriorityPeekIterator flushingStorageIterator = findInMemoryStorageIteratorByRange(flushingStorage, from, to, 1);
-        if (flushingStorageIterator.hasNext()) {
-            iteratorsQueue.add(flushingStorageIterator);
-        }
-        iteratorsQueue.addAll(getFilesIteratorsByRange(from, to, iteratorsQueue.size()));
         return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new BlockingMergeIterator(iteratorsQueue);
     }
 
@@ -94,13 +103,20 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             if (value != null) {
                 return value;
             }
-            for (int i = 0; i < filesCounter.get(); i++) {
-                value = readers.get(i).findByKey(key);
-                if (value != null) {
-                    return value.value() == null ? null : value;
+            lock.readLock().lock();
+            long startTime = System.currentTimeMillis();
+            try {
+                for (int i = 0; i < filesCounter.get(); i++) {
+                    value = readers.get(i).findByKey(key);
+                    if (value != null) {
+                        return value.value() == null ? null : value;
+                    }
                 }
+                value = new BaseEntry<>(null, null);
+            } finally {
+                lock.readLock().unlock();
+                System.out.println("Get: " + (System.currentTimeMillis() - startTime));
             }
-            value = new BaseEntry<>(null, null);
         }
         return value.value() == null ? null : value;
     }
@@ -112,7 +128,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         long entrySize = getEntrySize(entry);
         if (storageMemoryUsage.get() + entrySize >= flushThresholdBytes) {
-            if (!flushingStorage.isEmpty()) {
+            if (flushResult != null && !flushResult.isDone()) {
                 throw new IllegalStateException("Flush queue overflow");
             }
             try {
@@ -121,7 +137,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 throw new UncheckedIOException(e);
             }
         }
-        storage.put(entry.key(), entry);
+        lock.readLock().lock();
+        long startTime = System.currentTimeMillis();
+        try {
+            storage.put(entry.key(), entry);
+        } finally {
+            lock.readLock().unlock();
+            System.out.println("upsert: " + (System.currentTimeMillis() - startTime));
+        }
         storageMemoryUsage.addAndGet(entrySize);
     }
 
@@ -136,13 +159,20 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException("DAO has been closed");
         }
-        if (!flushingStorage.isEmpty()) {
+        if (flushResult != null && !flushResult.isDone()) {
             throw new IllegalStateException("Flush queue overflow");
         }
-        flushingStorage = storage;
-        storage = new ConcurrentSkipListMap<>();
+        lock.writeLock().lock();
+        long startTime = System.currentTimeMillis();
+        try {
+            flushingStorage = storage;
+            storage = new ConcurrentSkipListMap<>();
+        } finally {
+            System.out.println("flush: " + (System.currentTimeMillis() - startTime));
+            lock.writeLock().unlock();
+        }
         storageMemoryUsage.set(0);
-        flushExecutor.submit(() -> {
+        flushResult = flushExecutor.submit(() -> {
             try {
                 backgroundFlush();
             } catch (IOException e) {
@@ -156,7 +186,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         readers.add(0, new DaoReader(getStoragePath(filesCounter.get()), getOffsetsPath(filesCounter.get())));
         filesCounter.incrementAndGet();
         writer = new DaoWriter(getStoragePath(filesCounter.get()), getOffsetsPath(filesCounter.get()));
-        flushingStorage.clear();
     }
 
     @Override
@@ -194,7 +223,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
          *  До этого не будем учитывать tmp файлы при восстановлении. */
         Files.move(pathToTmpDataFile, getStoragePath(COMPACTED_QUALIFIER), StandardCopyOption.ATOMIC_MOVE);
         Files.move(pathToTmpOffsetsFile, getOffsetsPath(COMPACTED_QUALIFIER), StandardCopyOption.ATOMIC_MOVE);
-        finishCompact();
+        finishCompact(); // Не доделан
     }
 
     @Override
@@ -215,7 +244,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         backgroundFlush();
         closeReaders();
         BlockingMergeIterator.blockIterators();
-        isClosed.set(true);
+        isClosed.set(true); // Не доделан
     }
 
     private void finishCompact() throws IOException {
