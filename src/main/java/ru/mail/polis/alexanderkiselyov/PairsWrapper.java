@@ -51,7 +51,7 @@ public class PairsWrapper {
 
     public void changePairs(long delta) {
         if ((pairNum.get() == 0 && (maxThresholdBytesSize.get() - size1.get()) <= delta)
-        || (pairNum.get() == 1 && (maxThresholdBytesSize.get() - size0.get()) <= delta)) {
+                || (pairNum.get() == 1 && (maxThresholdBytesSize.get() - size0.get()) <= delta)) {
             throw new RuntimeException("Unable to upsert new values, all maps are full.");
         }
         pairNum.set(1 - pairNum.get());
