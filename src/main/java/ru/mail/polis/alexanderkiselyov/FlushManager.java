@@ -18,18 +18,7 @@ public class FlushManager {
     private final AtomicInteger pairNum;
     private final PairsWrapper pairsWrapper;
     private final FileOperations fileOperations;
-    private NavigableMap<Byte[], BaseEntry<Byte[]>> pairs;
-    private final Runnable flushTask = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                fileOperations.flush(pairs);
-                pairsWrapper.clearPair(pairNum);
-            } catch (IOException e) {
-                throw new RuntimeException("Unable to flush: " + e);
-            }
-        }
-    };
+    private NavigableMap<byte[], BaseEntry<byte[]>> pairs;
 
     public FlushManager(PairsWrapper pairsWrapper, FileOperations fileOperations) {
         flushService = Executors.newSingleThreadExecutor();
@@ -39,13 +28,20 @@ public class FlushManager {
         this.pairsWrapper = pairsWrapper;
     }
 
-    public void performBackgroundFlush(NavigableMap<Byte[], BaseEntry<Byte[]>> pairs, AtomicInteger pairNum) {
+    public void performBackgroundFlush(NavigableMap<byte[], BaseEntry<byte[]>> pairs, AtomicInteger pairNum) {
         this.pairs = pairs;
         this.pairNum.set(pairNum.get());
-        taskResults.add(flushService.submit(flushTask));
+        taskResults.add(flushService.submit(() -> {
+            try {
+                fileOperations.flush(pairs);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            pairsWrapper.clearPair(pairNum);
+        }));
     }
 
-    public NavigableMap<Byte[], BaseEntry<Byte[]>> peekFlushQueue() {
+    public NavigableMap<byte[], BaseEntry<byte[]>> getFlushPairs() {
         return pairs;
     }
 
@@ -55,8 +51,8 @@ public class FlushManager {
             if (taskResult != null && !taskResult.isDone()) {
                 try {
                     taskResult.get();
-                } catch (InterruptedException | ExecutionException e) {
-                    throw new RuntimeException("Unable to finish flush tasks: " + e);
+                } catch (ExecutionException | InterruptedException e) {
+                    throw new RuntimeException(e);
                 }
             }
         }

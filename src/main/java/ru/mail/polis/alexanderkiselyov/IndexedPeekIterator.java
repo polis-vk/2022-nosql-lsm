@@ -4,13 +4,13 @@ import ru.mail.polis.BaseEntry;
 
 import java.util.Iterator;
 
-public class IndexedPeekIterator implements Iterator<BaseEntry<Byte[]>> {
+public class IndexedPeekIterator implements Iterator<BaseEntry<byte[]>> {
 
     private final int index;
-    protected final Iterator<BaseEntry<Byte[]>> delegate;
-    protected BaseEntry<Byte[]> peek;
+    protected final Iterator<BaseEntry<byte[]>> delegate;
+    protected BaseEntry<byte[]> peek;
 
-    public IndexedPeekIterator(int index, Iterator<BaseEntry<Byte[]>> delegate) {
+    public IndexedPeekIterator(int index, Iterator<BaseEntry<byte[]>> delegate) {
         this.index = index;
         this.delegate = delegate;
     }
@@ -19,7 +19,7 @@ public class IndexedPeekIterator implements Iterator<BaseEntry<Byte[]>> {
         return index;
     }
 
-    public BaseEntry<Byte[]> peek() {
+    public BaseEntry<byte[]> peek() {
         if (peek == null && delegate != null && delegate.hasNext()) {
             peek = delegate.next();
         }
@@ -32,8 +32,8 @@ public class IndexedPeekIterator implements Iterator<BaseEntry<Byte[]>> {
     }
 
     @Override
-    public BaseEntry<Byte[]> next() {
-        BaseEntry<Byte[]> result = peek();
+    public BaseEntry<byte[]> next() {
+        BaseEntry<byte[]> result = peek();
         peek = null;
         return result;
     }

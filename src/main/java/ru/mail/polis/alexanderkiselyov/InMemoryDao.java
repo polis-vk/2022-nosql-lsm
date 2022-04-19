@@ -13,13 +13,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class InMemoryDao implements Dao<Byte[], BaseEntry<Byte[]>> {
+public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final FileOperations fileOperations;
     private final FlushManager flushManager;
     private final CompactManager compactManager;
     private final AtomicBoolean isClosed;
     private final PairsWrapper pairsWrapper;
-    private NavigableMap<Byte[], BaseEntry<Byte[]>> pairs;
+    private NavigableMap<byte[], BaseEntry<byte[]>> pairs;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public InMemoryDao(Config config) throws IOException {
@@ -32,13 +32,13 @@ public class InMemoryDao implements Dao<Byte[], BaseEntry<Byte[]>> {
     }
 
     @Override
-    public Iterator<BaseEntry<Byte[]>> get(Byte[] from, Byte[] to) throws IOException {
+    public Iterator<BaseEntry<byte[]>> get(byte[] from, byte[] to) throws IOException {
         if (isClosed.get()) {
             return null;
         }
         lock.readLock().lock();
         try {
-            Iterator<BaseEntry<Byte[]>> memoryIterator;
+            Iterator<BaseEntry<byte[]>> memoryIterator;
             if (from == null && to == null) {
                 memoryIterator = pairs.values().iterator();
             } else if (from == null) {
@@ -48,10 +48,10 @@ public class InMemoryDao implements Dao<Byte[], BaseEntry<Byte[]>> {
             } else {
                 memoryIterator = pairs.subMap(from, to).values().iterator();
             }
-            Iterator<BaseEntry<Byte[]>> flushQueueIterator = flushManager.peekFlushQueue() == null ?
-                    null : flushManager.peekFlushQueue().values().iterator();
-            Iterator<BaseEntry<Byte[]>> diskIterator = fileOperations.diskIterator(from, to);
-            Iterator<BaseEntry<Byte[]>> mergeIterator = MergeIterator.of(
+            Iterator<BaseEntry<byte[]>> flushQueueIterator = flushManager.getFlushPairs() == null
+                    ? null : flushManager.getFlushPairs().values().iterator();
+            Iterator<BaseEntry<byte[]>> diskIterator = fileOperations.diskIterator(from, to);
+            Iterator<BaseEntry<byte[]>> mergeIterator = MergeIterator.of(
                     List.of(
                             new IndexedPeekIterator(0, memoryIterator),
                             new IndexedPeekIterator(1, flushQueueIterator),
@@ -66,17 +66,17 @@ public class InMemoryDao implements Dao<Byte[], BaseEntry<Byte[]>> {
     }
 
     @Override
-    public BaseEntry<Byte[]> get(Byte[] key) throws IOException {
+    public BaseEntry<byte[]> get(byte[] key) throws IOException {
         if (isClosed.get()) {
             return null;
         }
         lock.readLock().lock();
         try {
-            Iterator<BaseEntry<Byte[]>> iterator = get(key, null);
+            Iterator<BaseEntry<byte[]>> iterator = get(key, null);
             if (!iterator.hasNext()) {
                 return null;
             }
-            BaseEntry<Byte[]> next = iterator.next();
+            BaseEntry<byte[]> next = iterator.next();
             if (Arrays.equals(key, next.key())) {
                 return next;
             }
@@ -87,7 +87,7 @@ public class InMemoryDao implements Dao<Byte[], BaseEntry<Byte[]>> {
     }
 
     @Override
-    public synchronized void upsert(BaseEntry<Byte[]> entry) {
+    public synchronized void upsert(BaseEntry<byte[]> entry) {
         if (isClosed.get()) {
             return;
         }

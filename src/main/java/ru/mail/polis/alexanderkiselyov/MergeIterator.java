@@ -8,18 +8,18 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.PriorityQueue;
 
-public final class MergeIterator implements Iterator<BaseEntry<Byte[]>> {
+public final class MergeIterator implements Iterator<BaseEntry<byte[]>> {
 
     private final PriorityQueue<IndexedPeekIterator> iterators;
-    private final Comparator<BaseEntry<Byte[]>> comparator;
+    private final Comparator<BaseEntry<byte[]>> comparator;
 
-    private MergeIterator(PriorityQueue<IndexedPeekIterator> iterators, Comparator<BaseEntry<Byte[]>> comparator) {
+    private MergeIterator(PriorityQueue<IndexedPeekIterator> iterators, Comparator<BaseEntry<byte[]>> comparator) {
         this.iterators = iterators;
         this.comparator = comparator;
     }
 
-    public static Iterator<BaseEntry<Byte[]>> of(List<IndexedPeekIterator> iterators,
-                                                 Comparator<BaseEntry<Byte[]>> comparator) {
+    public static Iterator<BaseEntry<byte[]>> of(List<IndexedPeekIterator> iterators,
+                                                 Comparator<BaseEntry<byte[]>> comparator) {
         switch (iterators.size()) {
             case 0:
                 return Collections.emptyIterator();
@@ -48,9 +48,9 @@ public final class MergeIterator implements Iterator<BaseEntry<Byte[]>> {
     }
 
     @Override
-    public BaseEntry<Byte[]> next() {
+    public BaseEntry<byte[]> next() {
         IndexedPeekIterator iterator = iterators.remove();
-        BaseEntry<Byte[]> next = iterator.next();
+        BaseEntry<byte[]> next = iterator.next();
         while (!iterators.isEmpty()) {
             IndexedPeekIterator candidate = iterators.peek();
             if (comparator.compare(next, candidate.peek()) != 0) {

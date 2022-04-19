@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
-public class FileIterator implements Iterator<BaseEntry<Byte[]>>, Closeable {
+public class FileIterator implements Iterator<BaseEntry<byte[]>>, Closeable {
 
     private final FileChannel channelTable;
     private final FileChannel channelIndex;
@@ -19,7 +19,7 @@ public class FileIterator implements Iterator<BaseEntry<Byte[]>>, Closeable {
     private long pos;
     private final long to;
 
-    public FileIterator(Path ssTable, Path ssIndex, Byte[] from, Byte[] to, long indexSize) throws IOException {
+    public FileIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to, long indexSize) throws IOException {
         rafTable = new RandomAccessFile(String.valueOf(ssTable), "r");
         rafIndex = new RandomAccessFile(String.valueOf(ssIndex), "r");
         channelTable = rafTable.getChannel();
@@ -34,8 +34,8 @@ public class FileIterator implements Iterator<BaseEntry<Byte[]>>, Closeable {
     }
 
     @Override
-    public BaseEntry<Byte[]> next() {
-        BaseEntry<Byte[]> entry;
+    public BaseEntry<byte[]> next() {
+        BaseEntry<byte[]> entry;
         try {
             entry = FileOperations.getCurrent(pos, channelTable, channelIndex);
         } catch (IOException e) {

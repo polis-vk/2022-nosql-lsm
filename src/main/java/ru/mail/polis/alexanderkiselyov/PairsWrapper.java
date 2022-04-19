@@ -9,8 +9,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class PairsWrapper {
-    private final NavigableMap<Byte[], BaseEntry<Byte[]>> pairs0;
-    private final NavigableMap<Byte[], BaseEntry<Byte[]>> pairs1;
+    private final NavigableMap<byte[], BaseEntry<byte[]>> pairs0;
+    private final NavigableMap<byte[], BaseEntry<byte[]>> pairs1;
     private final AtomicLong size0;
     private final AtomicLong size1;
     private final AtomicLong maxThresholdBytesSize;
@@ -25,7 +25,7 @@ public class PairsWrapper {
         pairNum = new AtomicInteger(0);
     }
 
-    public NavigableMap<Byte[], BaseEntry<Byte[]>> getPairs() {
+    public NavigableMap<byte[], BaseEntry<byte[]>> getPairs() {
         return pairNum.get() == 0 ? pairs0 : pairs1;
     }
 

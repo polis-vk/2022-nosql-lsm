@@ -21,8 +21,15 @@ public class CompactManager {
         compactQueue = new LinkedBlockingQueue<>();
         compactService = Executors.newSingleThreadScheduledExecutor();
         this.fileOperations = fileOperations;
-        compactResult = compactService.scheduleAtFixedRate(compactOperation, 0, 500,
-                TimeUnit.MILLISECONDS);
+        compactResult = compactService.scheduleAtFixedRate(() -> {
+            if (compactQueue.size() != 0) {
+                try {
+                    compactOperation(compactQueue.poll());
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }, 0, 500, TimeUnit.MILLISECONDS);
     }
 
     public void performCompact(boolean hasPairs) {
@@ -33,31 +40,17 @@ public class CompactManager {
         compactService.shutdown();
         if (compactResult != null && !compactResult.isDone()) {
             try {
-                if (!compactService.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS))
-                {
+                if (!compactService.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS)) {
                     throw new RuntimeException("Compact operation was terminated.");
                 }
             } catch (InterruptedException e) {
-                throw new RuntimeException("Interrupted compaction service: " + e);
+                throw new RuntimeException(e);
             }
         }
     }
 
-    Runnable compactOperation = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                if (compactQueue.size() != 0) {
-                    compactOperation(compactQueue.poll());
-                }
-            } catch (IOException e) {
-                throw new RuntimeException("Error during compaction: " + e);
-            }
-        }
-    };
-
     private void compactOperation(boolean hasPairs) throws IOException {
-        Iterator<BaseEntry<Byte[]>> iterator;
+        Iterator<BaseEntry<byte[]>> iterator;
         iterator = new SkipNullValuesIterator(
                 new IndexedPeekIterator(0, fileOperations.diskIterator(null, null))
         );
