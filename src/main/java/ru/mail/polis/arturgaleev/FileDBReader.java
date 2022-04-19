@@ -23,11 +23,14 @@ public class FileDBReader implements AutoCloseable {
     private final MemorySegment pageData;
     private final MemorySegment pageLinks;
     private final byte[] sha256;
+    private final Path path;
 
-    public FileDBReader(Path path) throws IOException {
-        scope = ResourceScope.newConfinedScope();
+    public FileDBReader(Path inputPath) throws IOException {
+        path = inputPath;
+        scope = ResourceScope.newSharedScope();
         String fileName = path.getFileName().toString();
         fileID = Long.parseLong(fileName.substring(0, fileName.length() - 4));
+
         MemorySegment page = MemorySegment.mapFile(path, 0, Files.size(path), FileChannel.MapMode.READ_ONLY, scope);
         size = MemoryAccess.getLongAtOffset(page, 0);
 
@@ -39,7 +42,8 @@ public class FileDBReader implements AutoCloseable {
     }
 
     //It may open corrupted files. Very dangerous to use
-    FileDBReader(MemorySegment page) throws IOException {
+    FileDBReader(MemorySegment page) {
+        path = null;
         scope = null;
         fileID = -1;
 
@@ -66,6 +70,11 @@ public class FileDBReader implements AutoCloseable {
         }
         byte[] digest = md.digest();
         return !MessageDigest.isEqual(sha256, digest);
+    }
+
+    public void deleteFile() throws IOException {
+        close();
+        Files.deleteIfExists(path);
     }
 
     public long getFileID() {
@@ -148,9 +157,6 @@ public class FileDBReader implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
-        if (scope != null) {
-            scope.close();
-        }
     }
 
     public class FileIterator implements java.util.Iterator<Entry<MemorySegment>> {
