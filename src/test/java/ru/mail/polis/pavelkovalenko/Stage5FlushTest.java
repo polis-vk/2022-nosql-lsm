@@ -43,7 +43,7 @@ public class Stage5FlushTest extends BaseTest {
     @DaoTest(stage = 5)
     void manyFlushes(Dao<String, Entry<String>> dao) throws Exception {
         int count = 10_000;
-        final int nThreads = 100;
+        int nThreads = 100;
 
         runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
 
