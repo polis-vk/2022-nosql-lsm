@@ -150,7 +150,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         shutdownAndAwaitTermination(flushExecutor);
         shutdownAndAwaitTermination(compactionExecutor);
         if (!memStorage.isEmpty()) {
-            DaoUtils.writeToFile(generateNextFilePath(), inMemoryDataIterator());
+            DaoUtils.writeToFile(generateNextFilePath(), inMemoryDataIterator(null, null));
         }
         for (FileInputStream inputStream : filesMap.values()) {
             inputStream.close();
@@ -188,7 +188,9 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                 filesMap.put(lastFilePath, new FileInputStream(lastFilePath.toString()));
                 for (Map.Entry<Path, FileInputStream> filesMapEntry : compactionFilesMapEntries) {
                     filesMap.remove(filesMapEntry.getKey());
-                    filesMapEntry.getValue().close();
+                    try (FileInputStream inputStream = filesMapEntry.getValue()) {
+                    }
+                    //filesMapEntry.getValue().close();
                     Files.delete(filesMapEntry.getKey());
                 }
             } catch (IOException e) {
@@ -203,15 +205,6 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         lock.readLock().lock();
         try {
             return memStorage.iterator(from, to);
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    private Iterator<BaseEntry<String>> inMemoryDataIterator() {
-        lock.readLock().lock();
-        try {
-            return memStorage.iterator(null, null);
         } finally {
             lock.readLock().unlock();
         }

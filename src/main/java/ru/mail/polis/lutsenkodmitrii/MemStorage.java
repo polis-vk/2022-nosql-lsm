@@ -52,18 +52,6 @@ public class MemStorage {
         memTables.add(new MemTable(tableMaxBytesSize));
     }
 
-    public void clearSecondTable() {
-        memTables.remove(1);
-        memTables.add(new MemTable(tableMaxBytesSize));
-    }
-
-    public void clear() {
-        memTables.remove(0);
-        memTables.remove(1);
-        memTables.add(new MemTable(tableMaxBytesSize));
-        memTables.add(new MemTable(tableMaxBytesSize));
-    }
-
     public boolean isEmpty() {
         return memTables.get(0).isEmpty() && memTables.get(1).isEmpty();
     }
@@ -94,16 +82,14 @@ public class MemStorage {
         }
         return new Iterator<>() {
 
-            private final NavigableMap<String, BaseEntry<String>> tempData = new TreeMap<>();
             private BaseEntry<String> firstTableEntry = firstTableIterator.next();
             private BaseEntry<String> secondTableEntry = secondTableIterator.next();
             private String firstTableLastReadKey = firstTableEntry.key();
             private String secondTableLastReadKey = secondTableEntry.key();
-
-            {
-                tempData.put(firstTableLastReadKey, firstTableEntry);
-                tempData.put(secondTableLastReadKey, secondTableEntry);
-            }
+            private final NavigableMap<String, BaseEntry<String>> tempData = mapWithTwoEntries(
+                    firstTableEntry,
+                    secondTableEntry
+            );
 
             @Override
             public boolean hasNext() {
@@ -126,5 +112,12 @@ public class MemStorage {
                 return removed;
             }
         };
+    }
+
+    private NavigableMap<String, BaseEntry<String>> mapWithTwoEntries(BaseEntry<String> e1, BaseEntry<String> e2) {
+        NavigableMap<String, BaseEntry<String>> map = new TreeMap<>();
+        map.put(e1.key(), e1);
+        map.put(e2.key(), e2);
+        return map;
     }
 }
