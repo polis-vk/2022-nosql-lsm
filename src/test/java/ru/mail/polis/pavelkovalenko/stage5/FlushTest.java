@@ -1,4 +1,4 @@
-package ru.mail.polis.pavelkovalenko;
+package ru.mail.polis.pavelkovalenko.stage5;
 
 import ru.mail.polis.BaseTest;
 import ru.mail.polis.Dao;
@@ -9,11 +9,11 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class Stage5FlushTest extends BaseTest {
+public class FlushTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void backgroundFlush(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 20_000; // 1 entry = 4 + 10*2 + 4 + 10*2 = 48 Byte, 20_000 entry ~~ 940 KB < 1 MB
+        int count = Utils.N_ENTRIES_FOR_FLUSH;
         List<Entry<String>> entries = entries("k", "v", count);
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
@@ -34,7 +34,7 @@ public class Stage5FlushTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void flushOverfill(Dao<String, Entry<String>> dao) {
-        int count = 1_000_000;
+        int count = 100 * Utils.N_ENTRIES_FOR_FLUSH;
 
         assertThrows(Exception.class,
                 () -> runInParallel(100, count, value -> dao.upsert(entryAt(value))).close());
@@ -42,7 +42,7 @@ public class Stage5FlushTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void manyFlushes(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 10_000;
+        int count = Utils.N_ENTRIES_FOR_FLUSH - 1;
         int nThreads = 100;
 
         runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();

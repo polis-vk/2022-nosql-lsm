@@ -1,15 +1,13 @@
-package ru.mail.polis.pavelkovalenko;
+package ru.mail.polis.pavelkovalenko.stage5;
 
 import ru.mail.polis.BaseTest;
 import ru.mail.polis.Dao;
 import ru.mail.polis.DaoTest;
 import ru.mail.polis.Entry;
 
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class Stage5CloseTest extends BaseTest {
+public class CloseTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void blockingClose(Dao<String, Entry<String>> dao) throws Exception {
