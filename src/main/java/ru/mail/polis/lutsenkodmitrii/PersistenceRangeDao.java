@@ -174,18 +174,20 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         compactionExecutor.execute(() -> {
             Path tempCompactionFilePath = generateTempPath(COMPACTION_FILE_NAME);
             Path lastFilePath = generateNextFilePath();
+            FileInputStream lastFileInputStream;
             List<Map.Entry<Path, FileInputStream>> compactionFilesMapEntries;
             try {
                 MergeIterator allEntriesIterator = new MergeIterator(this, null, null, false);
                 compactionFilesMapEntries = allEntriesIterator.getFilesMapEntries();
                 DaoUtils.writeToFile(tempCompactionFilePath, allEntriesIterator);
+                Files.move(tempCompactionFilePath, lastFilePath);
+                lastFileInputStream = new FileInputStream(lastFilePath.toString());
             } catch (IOException e) {
                 throw new RuntimeException("Writing to temp file failed", e);
             }
             lock.writeLock().lock();
             try {
-                Files.move(tempCompactionFilePath, lastFilePath);
-                filesMap.put(lastFilePath, new FileInputStream(lastFilePath.toString()));
+                filesMap.put(lastFilePath, lastFileInputStream);
                 for (Map.Entry<Path, FileInputStream> filesMapEntry : compactionFilesMapEntries) {
                     filesMap.remove(filesMapEntry.getKey());
                     filesMapEntry.getValue().close();
