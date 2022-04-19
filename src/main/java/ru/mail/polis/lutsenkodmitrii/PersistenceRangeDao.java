@@ -188,9 +188,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                 filesMap.put(lastFilePath, new FileInputStream(lastFilePath.toString()));
                 for (Map.Entry<Path, FileInputStream> filesMapEntry : compactionFilesMapEntries) {
                     filesMap.remove(filesMapEntry.getKey());
-                    try (FileInputStream inputStream = filesMapEntry.getValue()) {
-                    }
-                    //filesMapEntry.getValue().close();
+                    filesMapEntry.getValue().close();
                     Files.delete(filesMapEntry.getKey());
                 }
             } catch (IOException e) {
