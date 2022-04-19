@@ -5,7 +5,7 @@ import ru.mail.polis.BaseEntry;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
-public class SkipNullValuesIterator implements Iterator<BaseEntry<byte[]>> {
+public class SkipNullValuesIterator implements Iterator<BaseEntry<Byte[]>> {
 
     private final IndexedPeekIterator iterator;
 
@@ -22,7 +22,7 @@ public class SkipNullValuesIterator implements Iterator<BaseEntry<byte[]>> {
     }
 
     @Override
-    public BaseEntry<byte[]> next() {
+    public BaseEntry<Byte[]> next() {
         if (!hasNext()) {
             throw new NoSuchElementException("There is no next element!");
         }

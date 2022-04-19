@@ -130,7 +130,7 @@ public class CompactOperations {
         }
     }
 
-    void saveDataAndIndexesCompact(Iterator<BaseEntry<byte[]>> iterator, Path basePath) throws IOException {
+    void saveDataAndIndexesCompact(Iterator<BaseEntry<Byte[]>> iterator, Path basePath) throws IOException {
         long elementsCount = 0;
         long offset = 0;
         compactedFile = basePath.resolve(FILE_START_COMPACT);
@@ -140,8 +140,8 @@ public class CompactOperations {
         try (FileReaderWriter writerFile = new FileReaderWriter(compactedFile, compactedIndex)) {
             writeIndexInitialPosition(writerFile.getIndexChannel());
             while (iterator.hasNext()) {
-                BaseEntry<byte[]> current = iterator.next();
-                Map.Entry<byte[], BaseEntry<byte[]>> currentBaseEntry =
+                BaseEntry<Byte[]> current = iterator.next();
+                Map.Entry<Byte[], BaseEntry<Byte[]>> currentBaseEntry =
                         Map.entry(current.key(), new BaseEntry<>(current.key(), current.value()));
                 FileOperations.writePair(writerFile.getFileChannel(), currentBaseEntry);
                 offset = FileOperations.writeEntryPosition(writerFile.getIndexChannel(), currentBaseEntry, offset);

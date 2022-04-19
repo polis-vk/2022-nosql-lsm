@@ -10,25 +10,41 @@ import ru.mail.polis.test.DaoFactory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 4, week = 2)
-public class ByteArrayDaoFactory implements DaoFactory.Factory<byte[], BaseEntry<byte[]>> {
+@DaoFactory(stage = 5, week = 2)
+public class ByteArrayDaoFactory implements DaoFactory.Factory<Byte[], BaseEntry<Byte[]>> {
     @Override
-    public Dao<byte[], BaseEntry<byte[]>> createDao(Config config) throws IOException {
+    public Dao<Byte[], BaseEntry<Byte[]>> createDao(Config config) throws IOException {
         return new InMemoryDao(config);
     }
 
     @Override
-    public String toString(byte[] data) {
-        return data == null ? null : new String(data, StandardCharsets.UTF_8);
+    public String toString(Byte[] data) {
+        if (data == null) {
+            return null;
+        }
+        byte[] dataPrimitive = new byte[data.length];
+        int index = 0;
+        for (Byte d : data) {
+            dataPrimitive[index++] = d;
+        }
+        return new String(dataPrimitive, StandardCharsets.UTF_8);
     }
 
     @Override
-    public byte[] fromString(String data) {
-        return data == null ? null : data.getBytes(StandardCharsets.UTF_8);
+    public Byte[] fromString(String data) {
+        if (data == null) {
+            return null;
+        }
+        Byte[] dataByte = new Byte[data.length()];
+        int index= 0;
+        for (byte b : data.getBytes(StandardCharsets.UTF_8)) {
+            dataByte[index++] = b;
+        }
+        return dataByte;
     }
 
     @Override
-    public BaseEntry<byte[]> fromBaseEntry(Entry<byte[]> baseEntry) {
+    public BaseEntry<Byte[]> fromBaseEntry(Entry<Byte[]> baseEntry) {
         return new BaseEntry<>(baseEntry.key(), baseEntry.value());
     }
 }
