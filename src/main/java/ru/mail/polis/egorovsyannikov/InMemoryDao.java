@@ -4,10 +4,7 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.BufferedOutputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -115,40 +112,72 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                      = new DataOutputStream(
                      new BufferedOutputStream(
                              Files.newOutputStream(directoryPath.resolve(listOfFiles.size() + FILE_NAME_COPY))))) {
+
             writer.writeInt(stringConcurrentSkipListMap.size());
+
             writerCopy.writeInt(stringConcurrentSkipListMap.size());
-            ArrayList<Integer> offsets = new ArrayList<>();
             writerCopy.writeLong(FILLER_FOR_OFFSETS_OFFSET);
+
+            Deque<Integer> offsets = new ArrayDeque<>();
+            Deque<Integer> lengths = new ArrayDeque<>();
+
+            int lastOffset;
             for (BaseEntry<String> entry : stringConcurrentSkipListMap.values()) {
                 offsets.add(writerCopy.size());
                 if(entry.value() != null) {
                     writerCopy.writeBoolean(true);
-                    writerCopy.writeUTF(entry.key());
-                    writerCopy.writeUTF(entry.value());
+                    lastOffset = writerCopy.size();
+                    writeValue(writerCopy, entry.key(), 0);
+                    lengths.add(writerCopy.size() - lastOffset - Integer.BYTES);
+                    lastOffset = writerCopy.size();
+                    writeValue(writerCopy, entry.value(), 0);
                 } else {
                     writerCopy.writeBoolean(false);
-                    writerCopy.writeUTF(entry.key());
+                    lastOffset = writerCopy.size();
+                    writeValue(writerCopy, entry.key(), 0);
                 }
+                lengths.add(writerCopy.size() - lastOffset - Integer.BYTES);
             }
+
             long keyValueSize = writerCopy.size();
-            writer.writeLong(keyValueSize);
+            writer.writeLong(keyValueSize - Integer.BYTES - Long.BYTES);
             for (BaseEntry<String> entry : stringConcurrentSkipListMap.values()) {
                 if (entry.value() != null) {
                     writer.writeBoolean(true);
-                    writer.writeUTF(entry.key());
-                    writer.writeUTF(entry.value());
+                    writeValue(writer, entry.key(), lengths.pop());
+                    writeValue(writer, entry.value(), lengths.pop());
                 } else {
                     writer.writeBoolean(false);
-                    writer.writeUTF(entry.key());
+                    writeValue(writer, entry.key(), lengths.pop());
                 }
             }
+
             for (long offset : offsets) {
                 writer.writeLong(offset);
             }
 
+            writer.writeLong(writer.size() + Long.BYTES);
+
             Files.delete(directoryPath.resolve(listOfFiles.size() + FILE_NAME_COPY));
-        } finally {
-            stringConcurrentSkipListMap.clear();
         }
+    }
+
+    @Override
+    public void compact() throws IOException {
+        ConcurrentNavigableMap<String, BaseEntry<String>> stringConcurrentSkipListMapCompact =
+                new ConcurrentSkipListMap<>(String::compareTo);
+        Iterator<BaseEntry<String>> iterator = get(null, null);
+        stringConcurrentSkipListMap = stringConcurrentSkipListMapCompact;
+        while (iterator.hasNext()) {
+            upsert(iterator.next());
+        }
+        for(Path file: listOfFiles) {
+            Files.delete(file);
+        }
+    }
+
+    private synchronized void writeValue(DataOutputStream writer, String value, int size) throws IOException {
+        writer.writeInt(size);
+        writer.writeBytes(value);
     }
 }

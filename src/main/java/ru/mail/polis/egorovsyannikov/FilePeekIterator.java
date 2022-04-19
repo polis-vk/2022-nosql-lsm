@@ -2,8 +2,9 @@ package ru.mail.polis.egorovsyannikov;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -20,6 +21,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
     private int numberOfEntries;
     private Iterator<BaseEntry<String>> delegate;
     private final int generation;
+    private long fileSize;
 
     public FilePeekIterator(Path path, String from, String to, int generation) {
         this.path = path;
@@ -38,18 +40,21 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
     }
 
     private void init(String from, String to) {
-        try (RandomAccessFile reader = new RandomAccessFile(path.toString(), "r")) {
+        try (DataInputStream reader = new DataInputStream(new BufferedInputStream(Files.newInputStream(path)))) {
             numberOfEntries = reader.readInt();
             endIndex = reader.readLong();
-            startIndex = reader.getFilePointer();
+            startIndex = Integer.BYTES + Long.BYTES;
             if (endIndex == startIndex) {
                 numberOfEntries = 0;
             }
-            reader.seek(endIndex);
+
+            reader.skipNBytes(endIndex);
 
             for (int i = 0; i < numberOfEntries; i++) {
                 offsets.add(reader.readLong());
             }
+
+            fileSize = reader.readLong();
 
             if (from != null) {
                 startIndex = findBorderIndexes(from);
@@ -131,15 +136,15 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
     }
 
     private BaseEntry<String> readNext() {
-        try (RandomAccessFile reader = new RandomAccessFile(path.toString(), "r")) {
-            reader.seek(currentFilePosition);
+        try (DataInputStream reader = new DataInputStream(new BufferedInputStream(Files.newInputStream(path)))) {
+            reader.skipNBytes(currentFilePosition);
             BaseEntry<String> result;
             if (reader.readBoolean()) {
-                result = new BaseEntry<>(reader.readUTF(), reader.readUTF());
+                result = new BaseEntry<>(readValue(reader), readValue(reader));
             } else {
-                result = new BaseEntry<>(reader.readUTF(), null);
+                result = new BaseEntry<>(readValue(reader), null);
             }
-            currentFilePosition = reader.getFilePointer();
+            currentFilePosition = fileSize - reader.available();
             return result;
         } catch (IOException e) {
             return null;
@@ -163,5 +168,9 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
             }
             return null;
         }
+    }
+
+    private String readValue(DataInputStream reader) throws IOException {
+        return new String(reader.readNBytes(reader.readInt()), StandardCharsets.UTF_8);
     }
 }
