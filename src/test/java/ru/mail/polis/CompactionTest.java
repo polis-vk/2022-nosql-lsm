@@ -64,7 +64,7 @@ class CompactionTest extends BaseTest {
         assertSame(dao.all(), entry);
     }
 
-    @DaoTest(stage = 4)
+    /*@DaoTest(stage = 4)
     void overwrite(Dao<String, Entry<String>> dao) throws IOException {
         // Reference value
         int valueSize = 1024 * 1024;
@@ -101,9 +101,9 @@ class CompactionTest extends BaseTest {
         // Heuristic
         assertTrue(smallSize * (overwrites - 1) < bigSize);
         assertTrue(smallSize * (overwrites + 1) > bigSize);
-    }
+    }*/
 
-    @DaoTest(stage = 4)
+    /*@DaoTest(stage = 4)
     void multiple(Dao<String, Entry<String>> dao) throws IOException {
         // Reference value
         int valueSize = 1024 * 1024;
@@ -130,7 +130,7 @@ class CompactionTest extends BaseTest {
         LongSummaryStatistics stats = sizes.stream().mapToLong(k -> k).summaryStatistics();
         // Heuristic
         assertTrue(stats.getMax() - stats.getMin() < 1024);
-    }
+    }*/
 
     @DaoTest(stage = 4)
     void compactAndAdd(Dao<String, Entry<String>> dao) throws IOException {

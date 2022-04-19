@@ -4,6 +4,7 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.aliases.SSTable;
+import ru.mail.polis.pavelkovalenko.dto.FileMeta;
 import ru.mail.polis.pavelkovalenko.iterators.MergeIterator;
 import ru.mail.polis.pavelkovalenko.visitors.CompactVisitor;
 
@@ -41,17 +42,24 @@ public final class Runnables {
     public final Runnable FLUSH = new Runnable() {
         @Override
         public void run() {
+            if (DaoUtils.nothingToFlush(sstablesForWrite)) {
+                return;
+            }
+
             Path dataFile;
             Path indexesFile;
             try {
                 interThreadedLock.lock();
                 try {
+                    if (DaoUtils.nothingToFlush(sstablesForWrite)) {
+                        return;
+                    }
+
                     int fileOrdinal = sstablesSize.get();
                     do {
                         ++fileOrdinal;
-                        String priorityStr = String.valueOf(fileOrdinal);
-                        dataFile = Utils.getFilePath(Utils.getDataFilename(priorityStr), config);
-                        indexesFile = Utils.getFilePath(Utils.getIndexesFilename(priorityStr), config);
+                        dataFile = FileUtils.getFilePath(FileUtils.getDataFilename(fileOrdinal), config);
+                        indexesFile = FileUtils.getFilePath(FileUtils.getIndexesFilename(fileOrdinal), config);
                     } while (Files.exists(dataFile));
                     Files.createFile(dataFile);
                     Files.createFile(indexesFile);
@@ -62,6 +70,12 @@ public final class Runnables {
                 SSTable memorySSTable;
                 interThreadedLock.lock();
                 try {
+                    if (DaoUtils.nothingToFlush(sstablesForWrite)) {
+                        Files.delete(dataFile);
+                        Files.delete(indexesFile);
+                        return;
+                    }
+
                     memorySSTable = sstablesForWrite.remove();
                     sstablesForFlush.add(memorySSTable);
                 } finally {
@@ -90,7 +104,23 @@ public final class Runnables {
     public final Runnable COMPACT = new Runnable() {
         @Override
         public void run() {
+            if (sstablesSize.get() == 0) {
+                return;
+            }
+
             try {
+                interThreadedLock.lock();
+                try {
+                    if (sstablesSize.get() == 1) {
+                        FileMeta meta = serializer.readMeta(serializer.get(1).dataFile());
+                        if (!serializer.hasTombstones(meta)) {
+                            return;
+                        }
+                    }
+                } finally {
+                    interThreadedLock.unlock();
+                }
+
                 Iterator<Entry<ByteBuffer>> mergeIterator
                         = new MergeIterator(null, null, serializer, Collections.EMPTY_LIST, sstablesSize);
                 if (!mergeIterator.hasNext()) {
@@ -104,8 +134,10 @@ public final class Runnables {
                 try {
                     do {
                         ++iteration;
-                        compactDataFile = Utils.getFilePath(Utils.COMPACT_DATA_FILENAME + iteration, config);
-                        compactIndexesFile = Utils.getFilePath(Utils.COMPACT_INDEXES_FILENAME + iteration, config);
+                        compactDataFile
+                                = FileUtils.getFilePath(FileUtils.getCompactDataFilename(iteration), config);
+                        compactIndexesFile
+                                = FileUtils.getFilePath(FileUtils.getCompactIndexesFilename(iteration), config);
                     } while (Files.exists(compactDataFile));
                     Files.createFile(compactDataFile);
                     Files.createFile(compactIndexesFile);

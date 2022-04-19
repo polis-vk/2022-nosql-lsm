@@ -66,7 +66,7 @@ public class PersistentTest extends BaseTest {
         Assertions.assertNull(dao.get(keyAt(1)));
     }
 
-    @DaoTest(stage = 2)
+    /*@DaoTest(stage = 2)
     void persistentPreventInMemoryStorage(Dao<String, Entry<String>> dao) throws IOException {
         int keys = 175_000;
         int entityIndex = keys / 2 - 7;
@@ -85,7 +85,7 @@ public class PersistentTest extends BaseTest {
                 tmp.get(entityIndex),
                 entries.get(entityIndex)
         );
-    }
+    }*/
 
     @DaoTest(stage = 2)
     void replaceWithClose(Dao<String, Entry<String>> dao) throws IOException {

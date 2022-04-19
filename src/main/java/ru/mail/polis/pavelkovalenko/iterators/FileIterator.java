@@ -3,7 +3,7 @@ package ru.mail.polis.pavelkovalenko.iterators;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.dto.MappedPairedFiles;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
+import ru.mail.polis.pavelkovalenko.utils.MergeIteratorUtils;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -34,9 +34,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
     @Override
     public boolean hasNext() {
         try {
-            boolean hasNext = dataExists() && canContinue();
-            curEntry = null;
-            return hasNext;
+            return dataExists() && canContinue();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -47,7 +45,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
         try {
             Entry<ByteBuffer> peek = peek();
             curEntry = null;
-            curIndexesPos += Utils.INDEX_OFFSET;
+            curIndexesPos += MergeIteratorUtils.INDEX_OFFSET;
             return peek;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -78,16 +76,17 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
     private void binarySearch() {
         ByteBuffer ceilKey = getLast().key();
         int a = -1;
-        int b = getIndexesFileLength() / Utils.INDEX_OFFSET;
+        int b = getIndexesFileLength() / MergeIteratorUtils.INDEX_OFFSET;
         int c;
 
         while (b - a > 1) {
             c = (b + a) / 2;
-            ByteBuffer curKey = serializer.readKey(mappedFilePair, c * Utils.INDEX_OFFSET);
+            ByteBuffer curKey = serializer.readKey(mappedFilePair, c * MergeIteratorUtils.INDEX_OFFSET);
             int curKeyCompareToFrom = curKey.compareTo(from);
             if (curKeyCompareToFrom >= 0 && curKey.compareTo(ceilKey) <= 0) {
                 ceilKey = curKey;
-                this.curIndexesPos = c * Utils.INDEX_OFFSET;
+                this.curIndexesPos = c * MergeIteratorUtils.INDEX_OFFSET;
+                this.curEntry = serializer.readEntry(mappedFilePair, c * MergeIteratorUtils.INDEX_OFFSET);
             }
 
             if (curKeyCompareToFrom < 0) {
@@ -101,7 +100,7 @@ public class FileIterator implements Iterator<Entry<ByteBuffer>> {
     }
 
     private Entry<ByteBuffer> getLast() {
-        return serializer.readEntry(mappedFilePair, getIndexesFileLength() - Utils.INDEX_OFFSET);
+        return serializer.readEntry(mappedFilePair, getIndexesFileLength() - MergeIteratorUtils.INDEX_OFFSET);
     }
 
     private boolean isFromOutOfBound() {

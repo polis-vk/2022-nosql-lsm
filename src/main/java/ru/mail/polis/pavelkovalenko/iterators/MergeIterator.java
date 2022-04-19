@@ -5,7 +5,6 @@ import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.aliases.SSTable;
 import ru.mail.polis.pavelkovalenko.comparators.IteratorComparator;
 import ru.mail.polis.pavelkovalenko.utils.MergeIteratorUtils;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -24,21 +23,24 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
     public MergeIterator(ByteBuffer from, ByteBuffer to, Serializer serializer, List<SSTable> memorySSTables,
                          AtomicInteger sstablesSize)
             throws IOException, ReflectiveOperationException {
-        ByteBuffer from1 = from == null ? Utils.EMPTY_BYTEBUFFER : from;
+        ByteBuffer from1 = from == null ? MergeIteratorUtils.EMPTY_BYTEBUFFER : from;
         int priority = 0;
 
-        for (SSTable ssTable : memorySSTables) {
+        for (SSTable sstable : memorySSTables) {
+            if (sstable.isEmpty()) {
+                continue;
+            }
+
             if (to == null) {
-                iterators.add(new PeekIterator<>(ssTable.tailMap(from1).values().iterator(), priority++));
+                iterators.add(new PeekIterator<>(sstable.tailMap(from1).values().iterator(), priority++));
             } else {
-                iterators.add(new PeekIterator<>(ssTable.subMap(from1, to).values().iterator(), priority++));
+                iterators.add(new PeekIterator<>(sstable.subMap(from1, to).values().iterator(), priority++));
             }
         }
 
-        int snapshottedSSTablesSize = sstablesSize.get();
-        for (; priority <= snapshottedSSTablesSize + memorySSTables.size() - 1; ++priority) {
+        for (; priority <= sstablesSize.get() + memorySSTables.size() - 1; ++priority) {
             iterators.add(new PeekIterator<>(
-                    new FileIterator(serializer.get(snapshottedSSTablesSize - priority + 1), serializer, from1, to),
+                    new FileIterator(serializer.get(sstablesSize.get() + memorySSTables.size() - priority), serializer, from1, to),
                     priority
             ));
         }

@@ -5,8 +5,8 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.dto.FileMeta;
 import ru.mail.polis.pavelkovalenko.dto.MappedPairedFiles;
+import ru.mail.polis.pavelkovalenko.utils.FileUtils;
 import ru.mail.polis.pavelkovalenko.utils.MergeIteratorUtils;
-import ru.mail.polis.pavelkovalenko.utils.Utils;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -74,18 +74,21 @@ public final class Serializer {
 
         try (RandomAccessFile dataFile = new RandomAccessFile(dataPath.toString(), "rw");
              RandomAccessFile indexesFile = new RandomAccessFile(indexesPath.toString(), "rw")) {
-            writeMeta(FileMeta.UNFINISHED_META, dataFile);
+            byte hasTombstones = FileMeta.hasNotTombstones;
+            writeMeta(new FileMeta(FileMeta.wasNotWritten, hasTombstones), dataFile);
 
             int curOffset = (int) dataFile.getFilePointer();
             int bbSize = 0;
-            ByteBuffer offset = ByteBuffer.allocate(Utils.INDEX_OFFSET);
+            ByteBuffer offset = ByteBuffer.allocate(MergeIteratorUtils.INDEX_OFFSET);
             while (sstable.hasNext()) {
                 curOffset += bbSize;
                 writeOffset(curOffset, offset, indexesFile);
-                bbSize = writePair(sstable.next(), dataFile);
+                Entry<ByteBuffer> curEntry = sstable.next();
+                hasTombstones = curEntry.isTombstone() ? FileMeta.hasTombstones : FileMeta.hasNotTombstones;
+                bbSize = writePair(curEntry, dataFile);
             }
 
-            writeMeta(FileMeta.FINISHED_META, dataFile);
+            writeMeta(new FileMeta(FileMeta.wasWritten, hasTombstones), dataFile);
         } catch (Exception ex) {
             Files.delete(dataPath);
             Files.delete(indexesPath);
@@ -112,20 +115,31 @@ public final class Serializer {
     }
 
     public FileMeta readMeta(MappedByteBuffer file) {
-        return new FileMeta(file.get(0));
+        return new FileMeta(file.get(0), file.get(1));
+    }
+
+    public FileMeta readMeta(Path pathToFile) throws IOException {
+        try (RandomAccessFile file = new RandomAccessFile(pathToFile.toString(), "r")) {
+            return switch ((int) file.length()) {
+                case 0 -> new FileMeta(FileMeta.wasNotWritten, FileMeta.hasNotTombstones);
+                case 1 -> new FileMeta(file.readByte(), FileMeta.hasNotTombstones);
+                default -> new FileMeta(file.readByte(), file.readByte());
+            };
+        }
     }
 
     private void writeMeta(FileMeta meta, RandomAccessFile file) throws IOException {
         file.seek(0);
-        file.write(meta.wasWritten());
+        file.write(meta.written());
+        file.write(meta.tombstoned());
     }
 
-    public boolean hasFinishedMeta(Path pathToFile) throws IOException {
-        boolean hasFinishedMeta;
-        try (RandomAccessFile file = new RandomAccessFile(pathToFile.toString(), "r")) {
-            hasFinishedMeta = file.length() != 0 && file.readByte() == FileMeta.finishedWrite;
-        }
-        return hasFinishedMeta;
+    public boolean wasWritten(FileMeta meta) {
+        return meta.written() == FileMeta.wasWritten;
+    }
+
+    public boolean hasTombstones(FileMeta meta) {
+        return meta.tombstoned() == FileMeta.hasTombstones;
     }
 
     private int readDataFileOffset(MappedByteBuffer indexesFile, int indexesPos) {
@@ -140,9 +154,8 @@ public final class Serializer {
         }
 
         for (int priority = 1; priority <= sstablesSize.get(); ++priority) {
-            final String priorityStr = String.valueOf(priority);
-            Path dataFile = config.basePath().resolve(Utils.getDataFilename(priorityStr));
-            Path indexesFile = config.basePath().resolve(Utils.getIndexesFilename(priorityStr));
+            Path dataFile = FileUtils.getFilePath(FileUtils.getDataFilename(priority), config);
+            Path indexesFile = FileUtils.getFilePath(FileUtils.getIndexesFilename(priority), config);
 
             try (FileChannel dataChannel = FileChannel.open(dataFile);
                  FileChannel indexesChannel = FileChannel.open(indexesFile)) {

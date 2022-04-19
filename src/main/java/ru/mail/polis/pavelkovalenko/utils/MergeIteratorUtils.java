@@ -10,6 +10,8 @@ import java.util.Queue;
 
 public final class MergeIteratorUtils {
 
+    public static final int INDEX_OFFSET = Integer.BYTES;
+    public static final ByteBuffer EMPTY_BYTEBUFFER = ByteBuffer.allocate(0);
     public static final Byte NORMAL_VALUE = 1;
     public static final Byte TOMBSTONE_VALUE = -1;
 
