@@ -3,7 +3,6 @@ package ru.mail.polis.egorovsyannikov;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
-
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -140,7 +139,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             }
 
             long keyValueSize = writerCopy.size();
-            writer.writeLong(keyValueSize - Integer.BYTES - Long.BYTES);
+            writer.writeLong(keyValueSize);
             for (BaseEntry<String> entry : stringConcurrentSkipListMap.values()) {
                 if (entry.value() != null) {
                     writer.writeBoolean(true);
@@ -164,6 +163,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void compact() throws IOException {
+        if(stringConcurrentSkipListMap.isEmpty() && listOfFiles.size() <= 1) {
+            return;
+        }
         ConcurrentNavigableMap<String, BaseEntry<String>> stringConcurrentSkipListMapCompact =
                 new ConcurrentSkipListMap<>(String::compareTo);
         Iterator<BaseEntry<String>> iterator = get(null, null);
@@ -174,6 +176,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         for(Path file: listOfFiles) {
             Files.delete(file);
         }
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (stringConcurrentSkipListMap.isEmpty()) {
+            return;
+        }
+        flush();
     }
 
     private synchronized void writeValue(DataOutputStream writer, String value, int size) throws IOException {

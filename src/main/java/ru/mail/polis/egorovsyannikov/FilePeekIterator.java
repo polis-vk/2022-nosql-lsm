@@ -48,7 +48,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
                 numberOfEntries = 0;
             }
 
-            reader.skipNBytes(endIndex);
+            reader.skipNBytes(endIndex - Integer.BYTES - Long.BYTES);
 
             for (int i = 0; i < numberOfEntries; i++) {
                 offsets.add(reader.readLong());
