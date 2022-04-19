@@ -6,9 +6,9 @@ public final class Timer {
     }
 
     public static long elapseMs(Task task) throws Exception {
-        long currentMs = System.currentTimeMillis();
+        long startMs = System.currentTimeMillis();
         task.execute();
-        return System.currentTimeMillis() - currentMs;
+        return System.currentTimeMillis() - startMs;
     }
 }
 
