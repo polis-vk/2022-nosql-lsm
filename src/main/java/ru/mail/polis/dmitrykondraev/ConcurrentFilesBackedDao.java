@@ -1,6 +1,7 @@
 package ru.mail.polis.dmitrykondraev;
 
 import jdk.incubator.foreign.MemorySegment;
+import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
@@ -22,6 +23,8 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Function;
 import java.util.stream.Stream;
+
+import static ru.mail.polis.dmitrykondraev.Files.filenameOf;
 
 /**
  * Author: Dmitry Kondraev.
@@ -47,10 +50,13 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
         compactDirTmp = basePath.resolve(COMPACT_NAME + TMP_SUFFIX);
         compactDir = basePath.resolve(COMPACT_NAME);
         try (Stream<Path> stream = Files.list(basePath)) {
-            stream
+            Iterator<Path> pathIterator = stream
                     .filter(subDirectory -> filenameOf(subDirectory).startsWith(TABLE_PREFIX))
-                    .sorted(Comparator.comparing(ConcurrentFilesBackedDao::filenameOf).reversed())
-                    .forEachOrdered(subDirectory -> sortedStringTables.add(SortedStringTable.of(subDirectory)));
+                    .sorted(Comparator.comparing(ru.mail.polis.dmitrykondraev.Files::filenameOf).reversed())
+                    .iterator();
+            while (pathIterator.hasNext()) {
+                sortedStringTables.add(SortedStringTable.of(pathIterator.next()));
+            }
         }
         if (Files.exists(compactDirTmp)) {
             Files.deleteIfExists(compactDirTmp.resolve(SortedStringTable.DATA_FILENAME));
@@ -108,10 +114,10 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
             return;
         }
         Path tablePath = sortedStringTablePath(sortedStringTables.size());
-        SortedStringTable.of(Files.createDirectory(tablePath))
-                .write(map.values())
-                .close();
-        sortedStringTables.addFirst(SortedStringTable.of(tablePath));
+        ResourceScope scope = ResourceScope.newConfinedScope();
+        sortedStringTables.addFirst(
+                SortedStringTable.written(Files.createDirectory(tablePath), map.values(), scope)
+        );
         map = newMemoryTable();
     }
 
@@ -121,9 +127,9 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
     }
 
     private void compactImpl() throws IOException {
-        SortedStringTable.of(Files.createDirectory(compactDirTmp))
-                .write(all())
-                .close();
+        ResourceScope scope = ResourceScope.newConfinedScope();
+        SortedStringTable.written(Files.createDirectory(compactDirTmp), all(), scope);
+        scope.close();
         Files.move(compactDirTmp, compactDir, StandardCopyOption.ATOMIC_MOVE);
         map = newMemoryTable();
         finishCompaction();
@@ -158,10 +164,6 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
     private Iterator<MemorySegmentEntry> inMemoryGet(MemorySegment from, MemorySegment to) {
         Map<MemorySegment, MemorySegmentEntry> subMap = to == null ? map.tailMap(from) : map.subMap(from, to);
         return iterator(subMap);
-    }
-
-    private static String filenameOf(Path path) {
-        return path.getFileName().toString();
     }
 
     private static <K, V> Iterator<V> iterator(Map<K, V> map) {
