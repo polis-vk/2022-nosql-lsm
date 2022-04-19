@@ -44,6 +44,7 @@ public class CompactManager {
                     throw new RuntimeException("Compact operation was terminated.");
                 }
             } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 e.printStackTrace();
             }
         }
