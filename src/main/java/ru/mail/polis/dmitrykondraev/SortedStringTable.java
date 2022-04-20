@@ -30,10 +30,9 @@ final class SortedStringTable {
     /**
      * Constructs SortedStringTable.
      */
-    public static SortedStringTable of(Path folderPath) throws IOException {
+    public static SortedStringTable of(Path folderPath, ResourceScope scope) throws IOException {
         Path indexFile = folderPath.resolve(INDEX_FILENAME);
         Path dataFile = folderPath.resolve(DATA_FILENAME);
-        ResourceScope scope = ResourceScope.newSharedScope();
         Index index = new Index(MemorySegment.mapFile(
                 indexFile,
                 0L,
@@ -123,7 +122,7 @@ final class SortedStringTable {
         return index;
     }
 
-    public Iterator<MemorySegmentEntry> get(MemorySegment from, MemorySegment to) throws IOException {
+    public Iterator<MemorySegmentEntry> get(MemorySegment from, MemorySegment to) {
         int tableSize = index.entriesMapped();
         return new Iterator<>() {
             private int first = insertionPoint(binarySearch(0, tableSize, from));

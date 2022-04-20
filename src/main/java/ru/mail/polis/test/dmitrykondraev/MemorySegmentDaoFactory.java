@@ -19,7 +19,7 @@ public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment
 
     @Override
     public Dao<MemorySegment, MemorySegmentEntry> createDao(Config config) throws IOException {
-        return new ConcurrentFilesBackedDao(config);
+        return ConcurrentFilesBackedDao.of(config);
     }
 
     @Override

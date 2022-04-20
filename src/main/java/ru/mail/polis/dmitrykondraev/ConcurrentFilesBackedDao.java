@@ -9,18 +9,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
-import java.util.concurrent.ConcurrentNavigableMap;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.Spliterator;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -29,43 +27,51 @@ import static ru.mail.polis.dmitrykondraev.Files.filenameOf;
 /**
  * Author: Dmitry Kondraev.
  */
-
 public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     private static final String COMPACT_NAME = "compacted";
     private static final String TABLE_PREFIX = "table";
     private static final String TMP_SUFFIX = "-temp";
 
+    private final BackgroundIOExecutor backgroundExecutor = new BackgroundIOExecutor();
     private final Path basePath;
     private final Path compactDir;
     private final Path compactDirTmp;
+    private final long flushThresholdBytes;
     /**
      * ordered from most recent to the earliest.
      */
-    private final Deque<SortedStringTable> sortedStringTables = new ArrayDeque<>();
-    private ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map = newMemoryTable();
+    private final List<SortedStringTable> sortedStringTables = new CopyOnWriteArrayList<>();
+    private final AtomicReference<MemoryTable> memoryTable = new AtomicReference<>(MemoryTable.of());
+    private final ResourceScope scope = ResourceScope.newSharedScope();
 
-    public ConcurrentFilesBackedDao(Config config) throws IOException {
-        long USE_ME_PLEASE = config.flushThresholdBytes();
+    private ConcurrentFilesBackedDao(Config config) {
         basePath = config.basePath();
-        compactDirTmp = basePath.resolve(COMPACT_NAME + TMP_SUFFIX);
         compactDir = basePath.resolve(COMPACT_NAME);
-        try (Stream<Path> stream = Files.list(basePath)) {
+        compactDirTmp = basePath.resolve(COMPACT_NAME + TMP_SUFFIX);
+        flushThresholdBytes = config.flushThresholdBytes();
+    }
+
+    public static ConcurrentFilesBackedDao of(Config config) throws IOException {
+        ConcurrentFilesBackedDao dao = new ConcurrentFilesBackedDao(config);
+        try (Stream<Path> stream = Files.list(dao.basePath)) {
             Iterator<Path> pathIterator = stream
                     .filter(subDirectory -> filenameOf(subDirectory).startsWith(TABLE_PREFIX))
                     .sorted(Comparator.comparing(ru.mail.polis.dmitrykondraev.Files::filenameOf).reversed())
                     .iterator();
             while (pathIterator.hasNext()) {
-                sortedStringTables.add(SortedStringTable.of(pathIterator.next()));
+                // TODO perf
+                dao.sortedStringTables.add(SortedStringTable.of(pathIterator.next(), dao.scope));
             }
         }
-        if (Files.exists(compactDirTmp)) {
-            SortedStringTable.destroyFiles(compactDirTmp);
-            compactImpl();
-            return;
+        if (Files.exists(dao.compactDirTmp)) {
+            SortedStringTable.destroyFiles(dao.compactDirTmp);
+            dao.compactImpl();
+            return dao;
         }
-        if (Files.exists(compactDir)) {
-            finishCompaction();
+        if (Files.exists(dao.compactDir)) {
+            dao.finishCompaction();
         }
+        return dao;
     }
 
     @Override
@@ -73,27 +79,42 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
         if (from == null) {
             return get(MemorySegmentComparator.MINIMAL, to);
         }
-        PeekIterator<MemorySegmentEntry> inMemoryIterator = new PeekIterator<>(inMemoryGet(from, to));
-        if (sortedStringTables.isEmpty()) {
+        MemoryTable table = memoryTable.get();
+        PeekIterator<MemorySegmentEntry> inMemoryIterator = new PeekIterator<>(table.get(from, to));
+        Spliterator<SortedStringTable> tableSpliterator = sortedStringTables.spliterator();
+        int tablesCount = (int) tableSpliterator.getExactSizeIfKnown();
+        if (tablesCount == 0 && table.previous == null) {
             return withoutTombStones(inMemoryIterator);
         }
-        List<PeekIterator<MemorySegmentEntry>> iterators = new ArrayList<>(1 + sortedStringTables.size());
+        List<PeekIterator<MemorySegmentEntry>> iterators =
+                new ArrayList<>((table.previous == null ? 1 : 2) + tablesCount);
         iterators.add(inMemoryIterator);
-        for (SortedStringTable table : sortedStringTables) {
-            iterators.add(new PeekIterator<>(table.get(from, to)));
+        if (table.previous != null) {
+            iterators.add(new PeekIterator<>(table.previous.get(from, to)));
         }
+        tableSpliterator.forEachRemaining(t -> iterators.add(new PeekIterator<>(t.get(from, to))));
+        return withoutTombStones(new PeekIterator<>(merged(iterators)));
+    }
+
+    private Iterator<MemorySegmentEntry> allStored(Spliterator<SortedStringTable> tableSpliterator) {
+        List<PeekIterator<MemorySegmentEntry>> iterators =
+                new ArrayList<>((int) tableSpliterator.getExactSizeIfKnown());
+        tableSpliterator.forEachRemaining(t ->
+                iterators.add(new PeekIterator<>(t.get(MemorySegmentComparator.MINIMAL, null))));
         return withoutTombStones(new PeekIterator<>(merged(iterators)));
     }
 
     @Override
     public void upsert(MemorySegmentEntry entry) {
-        // implicit check for non-null entry and entry.key()
-        map.put(entry.key(), entry);
+        long byteSizeAfter = memoryTable.get().upsert(entry);
+        if (byteSizeAfter >= flushThresholdBytes) {
+            backgroundExecutor.execute(this::flushImpl);
+        }
     }
 
     @Override
     public MemorySegmentEntry get(MemorySegment key) throws IOException {
-        MemorySegmentEntry result = map.get(key);
+        MemorySegmentEntry result = memoryTable.get().get(key);
         if (result != null) {
             return result.isTombStone() ? null : result;
         }
@@ -107,35 +128,50 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
     }
 
     @Override
-    public void flush() throws IOException {
-        if (map.isEmpty()) {
+    public void flush() {
+        backgroundExecutor.execute(this::flushImpl);
+    }
+
+    private void flushImpl() throws IOException {
+        MemoryTable previous = memoryTable.getAndUpdate(MemoryTable::forward);
+        if (previous.isEmpty()) {
             return;
         }
         Path tablePath = sortedStringTablePath(sortedStringTables.size());
         ResourceScope scope = ResourceScope.newConfinedScope();
-        sortedStringTables.addFirst(
-                SortedStringTable.written(Files.createDirectory(tablePath), map.values(), scope)
-        );
-        map = newMemoryTable();
+        sortedStringTables.add(
+                0,
+                SortedStringTable.written(Files.createDirectory(tablePath), previous.values(), scope));
+        memoryTable.getAndUpdate(MemoryTable::dropPrevious);
     }
 
     @Override
-    public void compact() throws IOException {
-        compactImpl();
+    public void compact() {
+        backgroundExecutor.execute(this::compactImpl);
     }
 
     private void compactImpl() throws IOException {
+        Spliterator<SortedStringTable> tableSpliterator = sortedStringTables.spliterator();
+        if (tableSpliterator.getExactSizeIfKnown() == 0) {
+            return;
+        }
         ResourceScope scope = ResourceScope.newConfinedScope();
-        SortedStringTable.written(Files.createDirectory(compactDirTmp), all(), scope);
+        SortedStringTable.written(Files.createDirectory(compactDirTmp), allStored(tableSpliterator), scope);
         scope.close();
         Files.move(compactDirTmp, compactDir, StandardCopyOption.ATOMIC_MOVE);
-        map = newMemoryTable();
         finishCompaction();
     }
 
     @Override
     public void close() throws IOException {
-        flush();
+        try {
+            backgroundExecutor.awaitTerminationIndefinitely();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            flushImpl();
+            scope.close();
+        }
     }
 
     private void finishCompaction() throws IOException {
@@ -145,7 +181,7 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
         sortedStringTables.clear();
         Path table0 = sortedStringTablePath(0);
         Files.move(compactDir, table0, StandardCopyOption.ATOMIC_MOVE);
-        sortedStringTables.addFirst(SortedStringTable.of(table0));
+        sortedStringTables.add(0, SortedStringTable.of(table0, scope));
     }
 
     private Path sortedStringTablePath(int index) {
@@ -157,19 +193,6 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
         char[] zeros = new char[10 - value.length()];
         Arrays.fill(zeros, '0');
         return basePath.resolve(TABLE_PREFIX + new String(zeros) + value);
-    }
-
-    private Iterator<MemorySegmentEntry> inMemoryGet(MemorySegment from, MemorySegment to) {
-        Map<MemorySegment, MemorySegmentEntry> subMap = to == null ? map.tailMap(from) : map.subMap(from, to);
-        return iterator(subMap);
-    }
-
-    private static <K, V> Iterator<V> iterator(Map<K, V> map) {
-        return map.values().iterator();
-    }
-
-    private static ConcurrentSkipListMap<MemorySegment, MemorySegmentEntry> newMemoryTable() {
-        return new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
     }
 
     /**
