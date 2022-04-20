@@ -18,6 +18,8 @@ import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
 import java.util.Spliterator;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -129,7 +131,13 @@ public final class ConcurrentFilesBackedDao implements Dao<MemorySegment, Memory
 
     @Override
     public void flush() {
-        backgroundExecutor.execute(this::flushImpl);
+        try {
+            backgroundExecutor.submit(this::flushImpl).get();
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void flushImpl() throws IOException {
@@ -146,7 +154,13 @@ public final class ConcurrentFilesBackedDao implements Dao<MemorySegment, Memory
 
     @Override
     public void compact() {
-        backgroundExecutor.execute(this::compactImpl);
+        try {
+            backgroundExecutor.submit(this::compactImpl).get();
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void compactImpl() throws IOException {
@@ -163,9 +177,10 @@ public final class ConcurrentFilesBackedDao implements Dao<MemorySegment, Memory
 
     @Override
     public void close() throws IOException {
+        backgroundExecutor.service.shutdown();
         boolean interrupted = false;
         try {
-            backgroundExecutor.awaitTerminationIndefinitely();
+            backgroundExecutor.service.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
         } catch (InterruptedException e) {
             interrupted = true;
         } finally {
