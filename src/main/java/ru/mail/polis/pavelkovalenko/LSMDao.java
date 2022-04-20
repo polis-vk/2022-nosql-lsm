@@ -35,16 +35,18 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     private static final int N_MEMORY_SSTABLES = 2;
+
     private final BlockingQueue<SSTable> sstablesForWrite = new LinkedBlockingQueue<>(N_MEMORY_SSTABLES);
     private final BlockingDeque<SSTable> sstablesForFlush = new LinkedBlockingDeque<>(N_MEMORY_SSTABLES);
     private final ReadWriteLock rwlock = new ReentrantReadWriteLock();
     private final Lock interThreadedLock = new ReentrantLock();
     private final ExecutorService service = Executors.newCachedThreadPool();
-    private final Runnables runnables;
+    private final Runnable flush;
+    private final Runnable compact;
 
     private final Config config;
     private final Serializer serializer;
-    private final AtomicInteger sstablesSize = new AtomicInteger(0);
+    private final AtomicInteger sstablesSize = new AtomicInteger();
     private final AtomicBoolean filesAppearedSinceLastCompact = new AtomicBoolean();
 
     private long curBytesForEntries;
@@ -52,14 +54,17 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     public LSMDao(Config config) throws IOException {
         this.config = config;
         serializer = new Serializer(config, sstablesSize);
-        Files.walkFileTree(config.basePath(), new ConfigVisitor(config, sstablesSize, serializer));
+        Files.walkFileTree(config.basePath(),
+                new ConfigVisitor(config, sstablesSize, filesAppearedSinceLastCompact, serializer));
 
         for (int i = 0; i < N_MEMORY_SSTABLES; ++i) {
             sstablesForWrite.add(new SSTable());
         }
 
-        runnables = new Runnables(config, sstablesSize, filesAppearedSinceLastCompact, serializer, interThreadedLock,
-                sstablesForWrite, sstablesForFlush);
+        this.flush = new Runnables.Flush(config, sstablesSize, filesAppearedSinceLastCompact,
+                serializer, interThreadedLock, sstablesForWrite, sstablesForFlush);
+        this.compact = new Runnables.Compact(config, sstablesSize,
+                filesAppearedSinceLastCompact, serializer, interThreadedLock);
     }
 
     @Override
@@ -96,7 +101,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         interThreadedLock.lock();
         try {
             if (curBytesForEntries >= config.flushThresholdBytes()) {
-                service.submit(runnables.flush);
+                service.submit(this.flush);
                 curBytesForEntries = 0;
             }
 
@@ -124,7 +129,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             if (DaoUtils.nothingToFlush(sstablesForWrite)) {
                 return;
             }
-            service.submit(runnables.flush);
+            service.submit(this.flush);
         } finally {
             interThreadedLock.unlock();
             rwlock.writeLock().unlock();
@@ -136,7 +141,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         rwlock.writeLock().lock();
         try {
             if (DaoUtils.thereIsSmthToFlush(sstablesForWrite)) {
-                service.submit(runnables.flush).get();
+                service.submit(this.flush).get();
             }
             service.shutdown();
 
@@ -187,7 +192,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
                 }
             }
 
-            service.submit(runnables.compact);
+            service.submit(this.compact);
         } catch (ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
         } finally {

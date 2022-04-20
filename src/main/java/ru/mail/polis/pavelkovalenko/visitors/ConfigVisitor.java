@@ -15,6 +15,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Iterator;
 import java.util.NavigableSet;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ConfigVisitor extends SimpleFileVisitor<Path> {
@@ -23,14 +24,17 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
     private final NavigableSet<Path> indexesFiles = new TreeSet<>(PathComparator.INSTANSE);
     private final Serializer serializer;
     private final AtomicInteger sstablesSize;
+    private final AtomicBoolean filesAppearedSinceLastCompact;
 
     private Path compactedDataPath;
     private Path compactedIndexesPath;
     private final Path dataPathToBeSet;
     private final Path indexesPathToBeSet;
 
-    public ConfigVisitor(Config config, AtomicInteger sstablesSize, Serializer serializer) {
+    public ConfigVisitor(Config config, AtomicInteger sstablesSize,
+                         AtomicBoolean filesAppearedSinceLastCompact, Serializer serializer) {
         this.sstablesSize = sstablesSize;
+        this.filesAppearedSinceLastCompact = filesAppearedSinceLastCompact;
         this.serializer = serializer;
         this.dataPathToBeSet = config.basePath().resolve(FileUtils.COMPACT_DATA_FILENAME_TO_BE_SET);
         this.indexesPathToBeSet = config.basePath().resolve(FileUtils.COMPACT_INDEXES_FILENAME_TO_BE_SET);
@@ -77,6 +81,11 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
             }
             sstablesSize.incrementAndGet();
         }
+
+        if (sstablesSize.get() > 0) {
+            this.filesAppearedSinceLastCompact.set(true);
+        }
+
         return FileVisitResult.CONTINUE;
     }
 

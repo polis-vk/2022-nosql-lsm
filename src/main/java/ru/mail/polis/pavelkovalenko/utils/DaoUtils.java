@@ -1,9 +1,7 @@
 package ru.mail.polis.pavelkovalenko.utils;
 
-import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.aliases.SSTable;
 
-import java.io.IOException;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;

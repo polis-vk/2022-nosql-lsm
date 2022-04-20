@@ -23,87 +23,107 @@ import java.util.concurrent.locks.Lock;
 
 public final class Runnables {
 
-    private Config config;
-    private AtomicInteger sstablesSize;
-    private AtomicBoolean filesAppearedSinceLastCompact;
-    private Serializer serializer;
-    private Lock interThreadedLock;
-    private BlockingQueue<SSTable> sstablesForWrite;
-    private BlockingDeque<SSTable> sstablesForFlush;
+    public static final class Flush implements Runnable {
 
-    public Runnables(Config config, AtomicInteger sstablesSize, AtomicBoolean filesAppearedSinceLastCompact,
+        private final Config config;
+        private final AtomicInteger sstablesSize;
+        private final AtomicBoolean filesAppearedSinceLastCompact;
+        private final Serializer serializer;
+        private final Lock interThreadedLock;
+        private final BlockingQueue<SSTable> sstablesForWrite;
+        private final BlockingDeque<SSTable> sstablesForFlush;
+
+        public Flush(Config config, AtomicInteger sstablesSize, AtomicBoolean filesAppearedSinceLastCompact,
                      Serializer serializer, Lock interThreadedLock,
                      BlockingQueue<SSTable> sstablesForWrite, BlockingDeque<SSTable> sstablesForFlush) {
-        this.config = config;
-        this.sstablesSize = sstablesSize;
-        this.filesAppearedSinceLastCompact = filesAppearedSinceLastCompact;
-        this.serializer = serializer;
-        this.interThreadedLock = interThreadedLock;
-        this.sstablesForWrite = sstablesForWrite;
-        this.sstablesForFlush = sstablesForFlush;
+            this.config = config;
+            this.sstablesSize = sstablesSize;
+            this.filesAppearedSinceLastCompact = filesAppearedSinceLastCompact;
+            this.serializer = serializer;
+            this.interThreadedLock = interThreadedLock;
+            this.sstablesForWrite = sstablesForWrite;
+            this.sstablesForFlush = sstablesForFlush;
+        }
+
+        @Override
+        public void run() {
+            if (DaoUtils.nothingToFlush(sstablesForWrite)) {
+                return;
+            }
+
+            Path dataFile;
+            Path indexesFile;
+            try {
+                interThreadedLock.lock();
+                try {
+                    if (DaoUtils.nothingToFlush(sstablesForWrite)) {
+                        return;
+                    }
+
+                    int fileOrdinal = sstablesSize.get();
+                    do {
+                        ++fileOrdinal;
+                        dataFile = FileUtils.getFilePath(FileUtils.getDataFilename(fileOrdinal), config);
+                        indexesFile = FileUtils.getFilePath(FileUtils.getIndexesFilename(fileOrdinal), config);
+                    } while (Files.exists(dataFile));
+                    Files.createFile(dataFile);
+                    Files.createFile(indexesFile);
+                } finally {
+                    interThreadedLock.unlock();
+                }
+
+                SSTable memorySSTable;
+                interThreadedLock.lock();
+                try {
+                    if (DaoUtils.nothingToFlush(sstablesForWrite)) {
+                        Files.delete(dataFile);
+                        Files.delete(indexesFile);
+                        return;
+                    }
+
+                    memorySSTable = sstablesForWrite.remove();
+                    sstablesForFlush.add(memorySSTable);
+                } finally {
+                    interThreadedLock.unlock();
+                }
+
+                serializer.write(memorySSTable.values().iterator(), dataFile, indexesFile);
+
+                interThreadedLock.lock();
+                try {
+                    sstablesSize.incrementAndGet();
+                    filesAppearedSinceLastCompact.set(true);
+                    if (!sstablesForFlush.remove(memorySSTable)) {
+                        throw new ConcurrentModificationException("Unexpected SSTable's removing");
+                    }
+                    memorySSTable.clear();
+                    sstablesForWrite.add(memorySSTable);
+                } finally {
+                    interThreadedLock.unlock();
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
-    public final Runnable flush = () -> {
-        if (DaoUtils.nothingToFlush(sstablesForWrite)) {
-            return;
+    public static final class Compact implements Runnable {
+
+        private final Config config;
+        private final AtomicInteger sstablesSize;
+        private final AtomicBoolean filesAppearedSinceLastCompact;
+        private final Serializer serializer;
+        private final Lock interThreadedLock;
+
+        public Compact(Config config, AtomicInteger sstablesSize, AtomicBoolean filesAppearedSinceLastCompact,
+                       Serializer serializer, Lock interThreadedLock) {
+            this.config = config;
+            this.sstablesSize = sstablesSize;
+            this.filesAppearedSinceLastCompact = filesAppearedSinceLastCompact;
+            this.serializer = serializer;
+            this.interThreadedLock = interThreadedLock;
         }
 
-        Path dataFile;
-        Path indexesFile;
-        try {
-            interThreadedLock.lock();
-            try {
-                if (DaoUtils.nothingToFlush(sstablesForWrite)) {
-                    return;
-                }
-
-                int fileOrdinal = sstablesSize.get();
-                do {
-                    ++fileOrdinal;
-                    dataFile = FileUtils.getFilePath(FileUtils.getDataFilename(fileOrdinal), config);
-                    indexesFile = FileUtils.getFilePath(FileUtils.getIndexesFilename(fileOrdinal), config);
-                } while (Files.exists(dataFile));
-                Files.createFile(dataFile);
-                Files.createFile(indexesFile);
-            } finally {
-                interThreadedLock.unlock();
-            }
-
-            SSTable memorySSTable;
-            interThreadedLock.lock();
-            try {
-                if (DaoUtils.nothingToFlush(sstablesForWrite)) {
-                    Files.delete(dataFile);
-                    Files.delete(indexesFile);
-                    return;
-                }
-
-                memorySSTable = sstablesForWrite.remove();
-                sstablesForFlush.add(memorySSTable);
-            } finally {
-                interThreadedLock.unlock();
-            }
-
-            serializer.write(memorySSTable.values().iterator(), dataFile, indexesFile);
-
-            interThreadedLock.lock();
-            try {
-                sstablesSize.incrementAndGet();
-                filesAppearedSinceLastCompact.set(true);
-                if (!sstablesForFlush.remove(memorySSTable)) {
-                    throw new ConcurrentModificationException("Unexpected SSTable's removing");
-                }
-                memorySSTable.clear();
-                sstablesForWrite.add(memorySSTable);
-            } finally {
-                interThreadedLock.unlock();
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    };
-
-    public final Runnable compact = new Runnable() {
         @Override
         public void run() {
             if (DaoUtils.noNeedsInCompact(sstablesSize, filesAppearedSinceLastCompact)) {
@@ -165,5 +185,7 @@ public final class Runnables {
                 throw new RuntimeException(e);
             }
         }
-    };
+    }
+
+    ;
 }
