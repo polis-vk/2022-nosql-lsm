@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public class FlushExecutor implements Runnable {
     // Poison pill is empty map
     public static final ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> POISON_PILL = new ConcurrentSkipListMap<>();
+    private volatile ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> inFlushing;
     private final BlockingQueue<ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>>> flushQueue;
     private final StorageSystem storageSystem;
 
@@ -21,17 +22,24 @@ public class FlushExecutor implements Runnable {
 
     @Override
     public void run() {
-        ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> msg;
         try {
             // take is blocking
-            while (!isPoisonPill(msg = flushQueue.take())) {
-                storageSystem.save(msg);
+            while (!isPoisonPill(inFlushing = flushQueue.take())) {
+                storageSystem.save(inFlushing);
+                inFlushing = null;
             }
         } catch (InterruptedException e) {
             throw new RuntimeException("Flush executor was interrupted.");
         } catch (IOException e) {
             throw new RuntimeException("IOException during flushing.");
         }
+    }
+
+    /**
+     * @return memory that is flushing now or null, if all memory are flushed already
+     */
+    public ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> getInFlushing() {
+        return inFlushing;
     }
 
     private static boolean isPoisonPill(ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memTable) {

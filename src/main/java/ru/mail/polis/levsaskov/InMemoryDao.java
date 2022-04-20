@@ -27,6 +27,7 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     private final StorageSystem storageSystem;
     private Thread compactThread;
     private Thread flushThread;
+    private FlushExecutor flushExecutor;
 
     public InMemoryDao() {
         storageSystem = null;
@@ -37,7 +38,8 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         storageSystem = StorageSystem.load(config.basePath());
         compactThread = new Thread(new CompactExecutor(storageSystem, compactionQueue));
         compactThread.start();
-        flushThread = new Thread(new FlushExecutor(storageSystem, flushQueue));
+        flushExecutor = new FlushExecutor(storageSystem, flushQueue);
+        flushThread = new Thread(flushExecutor);
         flushThread.start();
     }
 
@@ -51,6 +53,10 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
         if (ans == null) {
             var flushingTable = flushQueue.peek();
+            if (flushingTable == null) {
+                flushingTable = flushExecutor.getInFlushing(); // Try to avoid race
+            }
+
             ans = flushingTable == null ? null : flushingTable.get(key);
         }
         if (ans == null && storageSystem != null) {
@@ -71,7 +77,8 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
         var cutMemTable = cutMemTable(memTable, from, to);
         return storageSystem == null ? cutMemTable.values().iterator() :
-                storageSystem.getMergedEntrys(from, to, cutMemTable, cutMemTable(flushQueue.peek(), from, to));
+                storageSystem.getMergedEntrys(from, to, cutMemTable, cutMemTable(flushQueue.peek(), from, to), // Try to avoid race
+                        cutMemTable(flushExecutor.getInFlushing(), from, to));
     }
 
     @Override
@@ -80,12 +87,13 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             throw new RuntimeException("In memory dao closed.");
         }
 
-        if (memTableByteSize.addAndGet(entry.key().capacity() + entry.value().capacity()) > flushThresholdBytes) {
+        int entrySize = getEntryInMemorySize(entry);
+        if (memTableByteSize.addAndGet(entrySize) > flushThresholdBytes) {
             // Add() throws exception if queue is full, so upsert will not be done.
             flushQueue.add(memTable);
             // Create new in memory memTable if queue of flushing not full (exception wasn't thrown)
             memTable = new ConcurrentSkipListMap<>();
-            memTableByteSize.set(entry.key().capacity() + entry.value().capacity());
+            memTableByteSize.set(entrySize);
         }
 
         memTable.put(entry.key(), entry);
@@ -121,21 +129,22 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             return;
         }
 
-        flush();
+        isClosed = true;
         try {
+            flushQueue.put(memTable);
             compactionQueue.put(CompactExecutor.POISON_PILL);
             flushQueue.put(FlushExecutor.POISON_PILL);
         } catch (InterruptedException e) {
             throw new RuntimeException("Interrupted Queue");
         }
 
-        isClosed = true;
         try {
             compactThread.join();
             flushThread.join();
         } catch (InterruptedException e) {
             throw new RuntimeException("Join while closing was interrupted.");
         }
+
         storageSystem.close();
     }
 
@@ -158,5 +167,10 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         }
 
         return cut;
+    }
+
+    private static int getEntryInMemorySize(Entry<ByteBuffer> entry) {
+        int valSize = entry.value() == null ? 0 : entry.value().capacity();
+        return entry.key().capacity() + valSize;
     }
 }
