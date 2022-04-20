@@ -74,7 +74,6 @@ public class StoragePart implements AutoCloseable {
                 persistEntry(entry, memBufferToWrite);
                 memChannel.write(memBufferToWrite);
 
-
                 memBufferToWrite.clear();
                 bytesWritten += entryBytesC;
 

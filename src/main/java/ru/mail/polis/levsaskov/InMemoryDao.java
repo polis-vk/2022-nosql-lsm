@@ -76,9 +76,9 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             return cutMemTable.values().iterator();
         }
 
-        return storageSystem != null ? storageSystem.getMergedEntrys(from, to, cutMemTable,
+        return storageSystem == null ? null : storageSystem.getMergedEntrys(from, to, cutMemTable,
                 cutMemTable(flushQueue.peek(), from, to), // Try to avoid race
-                cutMemTable(flushExecutor.getInFlushing(), from, to)) : null;
+                cutMemTable(flushExecutor.getInFlushing(), from, to));
     }
 
     @Override
@@ -130,7 +130,7 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             compactThread.join();
             flushThread.join();
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            Thread.currentThread().interrupt();
         }
 
         storageSystem.close();

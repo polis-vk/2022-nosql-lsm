@@ -36,7 +36,7 @@ public class FlushExecutor implements Runnable {
     }
 
     /**
-     * Fix with in flushing memory, to have access to it during flushing
+     * Fix with in flushing memory, to have access to it during flushing.
      *
      * @return memory that is flushing now or null, if all memory are flushed already
      */
