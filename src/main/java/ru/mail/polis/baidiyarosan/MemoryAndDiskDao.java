@@ -183,9 +183,6 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             throw new RuntimeException(e);
         }
         isClosed.set(true);
-        FileUtils.clearAllFrom(files);
-        FileUtils.clearAllFrom(fileIndexes);
-
     }
 
     private void validate() {

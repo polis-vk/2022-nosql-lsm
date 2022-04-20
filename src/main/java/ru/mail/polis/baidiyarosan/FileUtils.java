@@ -1,11 +1,9 @@
 package ru.mail.polis.baidiyarosan;
 
 import ru.mail.polis.BaseEntry;
-import sun.misc.Unsafe;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -39,45 +37,8 @@ public final class FileUtils {
 
     private static final int COMPACTED_FILE_INDEX = 0;
 
-    private static Unsafe UNSAFE;
-
-    // unsafe hack that need to delete files on windows
-    static {
-        try {
-            Field f = Unsafe.class.getDeclaredField("theUnsafe");
-            f.setAccessible(true);
-            UNSAFE = (Unsafe) f.get(null);
-        } catch (IllegalAccessException | NoSuchFieldException e) {
-            e.printStackTrace();
-        }
-    }
-
     private FileUtils() {
         // Utility class
-    }
-
-    // windows method that close files before delete
-    private static void clear(MappedByteBuffer map) {
-        UNSAFE.invokeCleaner(map);
-    }
-
-    // windows method that close files before delete
-    public static void clearAllFrom(Collection<MappedByteBuffer> collection) {
-        for (MappedByteBuffer map : collection) {
-            if (map != null) {
-                clear(map);
-            }
-        }
-    }
-
-    // windows method that close files before delete
-    public static void clearFrom(List<MappedByteBuffer> list, int number) {
-        if (list.size() < number) {
-            return;
-        }
-
-        clear(list.get(number - 1));
-        list.set(number - 1, null);
     }
 
     public static List<Path> getPaths(Path path) throws IOException {
@@ -242,9 +203,7 @@ public final class FileUtils {
         try {
             // try to delete old files from last to first
             for (; lastFile > 0; --lastFile) {
-                clearFrom(fileIndexes, lastFile);
                 Files.deleteIfExists(getIndexPath(path, lastFile));
-                clearFrom(files, lastFile);
                 Files.deleteIfExists(getDataPath(path, lastFile));
                 // in case that this file was compacted
                 Files.deleteIfExists(getCompactedDataPath(path, lastFile));
