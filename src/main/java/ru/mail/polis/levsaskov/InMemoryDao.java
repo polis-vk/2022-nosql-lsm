@@ -73,7 +73,7 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
         var cutMemTable = cutMemTable(memTable, from, to);
         if (storageSystem == null && cutMemTable != null) {
-            cutMemTable.values().iterator();
+            return cutMemTable.values().iterator();
         }
 
         return storageSystem != null ? storageSystem.getMergedEntrys(from, to, cutMemTable,
