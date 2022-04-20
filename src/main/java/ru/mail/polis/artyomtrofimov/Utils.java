@@ -1,11 +1,16 @@
 package ru.mail.polis.artyomtrofimov;
 
+import static ru.mail.polis.artyomtrofimov.InMemoryDao.DATA_EXT;
+import static ru.mail.polis.artyomtrofimov.InMemoryDao.INDEX_EXT;
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class Utils {
 
@@ -80,6 +85,21 @@ public final class Utils {
                 output.writeInt(b.length);
                 output.write(b);
             }
+        }
+    }
+
+    public static void removeOldFiles(Config config, List<String> filesListCopy) throws IOException {
+        IOException exception = null;
+        for (String fileToDelete : filesListCopy) {
+            try {
+                Files.deleteIfExists(config.basePath().resolve(fileToDelete + DATA_EXT));
+                Files.deleteIfExists(config.basePath().resolve(fileToDelete + INDEX_EXT));
+            } catch (IOException e) {
+                exception = e;
+            }
+        }
+        if (exception != null) {
+            throw exception;
         }
     }
 }

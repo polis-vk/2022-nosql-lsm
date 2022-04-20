@@ -7,7 +7,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -65,7 +64,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
                 ConcurrentNavigableMap<String, Entry<String>> dataCopy = null;
                 try {
-                    dataCopy = queueToFlush.take();//FIXME нужно оставлять в очереди, чтобы доступно в get
+                    dataCopy = queueToFlush.take();
                     queueToFlush.addFirst(dataCopy);
                 } catch (InterruptedException e) {
                     isActive = false;
@@ -317,27 +316,12 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                     writeFileListToDisk(allFilesOut);
                 } finally {
                     writeFileListLock.unlock();
-                    removeOldFiles(files.first);
+                    Utils.removeOldFiles(config, files.first);
                 }
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
         });
-    }
-
-    private void removeOldFiles(List<String> filesListCopy) throws IOException {
-        IOException exception = null;
-        for (String fileToDelete : filesListCopy) {
-            try {
-                Files.deleteIfExists(config.basePath().resolve(fileToDelete + DATA_EXT));
-                Files.deleteIfExists(config.basePath().resolve(fileToDelete + INDEX_EXT));
-            } catch (IOException e) {
-                exception = e;
-            }
-        }
-        if (exception != null) {
-            throw exception;
-        }
     }
 
     private String getUniqueFileName() {
