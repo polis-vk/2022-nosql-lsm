@@ -5,7 +5,6 @@ import ru.mail.polis.BaseEntry;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
@@ -124,45 +123,6 @@ public final class FileUtils {
                 dataOut.write(writeEntryToBuffer(buffer, entry));
             }
         }
-    }
-
-    // All files
-    public static Collection<PeekIterator<BaseEntry<ByteBuffer>>> getFilesCollection(
-            int filesCount, Path path, List<MappedByteBuffer> files, List<MappedByteBuffer> fileIndexes)
-            throws IOException {
-        return getFilesCollection(filesCount, path, files, fileIndexes, null, null);
-    }
-
-    public static Collection<PeekIterator<BaseEntry<ByteBuffer>>> getFilesCollection(
-            int filesCount, Path path, List<MappedByteBuffer> files, List<MappedByteBuffer> fileIndexes,
-            ByteBuffer from, ByteBuffer to) throws IOException {
-        List<PeekIterator<BaseEntry<ByteBuffer>>> list = new LinkedList<>();
-        Collection<BaseEntry<ByteBuffer>> temp;
-        for (int i = 0; i < filesCount; ++i) {
-            // file naming starts from 1, collections ordering starts from 0
-            Path filePath;
-            if (isCompacted(path, i + 1)) {
-                filePath = getCompactedDataPath(path, i + 1);
-            } else {
-                filePath = getDataPath(path, i + 1);
-            }
-            Path indexPath = getIndexPath(path, i + 1);
-            if (files.size() <= i || files.get(i) == null) {
-                try (FileChannel in = FileChannel.open(filePath, StandardOpenOption.READ);
-                     FileChannel indexes = FileChannel.open(indexPath, StandardOpenOption.READ)
-                ) {
-                    files.add(i, in.map(FileChannel.MapMode.READ_ONLY, 0, in.size()));
-                    fileIndexes.add(i, indexes.map(FileChannel.MapMode.READ_ONLY, 0, indexes.size()));
-                }
-            }
-
-            temp = getInFileCollection(files.get(i), fileIndexes.get(i), from, to);
-            if (!temp.isEmpty()) {
-                list.add(new PeekIterator<>(temp.iterator(), filesCount - i));
-            }
-        }
-
-        return list;
     }
 
     public static void compact(Iterator<? extends BaseEntry<ByteBuffer>> iter, Path path) throws IOException {

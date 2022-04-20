@@ -8,9 +8,11 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -84,7 +86,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                 list.add(new PeekIterator<>(temp.iterator(), 0));
             }
         }
-        list.addAll(FileUtils.getFilesCollection(filesCount.get(), path, files, fileIndexes, from, to));
+        list.addAll(getFilesCollection(files, fileIndexes, from, to));
         return new MergingIterator(list);
     }
 
@@ -157,7 +159,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         lock.writeLock().lock();
         try {
             int count = filesCount.get();
-            FileUtils.compact(new MergingIterator(FileUtils.getFilesCollection(count, path, files, fileIndexes)), path);
+            FileUtils.compact(new MergingIterator(getFilesCollection(files, fileIndexes, null, null)), path);
             FileUtils.clearOldFiles(count, path);
             filesCount.set(1);
         } catch (IOException e) {
@@ -180,6 +182,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             flushExecutor.awaitTermination(Integer.MAX_VALUE, TimeUnit.DAYS);
             compactExecutor.awaitTermination(Integer.MAX_VALUE, TimeUnit.DAYS);
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
         isClosed.set(true);
@@ -189,6 +192,39 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         if (isClosed.get()) {
             throw new UnsupportedOperationException("DAO is closed");
         }
+    }
+
+    private Collection<PeekIterator<BaseEntry<ByteBuffer>>>
+    getFilesCollection(List<MappedByteBuffer> files, List<MappedByteBuffer> fileIndexes,
+                       ByteBuffer from, ByteBuffer to) throws IOException {
+        List<PeekIterator<BaseEntry<ByteBuffer>>> list = new LinkedList<>();
+        int count = this.filesCount.get();
+        Collection<BaseEntry<ByteBuffer>> temp;
+        for (int i = 0; i < count; ++i) {
+            // file naming starts from 1, collections ordering starts from 0
+            Path filePath;
+            if (FileUtils.isCompacted(path, i + 1)) {
+                filePath = FileUtils.getCompactedDataPath(path, i + 1);
+            } else {
+                filePath = FileUtils.getDataPath(path, i + 1);
+            }
+            Path indexPath = FileUtils.getIndexPath(path, i + 1);
+            if (files.size() <= i || files.get(i) == null) {
+                try (FileChannel in = FileChannel.open(filePath, StandardOpenOption.READ);
+                     FileChannel indexes = FileChannel.open(indexPath, StandardOpenOption.READ)
+                ) {
+                    files.add(i, in.map(FileChannel.MapMode.READ_ONLY, 0, in.size()));
+                    fileIndexes.add(i, indexes.map(FileChannel.MapMode.READ_ONLY, 0, indexes.size()));
+                }
+            }
+
+            temp = FileUtils.getInFileCollection(files.get(i), fileIndexes.get(i), from, to);
+            if (!temp.isEmpty()) {
+                list.add(new PeekIterator<>(temp.iterator(), count - i));
+            }
+        }
+
+        return list;
     }
 
 }
