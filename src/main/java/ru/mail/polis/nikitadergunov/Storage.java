@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
@@ -23,8 +22,9 @@ import java.util.stream.Stream;
 
 final class Storage implements Closeable {
 
-    public static Thread flushingThread;
-    public static Thread compactThread;
+    public static volatile Thread flushingThread;
+    public static volatile Thread compactThread;
+    public static volatile boolean isCompacted;
     public static final ReentrantLock mutex = new ReentrantLock();
     private static final long VERSION = 0;
     private static final int INDEX_HEADER_SIZE = Long.BYTES * 2;
@@ -78,62 +78,65 @@ final class Storage implements Closeable {
         };
         flushingThread = new Thread(flushRun);
         flushingThread.start();
+        isCompacted = false;
+        flushingThread = null;
     }
 
     static void compact(Config config,
-                        Storage previousState) throws IOException {
-        if (previousState.sstables.size() < 2) {
+                        Storage previousState) {
+        if (previousState.sstables.size() < 2 || isCompacted) {
             return;
         }
-
         Runnable compactRun = () -> {
             mutex.lock();
             try {
-                List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(previousState.iterate(null, null));
-                Iterator<Entry<MemorySegment>> mergeIterator = MergeIterator.of(iterators, EntryKeyComparator.INSTANCE);
-                Iterator<Entry<MemorySegment>> entriesIterator = new MemorySegmentDao.TombstoneFilteringIterator(mergeIterator);
-                List<Entry<MemorySegment>> entries = new ArrayList<>();
-                while (entriesIterator.hasNext()) {
-                    entries.add(entriesIterator.next());
-                }
-                if (entries.isEmpty()) {
-                    return;
-                }
-                try {
-                    Storage.save(config, entries);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-                Path sstablePathOld = config.basePath().resolve(FILE_NAME + maxPriorityFile + FILE_EXT);
-                Path sstablePathNew = config.basePath().resolve(FILE_NAME + LOW_PRIORITY_FILE + FILE_EXT);
-
-                try (Stream<Path> listFiles = Files.list(config.basePath())) {
-                    listFiles.filter(path -> !path.equals(sstablePathOld))
-                            .forEach(path -> {
-                                try {
-                                    Files.deleteIfExists(path);
-                                } catch (IOException e) {
-                                    throw new UncheckedIOException(e);
-                                }
-                            });
-
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-
-                try {
-                    Files.move(sstablePathOld, sstablePathNew, StandardCopyOption.ATOMIC_MOVE);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-            finally {
+                compactTask(config, previousState);
+            } finally {
                 mutex.unlock();
             }
         };
 
         compactThread = new Thread(compactRun);
         compactThread.start();
+        isCompacted = true;
+        compactThread = null;
+    }
+
+    private static void compactTask(Config config,
+                                    Storage previousState) {
+        List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(previousState.iterate(null, null));
+        Iterator<Entry<MemorySegment>> mergeIterator = MergeIterator.of(iterators, EntryKeyComparator.INSTANCE);
+        Iterator<Entry<MemorySegment>> entriesIterator = new MemorySegmentDao.TombstoneFilteringIterator(mergeIterator);
+        List<Entry<MemorySegment>> entries = new ArrayList<>();
+        while (entriesIterator.hasNext()) {
+            entries.add(entriesIterator.next());
+        }
+        if (entries.isEmpty()) {
+            return;
+        }
+        try {
+            Storage.save(config, entries);
+            Path sstablePathOld = config.basePath().resolve(FILE_NAME + maxPriorityFile + FILE_EXT);
+            Path sstablePathNew = config.basePath().resolve(FILE_NAME + LOW_PRIORITY_FILE + FILE_EXT);
+
+            try (Stream<Path> listFiles = Files.list(config.basePath())) {
+                listFiles.filter(path -> !path.equals(sstablePathOld))
+                        .forEach(path -> {
+                            try {
+                                Files.deleteIfExists(path);
+                            } catch (IOException e) {
+                                throw new UncheckedIOException(e);
+                            }
+                        });
+
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+
+            Files.move(sstablePathOld, sstablePathNew, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     // it is supposed that entries can not be changed externally during this method call
@@ -204,7 +207,7 @@ final class Storage implements Closeable {
     }
 
     @SuppressWarnings("DuplicateThrows")
-    private static MemorySegment mapForRead(ResourceScope scope, Path file) throws NoSuchFileException, IOException {
+    private static MemorySegment mapForRead(ResourceScope scope, Path file) throws IOException {
         long size = Files.size(file);
 
         return MemorySegment.mapFile(file, 0, size, FileChannel.MapMode.READ_ONLY, scope);
@@ -317,22 +320,18 @@ final class Storage implements Closeable {
     }
 
     @Override
-    public void close() throws IOException {
-        if (flushingThread != null) {
-            try {
+    public synchronized void close() {
+        try {
+            if (flushingThread != null) {
                 flushingThread.join();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
             }
+            if (compactThread != null) {
+                compactThread.join();
+            }
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
-        if (compactThread != null) {
-            try {
-                compactThread.join();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
         if (scope.isAlive()) {
             scope.close();
         }

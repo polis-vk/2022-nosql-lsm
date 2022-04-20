@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -26,8 +25,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
 
     private Storage storage;
-    private static final AtomicBoolean isFlushing = new AtomicBoolean();
-    private static final AtomicBoolean isCompacting = new AtomicBoolean();
+    private static volatile boolean isFlushing;
     private static final AtomicLong nowMemoryUsed = new AtomicLong();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Config config;
@@ -129,19 +127,19 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             if (storage.isClosed()) {
                 throw new IllegalStateException("Storage is closed!");
             }
-            if (isFlushing.get()) {
+            if (isFlushing) {
                 throw new OutOfMemoryError("Retry operation later!");
             }
-            isFlushing.set(true);
+            isFlushing = true;
         }
-        //storage.close();
         lock.writeLock().lock();
         try {
+            storage.close();
             Storage.flush(config, memory);
             memory = new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
             storage = Storage.load(config);
         } finally {
-            isFlushing.set(false);
+            isFlushing = false;
             lock.writeLock().unlock();
         }
     }
@@ -151,7 +149,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (storage.isClosed()) {
             return;
         }
-        //storage.close();
         lock.writeLock().lock();
         try {
             storage.close();
