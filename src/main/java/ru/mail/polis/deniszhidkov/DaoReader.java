@@ -16,12 +16,12 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class DaoReader implements Closeable {
 
+    private final AtomicBoolean isRemoved;
     private final RandomAccessFile reader;
+    private final ReentrantLock lock = new ReentrantLock();
     private final long[] offsets;
     private String endReadFactor;
     private int startReadIndex;
-    private final ReentrantLock lock = new ReentrantLock();
-    private AtomicBoolean isRemoved;
 
     public DaoReader(Path pathToDataFile, Path pathToOffsetsFile) throws IOException {
         this.reader = new RandomAccessFile(pathToDataFile.toString(), "r");

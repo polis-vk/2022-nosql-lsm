@@ -5,6 +5,7 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.UncheckedIOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -36,6 +37,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private static final String TMP_QUALIFIER = "tmp_";
     private static final String COMPACTED_QUALIFIER = "compacted_";
     private static final String FILE_EXTENSION = ".txt";
+    private static final String DAO_CLOSED_EXCEPTION_TEXT = "DAO has been closed"; // Требование CodeClimate
     private final AtomicBoolean isClosed = new AtomicBoolean(true);
     private final AtomicInteger storagesCounter;
     private final AtomicLong storageMemoryUsage = new AtomicLong(0);
@@ -67,7 +69,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
         if (isClosed.get()) {
-            throw new IllegalStateException("DAO has been closed");
+            throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
         Queue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
                 Comparator.comparing((PriorityPeekIterator o) ->
@@ -111,7 +113,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     @Override
     public BaseEntry<String> get(String key) throws IOException {
         if (isClosed.get()) {
-            throw new IllegalStateException("DAO has been closed");
+            throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
         BaseEntry<String> value = storage.get(key);
         if (value == null) {
@@ -138,7 +140,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     @Override
     public void upsert(BaseEntry<String> entry) throws UncheckedIOException {
         if (isClosed.get()) {
-            throw new IllegalStateException("DAO has been closed");
+            throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
         long entrySize = getEntrySize(entry);
         if (storageMemoryUsage.get() + entrySize >= flushThresholdBytes) {
@@ -169,7 +171,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     @Override
     public void flush() throws IOException, UncheckedIOException {
         if (isClosed.get()) {
-            throw new IllegalStateException("DAO has been closed");
+            throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
         if (flushResult != null && !flushResult.isDone()) {
             throw new IllegalStateException("Flush queue overflow");
@@ -206,7 +208,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     @Override
     public void compact() throws IOException {
         if (isClosed.get()) {
-            throw new IllegalStateException("DAO has been closed");
+            throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
         if (readers.size() <= 1) {
             return;
@@ -244,7 +246,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         allData = new BlockingMergeIterator(iteratorsQueue);
         Path pathToTmpDataFile = getStoragePath(TMP_QUALIFIER);
         Path pathToTmpOffsetsFile = getOffsetsPath(TMP_QUALIFIER);
-
         DaoWriter tmpWriter = new DaoWriter(pathToTmpDataFile, pathToTmpOffsetsFile);
         tmpWriter.writeDAOWithoutTombstones(allData, allDataSize);
         /* Если есть хотя бы один compacted файл, значит все данные были записаны.
@@ -266,7 +267,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private void finishCompact() throws IOException {
         Path pathToCompactedDataFile = getStoragePath(COMPACTED_QUALIFIER);
         Path pathToCompactedOffsetsFile = getOffsetsPath(COMPACTED_QUALIFIER);
-
         boolean isDataCompacted = Files.exists(pathToCompactedDataFile);
         boolean isOffsetsCompacted = Files.exists(pathToCompactedOffsetsFile);
         /* Если нет ни одного compacted файла, значит либо данные уже compacted, либо упали, не записав всех данных. */
@@ -276,7 +276,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         /* Если только offsets файл compacted, то в соответствии с последовательностью на строках <> значит,
          * что мы упали между <>. Не берём lock, т. к. попадём в это условие только при аварийной ситуации */
         if (!isDataCompacted) {
-            Files.move(pathToCompactedOffsetsFile, getOffsetsPath(storagesCounter.get()), StandardCopyOption.ATOMIC_MOVE);
+            Files.move(
+                    pathToCompactedOffsetsFile,
+                    getOffsetsPath(storagesCounter.get()),
+                    StandardCopyOption.ATOMIC_MOVE
+            );
             return;
         }
         Path pathToTmpOffsetsFile = getOffsetsPath(TMP_QUALIFIER);
@@ -315,8 +319,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             flushExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
             compactExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
-            flushExecutor.shutdownNow();
-            compactExecutor.shutdownNow();
+            throw new InterruptedIOException();
         }
         int currentFileNumber = storagesCounter.get() - 1;
         List<Integer> numbersOfFilesToRename = new ArrayList<>();
