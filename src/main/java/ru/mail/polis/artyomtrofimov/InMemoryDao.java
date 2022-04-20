@@ -43,7 +43,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     private final AtomicReference<Deque<String>> filesList = new AtomicReference<>(new ArrayDeque<>());
     private long dataSizeBytes;
     private final Lock filesLock = new ReentrantLock();
-    private final Lock writeFileListLock = new ReentrantLock();
     private final ExecutorService flushExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService compactExecutor = Executors.newSingleThreadExecutor();
 
