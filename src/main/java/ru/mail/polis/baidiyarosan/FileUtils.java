@@ -128,7 +128,8 @@ public final class FileUtils {
 
     // All files
     public static Collection<PeekIterator<BaseEntry<ByteBuffer>>> getFilesCollection(
-            int filesCount, Path path, List<MappedByteBuffer> files, List<MappedByteBuffer> fileIndexes) throws IOException {
+            int filesCount, Path path, List<MappedByteBuffer> files, List<MappedByteBuffer> fileIndexes)
+            throws IOException {
         return getFilesCollection(filesCount, path, files, fileIndexes, null, null);
     }
 
@@ -193,7 +194,7 @@ public final class FileUtils {
         }
     }
 
-    public static void clearOldFiles(int fileCount, Path path, List<MappedByteBuffer> fileIndexes, List<MappedByteBuffer> files) throws IOException {
+    public static void clearOldFiles(int fileCount, Path path) throws IOException {
         Path compactedFileIndexPath = getIndexPath(path, COMPACTED_FILE_INDEX);
         Path compactedFileDataPath = getCompactedDataPath(path, COMPACTED_FILE_INDEX);
         if (Files.notExists(compactedFileIndexPath) || Files.notExists(compactedFileDataPath)) {
@@ -210,23 +211,15 @@ public final class FileUtils {
             }
         } catch (DirectoryNotEmptyException e) {
             // ???
-            throw new IOException("File system corrupted");
+            throw new IOException("File system corrupted", e);
         } catch (IOException e) {
             // access failed
             throw new UncheckedIOException(e);
         } finally { // happens anyway
-            try {
-                lastFile++; // make step forward
-                // making compacted file last, closing last file if opened
-                Files.move(compactedFileIndexPath, getIndexPath(path, lastFile), StandardCopyOption.ATOMIC_MOVE);
-                Files.move(compactedFileDataPath, getCompactedDataPath(path, lastFile), StandardCopyOption.ATOMIC_MOVE);
-            } catch (IOException e) {
-                // compaction was never an option
-                Files.deleteIfExists(compactedFileIndexPath);
-                Files.deleteIfExists(compactedFileDataPath);
-                // access failed
-                throw new UncheckedIOException(e);
-            }
+            lastFile++; // make step forward
+            // making compacted file last, closing last file if opened
+            Files.move(compactedFileIndexPath, getIndexPath(path, lastFile), StandardCopyOption.ATOMIC_MOVE);
+            Files.move(compactedFileDataPath, getCompactedDataPath(path, lastFile), StandardCopyOption.ATOMIC_MOVE);
         }
     }
 

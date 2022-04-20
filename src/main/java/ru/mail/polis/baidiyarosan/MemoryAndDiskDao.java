@@ -62,7 +62,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         if (Files.notExists(indexesDir)) {
             Files.createDirectory(indexesDir);
         }
-        FileUtils.clearOldFiles(filesCount.get(), path, fileIndexes, files);
+        FileUtils.clearOldFiles(filesCount.get(), path);
     }
 
     private void createMemoryData() {
@@ -158,7 +158,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         try {
             int count = filesCount.get();
             FileUtils.compact(new MergingIterator(FileUtils.getFilesCollection(count, path, files, fileIndexes)), path);
-            FileUtils.clearOldFiles(count, path, fileIndexes, files);
+            FileUtils.clearOldFiles(count, path);
             filesCount.set(1);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
