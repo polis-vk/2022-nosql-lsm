@@ -3,20 +3,43 @@ package ru.mail.polis.artyomtrofimov;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
-import static ru.mail.polis.artyomtrofimov.InMemoryDao.DATA_EXT;
-import static ru.mail.polis.artyomtrofimov.InMemoryDao.INDEX_EXT;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Optional;
+import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import static ru.mail.polis.artyomtrofimov.InMemoryDao.DATA_EXT;
+import static ru.mail.polis.artyomtrofimov.InMemoryDao.INDEX_EXT;
 
 public final class Utils {
+    private static final Random rnd = new Random();
+    private static final Lock writeFileListLock = new ReentrantLock();
 
     private Utils() {
+    }
+
+    public static String getUniqueFileName(Deque<String> files) {
+        String name;
+        do {
+            name = generateString();
+        } while (files.contains(name));
+        return name;
+    }
+
+    private static String generateString() {
+        char[] chars = new char[rnd.nextInt(8, 9)];
+        for (int i = 0; i < chars.length; i++) {
+            chars[i] = (char) (rnd.nextInt('z' - '0') + '0');
+        }
+        return new String(chars);
     }
 
     public static Entry<String> findCeilEntry(RandomAccessFile raf, String key, Path indexPath) throws IOException {
@@ -91,17 +114,24 @@ public final class Utils {
     }
 
     public static void removeOldFiles(Config config, List<String> filesListCopy) throws IOException {
-        Optional<IOException> exception = Optional.empty();
         for (String fileToDelete : filesListCopy) {
-            try {
-                Files.deleteIfExists(config.basePath().resolve(fileToDelete + DATA_EXT));
-                Files.deleteIfExists(config.basePath().resolve(fileToDelete + INDEX_EXT));
-            } catch (IOException e) {
-                exception = Optional.of(e);
-            }
+            Files.deleteIfExists(config.basePath().resolve(fileToDelete + DATA_EXT));
+            Files.deleteIfExists(config.basePath().resolve(fileToDelete + INDEX_EXT));
         }
-        if (exception.isPresent()) {
-            throw exception.get();
+    }
+
+    static void writeFileListToDisk(AtomicReference<Deque<String>> filesList,
+                                    RandomAccessFile allFilesOut) throws IOException {
+        writeFileListLock.lock();
+        try {
+            // newer is at the end
+            allFilesOut.setLength(0);
+            Iterator<String> filesListIterator = filesList.get().descendingIterator();
+            while (filesListIterator.hasNext()) {
+                allFilesOut.writeUTF(filesListIterator.next());
+            }
+        } finally {
+            writeFileListLock.unlock();
         }
     }
 }

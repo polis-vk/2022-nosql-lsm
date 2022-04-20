@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Random;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -23,23 +22,25 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<String, Entry<String>> {
-    public static final String DATA_EXT = ".dat";
-    public static final String INDEX_EXT = ".ind";
-    private static final String ALL_FILES = "files.fl";
-    private static final Random rnd = new Random();
+    protected static final String DATA_EXT = ".dat";
+    protected static final String INDEX_EXT = ".ind";
+    protected static final String ALL_FILES = "files.fl";
+
     private ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
     private volatile boolean commit = true;
     private final Config config;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final BlockingDeque<ConcurrentNavigableMap<String, Entry<String>>> queueToFlush =
             new LinkedBlockingDeque<>(2);
-    private final Deque<String> filesList = new ArrayDeque<>();
+
+    private final AtomicReference<Deque<String>> filesList = new AtomicReference<>(new ArrayDeque<>());
     private long dataSizeBytes;
     private final Lock filesLock = new ReentrantLock();
     private final Lock writeFileListLock = new ReentrantLock();
@@ -56,69 +57,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     }
 
     private void initFlush() {
-        flushExecutor.execute(() -> {
-            String catalog = config.basePath().resolve(ALL_FILES).toString();
-            while (!Thread.currentThread().isInterrupted() || !queueToFlush.isEmpty()) {
-                String name = getUniqueFileName();
-                Path file = config.basePath().resolve(name + DATA_EXT);
-                Path index = config.basePath().resolve(name + INDEX_EXT);
-
-                ConcurrentNavigableMap<String, Entry<String>> dataCopy = null;
-                try {
-                    dataCopy = queueToFlush.take();
-                    queueToFlush.addFirst(dataCopy);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    continue;
-                }
-
-                try (RandomAccessFile output = new RandomAccessFile(file.toString(), "rw");
-                     RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
-                     RandomAccessFile allFilesOut = new RandomAccessFile(catalog, "rw")
-                ) {
-                    output.seek(0);
-                    output.writeInt(dataCopy.size());
-                    for (Entry<String> value : dataCopy.values()) {
-                        indexOut.writeLong(output.getFilePointer());
-                        Utils.writeEntry(output, value);
-                    }
-
-                    filesLock.lock();
-                    try {
-                        filesList.addFirst(name);
-                    } finally {
-                        filesLock.unlock();
-                        queueToFlush.removeFirst();
-                    }
-
-                    writeFileListLock.lock();
-                    try {
-                        writeFileListToDisk(allFilesOut);
-                    } finally {
-                        writeFileListLock.unlock();
-                    }
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            }
-        });
-    }
-
-    private void writeFileListToDisk(RandomAccessFile allFilesOut) throws IOException {
-        // newer is at the end
-        allFilesOut.setLength(0);
-        Iterator<String> filesListIterator = filesList.descendingIterator();
-        while (filesListIterator.hasNext()) {
-            allFilesOut.writeUTF(filesListIterator.next());
-        }
-    }
-
-    private static String generateString() {
-        char[] chars = new char[rnd.nextInt(8, 9)];
-        for (int i = 0; i < chars.length; i++) {
-            chars[i] = (char) (rnd.nextInt('z' - '0') + '0');
-        }
-        return new String(chars);
+        Flusher flusher = new Flusher(config, queueToFlush, filesList, filesLock);
+        flushExecutor.execute(flusher);
     }
 
     @Override
@@ -127,23 +67,21 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         if (start == null) {
             start = "";
         }
-        ArrayList<PeekingIterator> iterators = new ArrayList<>(filesList.size() + 1);
+        ArrayList<PeekingIterator> iterators = new ArrayList<>(filesList.get().size() + 1);
         int priority = 0;
         iterators.add(getMemoryPeekingIterator(data, start, to, priority));
         ++priority;
-
         var storageInQueue = queueToFlush.descendingIterator();
         while (storageInQueue.hasNext()) {
             iterators.add(getMemoryPeekingIterator(storageInQueue.next(), start, to, priority));
             priority++;
         }
         iterators.addAll(getFilePeekingIteratorList(start, to, priority).second);
-
         return new MergeIterator(iterators);
     }
 
-    private Pair<List<String>, List<PeekingIterator>> getFilePeekingIteratorList(String from, String to,
-                                                                                 int startPriority) throws IOException {
+    public Pair<List<String>, List<PeekingIterator>> getFilePeekingIteratorList(String from, String to,
+                                                                                int startPriority) throws IOException {
         List<PeekingIterator> fileIterators = new ArrayList<>();
         int priority = startPriority;
         Deque<String> fileListCopy = cloneFileList();
@@ -156,12 +94,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     private Deque<String> cloneFileList() {
         Deque<String> fileListCopy;
-        filesLock.lock();
-        try {
-            fileListCopy = new ArrayDeque<>(filesList);
-        } finally {
-            filesLock.unlock();
-        }
+        fileListCopy = new ArrayDeque<>(filesList.get());
         return fileListCopy;
     }
 
@@ -242,7 +175,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                      new RandomAccessFile(config.basePath().resolve(ALL_FILES).toString(), "r")) {
             while (reader.getFilePointer() < reader.length()) {
                 String file = reader.readUTF();
-                filesList.addFirst(file);
+                filesList.get().addFirst(file);
             }
         } catch (FileNotFoundException ignored) {
             //it is ok because there can be no files
@@ -252,10 +185,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     @Override
     public void close() throws IOException {
         flush();
-
         flushExecutor.shutdownNow();
         compactExecutor.shutdownNow();
-
         try {
             flushExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
             compactExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
@@ -273,7 +204,6 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
             throw new IOException("Exceeded limit");
         }
         queueToFlush.add(data);
-
         lock.writeLock().lock();
         try {
             data = new ConcurrentSkipListMap<>();
@@ -286,60 +216,9 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
 
     @Override
     public void compact() throws IOException {
-        if (filesList.size() <= 1) {
+        if (filesList.get().size() <= 1) {
             return;
         }
-        compactExecutor.execute(() -> {
-            String name = getUniqueFileName();
-            Path basePath = config.basePath();
-            Path file = basePath.resolve(name + DATA_EXT);
-            Path index = basePath.resolve(name + INDEX_EXT);
-            try (RandomAccessFile output = new RandomAccessFile(file.toString(), "rw");
-                 RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
-                 RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw")
-            ) {
-                Pair<List<String>, List<PeekingIterator>> files =
-                        getFilePeekingIteratorList(null, null, 0);
-                Iterator<Entry<String>> iterator = new MergeIterator(files.second);
-                output.seek(Integer.BYTES);
-                output.writeInt(data.size());
-                int count = 0;
-                while (iterator.hasNext()) {
-                    Entry<String> entry = iterator.next();
-                    count++;
-                    if (entry != null) {
-                        indexOut.writeLong(output.getFilePointer());
-                        Utils.writeEntry(output, entry);
-                    }
-                }
-                output.seek(0);
-                output.writeInt(count);
-                filesLock.lock();
-                try {
-                    filesList.removeAll(files.first);
-                    filesList.add(name);
-                } finally {
-                    filesLock.unlock();
-                }
-
-                writeFileListLock.lock();
-                try {
-                    writeFileListToDisk(allFilesOut);
-                } finally {
-                    writeFileListLock.unlock();
-                    Utils.removeOldFiles(config, files.first);
-                }
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-        });
-    }
-
-    private String getUniqueFileName() {
-        String name;
-        do {
-            name = generateString();
-        } while (filesList.contains(name));
-        return name;
+        compactExecutor.execute(new Compacter(config, filesList, this, filesLock));
     }
 }
