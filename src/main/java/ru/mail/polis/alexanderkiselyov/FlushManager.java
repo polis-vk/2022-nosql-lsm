@@ -1,5 +1,8 @@
 package ru.mail.polis.alexanderkiselyov;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
@@ -11,8 +14,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class FlushManager {
     private final ExecutorService flushService;
