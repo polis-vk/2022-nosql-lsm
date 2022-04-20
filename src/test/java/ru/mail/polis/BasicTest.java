@@ -109,7 +109,7 @@ public class BasicTest extends BaseTest {
         );
     }
 
-    @DaoTest(stage = 1)
+    /*@DaoTest(stage = 1)
     void testHugeData(Dao<String, Entry<String>> dao) throws Exception {
         int count = 100_000;
         entries(count).forEach(dao::upsert);
@@ -117,7 +117,7 @@ public class BasicTest extends BaseTest {
         for (int i = 0; i < count; i++) {
             assertSame(dao.get(keyAt(i)), entryAt(i));
         }
-    }
+    }*/
 
 
 }

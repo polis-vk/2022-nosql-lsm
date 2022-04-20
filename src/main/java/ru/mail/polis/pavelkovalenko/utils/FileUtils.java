@@ -17,14 +17,20 @@ public final class FileUtils {
 
     private static final String DATA_FILENAME = DATA_PREFIX + "?" + EXTENSION;
     private static final String INDEXES_FILENAME = INDEXES_PREFIX + "?" + EXTENSION;
-    private static final String COMPACT_DATA_FILENAME = DATA_PREFIX + COMPACT_PREFIX + "?" + EXTENSION;
-    private static final String COMPACT_INDEXES_FILENAME = INDEXES_PREFIX + COMPACT_PREFIX + "?" + EXTENSION;
+    private static final String COMPACT_DATA_FILENAME
+            = DATA_PREFIX + COMPACT_PREFIX + "?" + EXTENSION;
+    private static final String COMPACT_INDEXES_FILENAME
+            = INDEXES_PREFIX + COMPACT_PREFIX + "?" + EXTENSION;
 
     private static final String NUMBER_PATTERN = "(\\d+)";
-    private static final Pattern DATA_FILENAME_PATTERN = Pattern.compile(DATA_PREFIX + NUMBER_PATTERN + EXTENSION);
-    private static final Pattern INDEXES_FILENAME_PATTERN = Pattern.compile(INDEXES_PREFIX + NUMBER_PATTERN + EXTENSION);
-    private static final Pattern COMPACT_DATA_FILENAME_PATTERN = Pattern.compile(DATA_PREFIX + COMPACT_PREFIX + NUMBER_PATTERN + EXTENSION);
-    private static final Pattern COMPACT_INDEXES_FILENAME_PATTERN = Pattern.compile(INDEXES_PREFIX + COMPACT_PREFIX + NUMBER_PATTERN + EXTENSION);
+    private static final Pattern DATA_FILENAME_PATTERN
+            = Pattern.compile(DATA_PREFIX + NUMBER_PATTERN + EXTENSION);
+    private static final Pattern INDEXES_FILENAME_PATTERN
+            = Pattern.compile(INDEXES_PREFIX + NUMBER_PATTERN + EXTENSION);
+    private static final Pattern COMPACT_DATA_FILENAME_PATTERN
+            = Pattern.compile(DATA_PREFIX + COMPACT_PREFIX + NUMBER_PATTERN + EXTENSION);
+    private static final Pattern COMPACT_INDEXES_FILENAME_PATTERN
+            = Pattern.compile(INDEXES_PREFIX + COMPACT_PREFIX + NUMBER_PATTERN + EXTENSION);
     private static final Pattern FILE_NUMBER_PATTERN = Pattern.compile(NUMBER_PATTERN);
 
     private FileUtils() {

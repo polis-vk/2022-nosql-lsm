@@ -39,7 +39,7 @@ public final class Runnables {
         this.sstablesForFlush = sstablesForFlush;
     }
 
-    public final Runnable FLUSH = new Runnable() {
+    public final Runnable flush = new Runnable() {
         @Override
         public void run() {
             if (DaoUtils.nothingToFlush(sstablesForWrite)) {
@@ -101,7 +101,7 @@ public final class Runnables {
         }
     };
 
-    public final Runnable COMPACT = new Runnable() {
+    public final Runnable compact = new Runnable() {
         @Override
         public void run() {
             if (sstablesSize.get() == 0) {

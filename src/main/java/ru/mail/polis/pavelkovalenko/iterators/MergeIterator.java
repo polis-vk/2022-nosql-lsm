@@ -40,7 +40,9 @@ public class MergeIterator implements Iterator<Entry<ByteBuffer>> {
 
         for (; priority <= sstablesSize.get() + memorySSTables.size() - 1; ++priority) {
             iterators.add(new PeekIterator<>(
-                    new FileIterator(serializer.get(sstablesSize.get() + memorySSTables.size() - priority), serializer, from1, to),
+                    new FileIterator(
+                            serializer.get(sstablesSize.get() + memorySSTables.size() - priority),
+                            serializer, from1, to),
                     priority
             ));
         }

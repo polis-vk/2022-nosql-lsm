@@ -12,4 +12,8 @@ public final class DaoUtils {
     public static boolean nothingToFlush(Queue<SSTable> sstablesForWrite) {
         return sstablesForWrite.isEmpty() || sstablesForWrite.peek().isEmpty();
     }
+
+    public static boolean thereIsSmthToFlush(Queue<SSTable> sstablesForWrite) {
+        return !nothingToFlush(sstablesForWrite);
+    }
 }

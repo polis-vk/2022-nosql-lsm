@@ -71,7 +71,7 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
         for (int priority = 1; priority <= dataFiles.size(); ++priority) {
             Path dataFile = dataIterator.next();
             Path indexesFile = indexesIterator.next();
-            if (!isPairedFiles(dataFile, indexesFile, priority)) {
+            if (!isPairedFiles(dataFile, indexesFile)) {
                 throw new IllegalStateException("Illegal order of data- and indexes-files.\n"
                         + "GOT: " + dataFile.getFileName() + " and " + indexesFile.getFileName());
             }
@@ -140,10 +140,8 @@ public class ConfigVisitor extends SimpleFileVisitor<Path> {
         }
     }
 
-    private boolean isPairedFiles(Path dataFile, Path indexesFile, int priority) {
-        int dataFileNumber = FileUtils.getFileNumber(dataFile);
-        int indexesFileNumber = FileUtils.getFileNumber(indexesFile);
-        return dataFileNumber == priority && dataFileNumber == indexesFileNumber;
+    private boolean isPairedFiles(Path dataFile, Path indexesFile) {
+        return FileUtils.getFileNumber(dataFile).intValue() == FileUtils.getFileNumber(indexesFile).intValue();
     }
 
 }

@@ -33,7 +33,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
-    private final int N_MEMORY_SSTABLES = 2;
+    private static final int N_MEMORY_SSTABLES = 2;
     private final BlockingQueue<SSTable> sstablesForWrite = new LinkedBlockingQueue<>(N_MEMORY_SSTABLES);
     private final BlockingDeque<SSTable> sstablesForFlush = new LinkedBlockingDeque<>(N_MEMORY_SSTABLES);
     private final ReadWriteLock rwlock = new ReentrantReadWriteLock();
@@ -43,7 +43,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     private final Config config;
     private final Serializer serializer;
-    private AtomicInteger sstablesSize = new AtomicInteger(0);
+    private final AtomicInteger sstablesSize = new AtomicInteger(0);
 
     private long curBytesForEntries;
 
@@ -56,7 +56,8 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             sstablesForWrite.add(new SSTable());
         }
 
-        runnables = new Runnables(config, sstablesSize, serializer, interThreadedLock, sstablesForWrite, sstablesForFlush);
+        runnables = new Runnables(config, sstablesSize, serializer, interThreadedLock,
+                sstablesForWrite, sstablesForFlush);
     }
 
     @Override
@@ -93,7 +94,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         interThreadedLock.lock();
         try {
             if (curBytesForEntries >= config.flushThresholdBytes()) {
-                service.submit(runnables.FLUSH);
+                service.submit(runnables.flush);
                 curBytesForEntries = 0;
             }
 
@@ -121,7 +122,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             if (DaoUtils.nothingToFlush(sstablesForWrite)) {
                 return;
             }
-            service.submit(runnables.FLUSH);
+            service.submit(runnables.flush);
         } finally {
             interThreadedLock.unlock();
             rwlock.writeLock().unlock();
@@ -132,8 +133,8 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     public void close() throws IOException {
         rwlock.writeLock().lock();
         try {
-            if (!DaoUtils.nothingToFlush(sstablesForWrite)) {
-                service.submit(runnables.FLUSH).get();
+            if (DaoUtils.thereIsSmthToFlush(sstablesForWrite)) {
+                service.submit(runnables.flush).get();
             }
             service.shutdown();
 
@@ -184,7 +185,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
                 }
             }
 
-            service.submit(runnables.COMPACT);
+            service.submit(runnables.compact);
         } catch (ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
         } finally {

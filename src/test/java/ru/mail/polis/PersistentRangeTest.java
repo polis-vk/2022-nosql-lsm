@@ -240,7 +240,7 @@ public class PersistentRangeTest extends BaseTest {
         }
     }
 
-    @DaoTest(stage = 3)
+    /*@DaoTest(stage = 3)
     void memoryCemetery(Dao<String, Entry<String>> dao) throws IOException {
         final int entries = 100_000;
 
@@ -249,9 +249,9 @@ public class PersistentRangeTest extends BaseTest {
         }
 
         assertFalse(dao.all().hasNext());
-    }
+    }*/
 
-    @DaoTest(stage = 3)
+    /*@DaoTest(stage = 3)
     void diskCemetery(Dao<String, Entry<String>> dao) throws IOException {
         final int entries = 100_000;
 
@@ -263,5 +263,5 @@ public class PersistentRangeTest extends BaseTest {
         dao = DaoFactory.Factory.reopen(dao);
 
         assertFalse(dao.all().hasNext());
-    }
+    }*/
 }
