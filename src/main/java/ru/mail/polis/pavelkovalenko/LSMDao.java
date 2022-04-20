@@ -6,8 +6,9 @@ import ru.mail.polis.Entry;
 import ru.mail.polis.pavelkovalenko.aliases.SSTable;
 import ru.mail.polis.pavelkovalenko.dto.FileMeta;
 import ru.mail.polis.pavelkovalenko.iterators.MergeIterator;
+import ru.mail.polis.pavelkovalenko.runnables.CompactRunnable;
+import ru.mail.polis.pavelkovalenko.runnables.FlushRunnable;
 import ru.mail.polis.pavelkovalenko.utils.DaoUtils;
-import ru.mail.polis.pavelkovalenko.utils.Runnables;
 import ru.mail.polis.pavelkovalenko.visitors.ConfigVisitor;
 
 import java.io.IOException;
@@ -61,9 +62,9 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             sstablesForWrite.add(new SSTable());
         }
 
-        this.flush = new Runnables.Flush(config, sstablesSize, filesAppearedSinceLastCompact,
+        this.flush = new FlushRunnable(config, sstablesSize, filesAppearedSinceLastCompact,
                 serializer, interThreadedLock, sstablesForWrite, sstablesForFlush);
-        this.compact = new Runnables.Compact(config, sstablesSize,
+        this.compact = new CompactRunnable(config, sstablesSize,
                 filesAppearedSinceLastCompact, serializer, interThreadedLock);
     }
 
@@ -73,19 +74,9 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         interThreadedLock.lock();
         try {
             List<SSTable> memorySSTables = new LinkedList<>();
-            for (SSTable sstable : sstablesForWrite) {
-                if (!sstable.isEmpty()) {
-                    memorySSTables.add(sstable);
-                }
-            }
+            addMemorySSTablesIfNotEmpty(sstablesForWrite.iterator(), memorySSTables);
             // The newest SSTables to be flushed is the most priority for us
-            Iterator<SSTable> sstablesForFlushIterator = sstablesForFlush.descendingIterator();
-            while (sstablesForFlushIterator.hasNext()) {
-                SSTable sstable = sstablesForFlushIterator.next();
-                if (!sstable.isEmpty()) {
-                    memorySSTables.add(sstable);
-                }
-            }
+            addMemorySSTablesIfNotEmpty(sstablesForFlush.descendingIterator(), memorySSTables);
             return new MergeIterator(from, to, serializer, memorySSTables, sstablesSize);
         } catch (ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
@@ -198,6 +189,15 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         } finally {
             interThreadedLock.unlock();
             rwlock.writeLock().unlock();
+        }
+    }
+
+    private void addMemorySSTablesIfNotEmpty(Iterator<SSTable> memorySSTables, List<SSTable> toBeAdded) {
+        while (memorySSTables.hasNext()) {
+            SSTable sstable = memorySSTables.next();
+            if (!sstable.isEmpty()) {
+                toBeAdded.add(sstable);
+            }
         }
     }
 
