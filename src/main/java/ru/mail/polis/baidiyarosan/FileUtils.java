@@ -177,7 +177,7 @@ public final class FileUtils {
             throw new UncheckedIOException(e);
         } finally { // happens anyway
             lastFile++; // make step forward
-            // making compacted file last, closing last file if opened
+            // making compacted file last
             Files.move(compactedFileIndexPath, getIndexPath(path, lastFile), StandardCopyOption.ATOMIC_MOVE);
             Files.move(compactedFileDataPath, getCompactedDataPath(path, lastFile), StandardCopyOption.ATOMIC_MOVE);
         }
