@@ -9,40 +9,28 @@ import ru.mail.polis.Entry;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
 final class Storage implements Closeable {
-
-    public static volatile Thread flushingThread;
-    public static volatile Thread compactThread;
-    public static volatile boolean isCompacted;
-    public static final ReentrantLock mutex = new ReentrantLock();
     private static final long VERSION = 0;
     private static final int INDEX_HEADER_SIZE = Long.BYTES * 2;
     private static final int INDEX_RECORD_SIZE = Long.BYTES;
 
-    private static final String FILE_NAME = "data";
-    private static final String FILE_EXT = ".dat";
-    private static final String FILE_EXT_TMP = ".tmp";
-    private static final int LOW_PRIORITY_FILE = 0;
-    private static final AtomicInteger maxPriorityFile = new AtomicInteger();
+    static final String FILE_NAME = "data";
+    static final String FILE_EXT = ".dat";
+    static final String FILE_EXT_TMP = ".tmp";
+    static final int LOW_PRIORITY_FILE = 0;
+    static final AtomicInteger maxPriorityFile = new AtomicInteger();
     private static final Comparator<Path> fileComparator = Comparator.comparingInt(Storage::getPriorityFile);
 
     private final ResourceScope scope;
-    private final List<MemorySegment> sstables;
+    final List<MemorySegment> sstables;
 
     static Storage load(Config config) throws IOException {
         Path basePath = config.basePath();
@@ -66,76 +54,6 @@ final class Storage implements Closeable {
         }
 
         return new Storage(scope, sstables);
-    }
-
-    static void flush(Config config,
-                      ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> memory) {
-        Runnable flushRun = () -> {
-            mutex.lock();
-            try {
-                Storage.save(config, memory.values());
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            } finally {
-                mutex.unlock();
-            }
-        };
-        flushingThread = new Thread(flushRun);
-        flushingThread.start();
-        isCompacted = false;
-        flushingThread = null;
-    }
-
-    static void compact(Config config,
-                        Storage previousState) {
-        if (previousState.sstables.size() < 2 || isCompacted) {
-            return;
-        }
-        Runnable compactRun = () -> {
-            mutex.lock();
-            try {
-                compactTask(config, previousState);
-            } finally {
-                mutex.unlock();
-            }
-        };
-
-        compactThread = new Thread(compactRun);
-        compactThread.start();
-        isCompacted = true;
-        compactThread = null;
-    }
-
-    private static void compactTask(Config config,
-                                    Storage previousState) {
-        List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(previousState.iterate(null, null));
-        Iterator<Entry<MemorySegment>> mergeIterator = MergeIterator.of(iterators, EntryKeyComparator.INSTANCE);
-        Iterator<Entry<MemorySegment>> entriesIterator = new MemorySegmentDao.TombstoneFilteringIterator(mergeIterator);
-        List<Entry<MemorySegment>> entries = new ArrayList<>();
-        while (entriesIterator.hasNext()) {
-            entries.add(entriesIterator.next());
-        }
-        if (entries.isEmpty()) {
-            return;
-        }
-        try (Stream<Path> listFiles = Files.list(config.basePath())) {
-            Storage.save(config, entries);
-            Path sstablePathOld = config.basePath().resolve(FILE_NAME + maxPriorityFile + FILE_EXT);
-            Path sstablePathNew = config.basePath().resolve(FILE_NAME + LOW_PRIORITY_FILE + FILE_EXT);
-            listFiles.filter(path -> !path.equals(sstablePathOld))
-                    .forEach(Storage::deleteSstables);
-            Files.move(sstablePathOld, sstablePathNew, StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    private static void deleteSstables(Path path) {
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
     }
 
     // it is supposed that entries can not be changed externally during this method call
@@ -320,17 +238,6 @@ final class Storage implements Closeable {
 
     @Override
     public synchronized void close() {
-        try {
-            if (flushingThread != null) {
-                flushingThread.join();
-            }
-            if (compactThread != null) {
-                compactThread.join();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
         if (scope.isAlive()) {
             scope.close();
         }

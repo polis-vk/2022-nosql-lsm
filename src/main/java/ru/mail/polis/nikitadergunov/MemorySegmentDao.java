@@ -22,8 +22,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     private ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> memory =
             new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
-
-    private Storage storage;
+    private ConcurrencyWrapperStorage concurrencyStorage;
     private static volatile boolean isFlushing;
     private static final AtomicLong nowMemoryUsed = new AtomicLong();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -31,7 +30,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     public MemorySegmentDao(Config config) throws IOException {
         this.config = config;
-        this.storage = Storage.load(config);
+        this.concurrencyStorage = new ConcurrencyWrapperStorage(Storage.load(config));
     }
 
     @Override
@@ -45,7 +44,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
             List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>();
             iterators.add(getMemoryIterator(copyFrom, to));
-            iterators.addAll(storage.iterate(copyFrom, to));
+            iterators.addAll(concurrencyStorage.getStorage().iterate(copyFrom, to));
 
             Iterator<Entry<MemorySegment>> mergeIterator = MergeIterator.of(iterators, EntryKeyComparator.INSTANCE);
 
@@ -74,7 +73,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         try {
             Entry<MemorySegment> result = memory.get(key);
             if (result == null) {
-                result = storage.get(key);
+                result = concurrencyStorage.getStorage().get(key);
             }
 
             return (result == null || result.value() == null) ? null : result;
@@ -105,7 +104,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     public void compact() throws IOException {
         lock.writeLock();
         try {
-            Storage.compact(config, storage);
+            ConcurrencyWrapperStorage.compact(config, concurrencyStorage.getStorage());
         } finally {
             lock.writeLock().lock();
         }
@@ -119,6 +118,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public void flush() throws IOException {
+        Storage storage = concurrencyStorage.getStorage();
         if (storage.isClosed() || memory.isEmpty()) {
             return;
         }
@@ -134,9 +134,9 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         lock.writeLock().lock();
         try {
             storage.close();
-            Storage.flush(config, memory);
+            ConcurrencyWrapperStorage.flush(config, memory);
             memory = new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
-            storage = Storage.load(config);
+            concurrencyStorage = new ConcurrencyWrapperStorage(Storage.load(config));
         } finally {
             setIsFlushing(false);
             lock.writeLock().unlock();
@@ -149,6 +149,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public void close() throws IOException {
+        Storage storage = concurrencyStorage.getStorage();
         if (storage.isClosed()) {
             return;
         }
