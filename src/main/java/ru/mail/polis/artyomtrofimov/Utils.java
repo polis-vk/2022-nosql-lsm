@@ -1,16 +1,18 @@
 package ru.mail.polis.artyomtrofimov;
 
+import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
+import ru.mail.polis.Entry;
+import static ru.mail.polis.artyomtrofimov.InMemoryDao.DATA_EXT;
+import static ru.mail.polis.artyomtrofimov.InMemoryDao.INDEX_EXT;
+
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import ru.mail.polis.BaseEntry;
-import ru.mail.polis.Config;
-import ru.mail.polis.Entry;
-import static ru.mail.polis.artyomtrofimov.InMemoryDao.DATA_EXT;
-import static ru.mail.polis.artyomtrofimov.InMemoryDao.INDEX_EXT;
+import java.util.Optional;
 
 public final class Utils {
 
@@ -89,17 +91,17 @@ public final class Utils {
     }
 
     public static void removeOldFiles(Config config, List<String> filesListCopy) throws IOException {
-        IOException exception = null;
+        Optional<IOException> exception = Optional.empty();
         for (String fileToDelete : filesListCopy) {
             try {
                 Files.deleteIfExists(config.basePath().resolve(fileToDelete + DATA_EXT));
                 Files.deleteIfExists(config.basePath().resolve(fileToDelete + INDEX_EXT));
             } catch (IOException e) {
-                exception = e;
+                exception = Optional.of(e);
             }
         }
-        if (exception != null) {
-            throw exception;
+        if (exception.isPresent()) {
+            throw exception.get();
         }
     }
 }

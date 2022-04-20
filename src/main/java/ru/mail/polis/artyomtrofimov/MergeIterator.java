@@ -1,11 +1,12 @@
 package ru.mail.polis.artyomtrofimov;
 
+import ru.mail.polis.Entry;
+
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
 import java.util.Queue;
-import ru.mail.polis.Entry;
 
 public class MergeIterator implements Iterator<Entry<String>> {
     private final Queue<PeekingIterator> queue = new PriorityQueue<>(PeekingIteratorComparator.INSTANCE);

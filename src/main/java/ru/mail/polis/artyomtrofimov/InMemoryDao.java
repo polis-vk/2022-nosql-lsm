@@ -1,5 +1,9 @@
 package ru.mail.polis.artyomtrofimov;
 
+import ru.mail.polis.Config;
+import ru.mail.polis.Dao;
+import ru.mail.polis.Entry;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -23,9 +27,6 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import ru.mail.polis.Config;
-import ru.mail.polis.Dao;
-import ru.mail.polis.Entry;
 
 public class InMemoryDao implements Dao<String, Entry<String>> {
     public static final String DATA_EXT = ".dat";
@@ -221,8 +222,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         lock.readLock().lock();
         try {
             data.put(entry.key(), entry);
-            dataSizeBytes += 2L * entry.key().getBytes(StandardCharsets.UTF_8).length +
-                    (entry.value() == null ? 0 : entry.value().getBytes(StandardCharsets.UTF_8).length);
+            dataSizeBytes += 2L * entry.key().getBytes(StandardCharsets.UTF_8).length
+                    + (entry.value() == null ? 0 : entry.value().getBytes(StandardCharsets.UTF_8).length);
             commit = false;
         } finally {
             lock.readLock().unlock();
