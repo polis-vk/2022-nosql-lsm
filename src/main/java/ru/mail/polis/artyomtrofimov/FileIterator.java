@@ -1,12 +1,12 @@
 package ru.mail.polis.artyomtrofimov;
 
-import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+import ru.mail.polis.Entry;
 
 public class FileIterator implements Iterator<Entry<String>> {
     private final String to;

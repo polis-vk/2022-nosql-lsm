@@ -1,7 +1,7 @@
 package ru.mail.polis.artyomtrofimov;
 
-import ru.mail.polis.Entry;
 import java.util.Iterator;
+import ru.mail.polis.Entry;
 
 public class PeekingIterator implements Iterator<Entry<String>> {
 
