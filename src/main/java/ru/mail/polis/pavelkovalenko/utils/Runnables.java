@@ -23,6 +23,9 @@ import java.util.concurrent.locks.Lock;
 
 public final class Runnables {
 
+    private Runnables() {
+    }
+
     public static final class Flush implements Runnable {
 
         private final Config config;
