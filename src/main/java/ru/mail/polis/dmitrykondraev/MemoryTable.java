@@ -14,13 +14,18 @@ class MemoryTable {
     private final ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map;
     final MemoryTable previous;
 
-    MemoryTable(AtomicLong byteSize, ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map, MemoryTable previous) {
+    MemoryTable(
+            AtomicLong byteSize,
+            ConcurrentNavigableMap<MemorySegment, MemorySegmentEntry> map,
+            MemoryTable previous
+    ) {
         this.byteSize = byteSize;
         this.map = map;
         this.previous = previous;
     }
 
     /**
+     * Insert or update entry.
      * @param entry inserted entry
      * @return byteSize after upsert
      */

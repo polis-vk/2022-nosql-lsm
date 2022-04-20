@@ -57,7 +57,11 @@ final class SortedStringTable {
         Files.delete(folderPath);
     }
 
-    public static SortedStringTable written(Path folderPath, Collection<MemorySegmentEntry> entries, ResourceScope scope) throws IOException {
+    public static SortedStringTable written(
+            Path folderPath,
+            Collection<MemorySegmentEntry> entries,
+            ResourceScope scope
+    ) throws IOException {
         Path indexFile = folderPath.resolve(INDEX_FILENAME);
         Path dataFile = folderPath.resolve(DATA_FILENAME);
         Index index = Index.written(entries, indexFile, scope);
@@ -80,7 +84,11 @@ final class SortedStringTable {
         );
     }
 
-    public static SortedStringTable written(Path folderPath, Iterator<MemorySegmentEntry> iterator, ResourceScope scope) throws IOException {
+    public static SortedStringTable written(
+            Path folderPath,
+            Iterator<MemorySegmentEntry> iterator,
+            ResourceScope scope
+    ) throws IOException {
         // TODO проблема с загрузкой в память!!
         ArrayList<MemorySegmentEntry> entries = new ArrayList<>();
         while (iterator.hasNext()) {
@@ -95,8 +103,8 @@ final class SortedStringTable {
      * @param first inclusive
      * @param last  exclusive
      * @return first index such that key of entry with that index is equal to key,
-     * if no such index exists, result < 0, in that case use
-     * {@link SortedStringTable#insertionPoint(int)} to recover insertion point
+     *         if no such index exists, result < 0, in that case use
+     *        {@link SortedStringTable#insertionPoint(int)} to recover insertion point
      */
     private int binarySearch(int first, int last, MemorySegment key) {
         int low = first;
@@ -144,13 +152,13 @@ final class SortedStringTable {
      * Get single entry.
      *
      * @return null if either indexFile or dataFile does not exist,
-     * null if key does not exist in table
+     *         null if key does not exist in table
      * @throws IOException if other I/O error occurs
      */
     public MemorySegmentEntry get(MemorySegment key) throws IOException {
         int size = index.entriesMapped();
-        int index = binarySearch(0, size, key);
-        return index < 0 ? null : mappedEntry(index);
+        int entryIndex = binarySearch(0, size, key);
+        return entryIndex < 0 ? null : mappedEntry(entryIndex);
     }
 
     private MemorySegmentEntry mappedEntry(long i) {

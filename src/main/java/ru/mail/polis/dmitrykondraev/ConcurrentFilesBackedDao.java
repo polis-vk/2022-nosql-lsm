@@ -27,7 +27,7 @@ import static ru.mail.polis.dmitrykondraev.Files.filenameOf;
 /**
  * Author: Dmitry Kondraev.
  */
-public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
+public final class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmentEntry> {
     private static final String COMPACT_NAME = "compacted";
     private static final String TABLE_PREFIX = "table";
     private static final String TMP_SUFFIX = "-temp";
@@ -138,7 +138,6 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
             return;
         }
         Path tablePath = sortedStringTablePath(sortedStringTables.size());
-        ResourceScope scope = ResourceScope.newConfinedScope();
         sortedStringTables.add(
                 0,
                 SortedStringTable.written(Files.createDirectory(tablePath), previous.values(), scope));
@@ -155,22 +154,26 @@ public class ConcurrentFilesBackedDao implements Dao<MemorySegment, MemorySegmen
         if (tableSpliterator.getExactSizeIfKnown() == 0) {
             return;
         }
-        ResourceScope scope = ResourceScope.newConfinedScope();
-        SortedStringTable.written(Files.createDirectory(compactDirTmp), allStored(tableSpliterator), scope);
-        scope.close();
+        ResourceScope confinedScope = ResourceScope.newConfinedScope();
+        SortedStringTable.written(Files.createDirectory(compactDirTmp), allStored(tableSpliterator), confinedScope);
+        confinedScope.close();
         Files.move(compactDirTmp, compactDir, StandardCopyOption.ATOMIC_MOVE);
         finishCompaction();
     }
 
     @Override
     public void close() throws IOException {
+        boolean interrupted = false;
         try {
             backgroundExecutor.awaitTerminationIndefinitely();
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            interrupted = true;
         } finally {
             flushImpl();
             scope.close();
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 

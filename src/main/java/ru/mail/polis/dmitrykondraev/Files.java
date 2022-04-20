@@ -6,6 +6,10 @@ import java.nio.file.Path;
 
 // package-private
 class Files {
+    private Files() {
+        //not meant to instantiate
+    }
+
     static Path createFileIfNotExists(Path path) throws IOException {
         try {
             return java.nio.file.Files.createFile(path);
