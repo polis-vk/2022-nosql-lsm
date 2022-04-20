@@ -11,6 +11,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FlushManager {
     private final ExecutorService flushService;
@@ -19,6 +21,7 @@ public class FlushManager {
     private final PairsWrapper pairsWrapper;
     private final FileOperations fileOperations;
     private NavigableMap<byte[], BaseEntry<byte[]>> pairs;
+    private final Logger logger;
 
     public FlushManager(PairsWrapper pairsWrapper, FileOperations fileOperations) {
         flushService = Executors.newSingleThreadExecutor();
@@ -26,6 +29,7 @@ public class FlushManager {
         pairNum = new AtomicInteger(0);
         this.fileOperations = fileOperations;
         this.pairsWrapper = pairsWrapper;
+        logger = LoggerFactory.getLogger(FlushManager.class);
     }
 
     public void performBackgroundFlush(NavigableMap<byte[], BaseEntry<byte[]>> pairs, AtomicInteger pairNum) {
@@ -35,7 +39,7 @@ public class FlushManager {
             try {
                 fileOperations.flush(pairs);
             } catch (IOException e) {
-                e.printStackTrace();
+                logger.error("Flush operation was interrupted.", e);
             }
             pairsWrapper.clearPair(pairNum);
         }));
@@ -52,7 +56,7 @@ public class FlushManager {
                 try {
                     taskResult.get();
                 } catch (ExecutionException | InterruptedException e) {
-                    e.printStackTrace();
+                    logger.error("Flush termination was interrupted.", e);
                 }
             }
         }

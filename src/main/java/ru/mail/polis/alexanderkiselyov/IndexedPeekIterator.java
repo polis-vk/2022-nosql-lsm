@@ -28,7 +28,7 @@ public class IndexedPeekIterator implements Iterator<BaseEntry<byte[]>> {
 
     @Override
     public boolean hasNext() {
-        return peek != null || delegate != null && delegate.hasNext();
+        return peek != null || (delegate != null && delegate.hasNext());
     }
 
     @Override

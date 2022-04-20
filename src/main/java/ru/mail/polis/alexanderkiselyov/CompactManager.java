@@ -10,23 +10,27 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CompactManager {
     private final BlockingQueue<Boolean> compactQueue;
     private final FileOperations fileOperations;
     private final ScheduledExecutorService compactService;
     private final ScheduledFuture<?> compactResult;
+    private final Logger logger;
 
     public CompactManager(FileOperations fileOperations) {
         compactQueue = new LinkedBlockingQueue<>();
         compactService = Executors.newSingleThreadScheduledExecutor();
         this.fileOperations = fileOperations;
+        logger = LoggerFactory.getLogger(CompactManager.class);
         compactResult = compactService.scheduleAtFixedRate(() -> {
             if (compactQueue.size() != 0) {
                 try {
                     compactOperation(compactQueue.poll());
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    logger.error("Compact operation was interrupted.", e);
                 }
             }
         }, 0, 500, TimeUnit.MILLISECONDS);
@@ -44,8 +48,8 @@ public class CompactManager {
                     throw new RuntimeException("Compact operation was terminated.");
                 }
             } catch (InterruptedException e) {
+                logger.error("Compact termination was interrupted.", e);
                 Thread.currentThread().interrupt();
-                e.printStackTrace();
             }
         }
     }
