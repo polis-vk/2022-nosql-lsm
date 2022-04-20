@@ -17,7 +17,10 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
-import static ru.mail.polis.nikitadergunov.Storage.*;
+import static ru.mail.polis.nikitadergunov.Storage.LOW_PRIORITY_FILE;
+import static ru.mail.polis.nikitadergunov.Storage.FILE_EXT;
+import static ru.mail.polis.nikitadergunov.Storage.FILE_NAME;
+import static ru.mail.polis.nikitadergunov.Storage.maxPriorityFile;
 
 public class ConcurrencyWrapperStorage implements Closeable {
     public static volatile Thread flushingThread;
@@ -26,6 +29,7 @@ public class ConcurrencyWrapperStorage implements Closeable {
     private static final ReentrantLock mutex = new ReentrantLock();
 
     private final Storage storage;
+
     public ConcurrencyWrapperStorage(Storage storage) {
         this.storage = storage;
     }
