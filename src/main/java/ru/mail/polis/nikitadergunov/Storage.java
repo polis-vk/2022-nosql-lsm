@@ -14,7 +14,11 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -114,25 +118,18 @@ final class Storage implements Closeable {
         if (entries.isEmpty()) {
             return;
         }
-        try {
+        try (Stream<Path> listFiles = Files.list(config.basePath())) {
             Storage.save(config, entries);
             Path sstablePathOld = config.basePath().resolve(FILE_NAME + maxPriorityFile + FILE_EXT);
             Path sstablePathNew = config.basePath().resolve(FILE_NAME + LOW_PRIORITY_FILE + FILE_EXT);
-
-            try (Stream<Path> listFiles = Files.list(config.basePath())) {
-                listFiles.filter(path -> !path.equals(sstablePathOld))
-                        .forEach(path -> {
-                            try {
-                                Files.deleteIfExists(path);
-                            } catch (IOException e) {
-                                throw new UncheckedIOException(e);
-                            }
-                        });
-
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-
+            listFiles.filter(path -> !path.equals(sstablePathOld))
+                    .forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    });
             Files.move(sstablePathOld, sstablePathNew, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -329,7 +326,7 @@ final class Storage implements Closeable {
                 compactThread.join();
             }
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            Thread.currentThread().interrupt();
         }
 
         if (scope.isAlive()) {

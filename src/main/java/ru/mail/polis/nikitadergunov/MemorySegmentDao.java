@@ -18,7 +18,6 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>> {
-
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
 
     private ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> memory =
@@ -34,6 +33,8 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         this.config = config;
         this.storage = Storage.load(config);
     }
+
+
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
@@ -123,14 +124,14 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (storage.isClosed() || memory.isEmpty()) {
             return;
         }
-        synchronized(this) {
+        synchronized (this) {
             if (storage.isClosed()) {
                 throw new IllegalStateException("Storage is closed!");
             }
             if (isFlushing) {
                 throw new OutOfMemoryError("Retry operation later!");
             }
-            isFlushing = true;
+            setIsFlushing(true);
         }
         lock.writeLock().lock();
         try {
@@ -139,9 +140,13 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             memory = new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
             storage = Storage.load(config);
         } finally {
-            isFlushing = false;
+            setIsFlushing(false);
             lock.writeLock().unlock();
         }
+    }
+
+    private static void setIsFlushing(boolean value) {
+        isFlushing = value;
     }
 
     @Override
