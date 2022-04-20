@@ -127,7 +127,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     private void executeFlush() {
         lock.writeLock().lock();
         try {
-            if(collection.isEmpty()) {
+            if (collection.isEmpty()) {
                 return;
             }
             onFlushCollection = collection;
