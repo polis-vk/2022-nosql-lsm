@@ -187,16 +187,6 @@ public class StoragePart implements AutoCloseable {
         return 2 * Integer.BYTES + keyLength + valueLength;
     }
 
-    private static MappedByteBuffer remap(MappedByteBuffer oldMap, Path path, int newSize) throws IOException {
-        int position = oldMap.position();
-        unmap(oldMap);
-
-        MappedByteBuffer newMap = mapFile(path, newSize);
-        newMap.position(position);
-
-        return newMap;
-    }
-
     private static MappedByteBuffer mapFile(Path filePath, int mapSize) throws IOException {
         MappedByteBuffer mappedFile;
         try (

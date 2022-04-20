@@ -12,6 +12,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 public final class StorageSystem implements AutoCloseable {
     private static final String MEM_FILENAME = "daoMem.bin";
@@ -20,6 +21,7 @@ public final class StorageSystem implements AutoCloseable {
     private static final String COMPACTED_IND_FILE = COMPACTED_PREFIX + IND_FILENAME;
     private static final String COMPACTED_MEM_FILE = COMPACTED_PREFIX + MEM_FILENAME;
     private static final String TMP_PREFIX = "tmp_";
+    private final ReentrantLock flushCompactLock = new ReentrantLock();
     // Order is important, fresh in begin
     private List<StoragePart> storageParts;
     private final Path location;
@@ -72,19 +74,24 @@ public final class StorageSystem implements AutoCloseable {
     }
 
     public void compact() throws IOException {
-        Path indCompPath = location.resolve(COMPACTED_IND_FILE);
-        Path memCompPath = location.resolve(COMPACTED_MEM_FILE);
-        save(indCompPath, memCompPath, getMergedEntrys(null, null));
+        try {
+            flushCompactLock.lock();
+            Path indCompPath = location.resolve(COMPACTED_IND_FILE);
+            Path memCompPath = location.resolve(COMPACTED_MEM_FILE);
+            save(indCompPath, memCompPath, getMergedEntrys(null, null));
 
-        // Not correct for windows, because of deleting files
-        finishCompact(location, indCompPath, memCompPath);
+            // Not correct for windows, because of deleting files
+            finishCompact(location, indCompPath, memCompPath);
 
-        // Excluding risk of unvalid storageSystem and setting to compact file:
-        List<StoragePart> newStParts = new ArrayList<>();
-        newStParts.add(StoragePart.load(getIndexFilePath(0), getMemFilePath(0), 0));
-        var oldStParts = storageParts;
-        storageParts = newStParts;
-        closeParts(oldStParts);
+            // Excluding risk of unvalid storageSystem and setting to compact file:
+            List<StoragePart> newStParts = new ArrayList<>();
+            newStParts.add(StoragePart.load(getIndexFilePath(0), getMemFilePath(0), 0));
+            var oldStParts = storageParts;
+            storageParts = newStParts;
+            closeParts(oldStParts);
+        } finally {
+            flushCompactLock.unlock();
+        }
     }
 
     private static void finishCompact(Path location, Path compactedInd, Path compactedMem) throws IOException {
@@ -140,14 +147,21 @@ public final class StorageSystem implements AutoCloseable {
         if (entrys.isEmpty()) {
             return;
         }
-        Path indPath = getIndexFilePath(storageParts.size());
-        Path memPath = getMemFilePath(storageParts.size());
-        save(indPath, memPath, entrys.values().iterator());
-        // This part of mem is most fresh, so add in begin
-        storageParts.add(0, StoragePart.load(
-                indPath,
-                memPath,
-                storageParts.size()));
+
+        try {
+            flushCompactLock.lock();
+            Path indPath = getIndexFilePath(storageParts.size());
+            Path memPath = getMemFilePath(storageParts.size());
+            save(indPath, memPath, entrys.values().iterator());
+            // This part of mem is most fresh, so add in begin
+            storageParts.add(0, StoragePart.load(
+                    indPath,
+                    memPath,
+                    storageParts.size()));
+        } finally {
+            flushCompactLock.unlock();
+        }
+
     }
 
     public boolean isCompacted() {

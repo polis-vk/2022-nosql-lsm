@@ -101,6 +101,8 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             // Empty mem table is poison bill.
             // Throws exception if flush queue is full
             flushQueue.add(memTable);
+            memTable = new ConcurrentSkipListMap<>();
+            memTableByteSize.set(0);
         }
     }
 
