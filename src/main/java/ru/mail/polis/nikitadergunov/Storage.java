@@ -123,14 +123,15 @@ final class Storage implements Closeable {
             Path sstablePathOld = config.basePath().resolve(FILE_NAME + maxPriorityFile + FILE_EXT);
             Path sstablePathNew = config.basePath().resolve(FILE_NAME + LOW_PRIORITY_FILE + FILE_EXT);
             listFiles.filter(path -> !path.equals(sstablePathOld))
-                    .forEach(path -> {
-                        try {
-                            Files.deleteIfExists(path);
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(e);
-                        }
-                    });
+                    .forEach(Storage::deleteSstables);
             Files.move(sstablePathOld, sstablePathNew, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+    private static void deleteSstables(Path path) {
+        try {
+            Files.deleteIfExists(path);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
