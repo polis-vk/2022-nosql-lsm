@@ -1,8 +1,12 @@
 package ru.mail.polis.pavelkovalenko.utils;
 
+import ru.mail.polis.pavelkovalenko.Serializer;
 import ru.mail.polis.pavelkovalenko.aliases.SSTable;
 
+import java.io.IOException;
 import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class DaoUtils {
 
@@ -15,5 +19,9 @@ public final class DaoUtils {
 
     public static boolean thereIsSmthToFlush(Queue<SSTable> sstablesForWrite) {
         return !nothingToFlush(sstablesForWrite);
+    }
+
+    public static boolean noNeedsInCompact(AtomicInteger sstablesSize, AtomicBoolean filesAppearedSinceLastCompact) {
+        return sstablesSize.get() == 0 || !filesAppearedSinceLastCompact.get();
     }
 }

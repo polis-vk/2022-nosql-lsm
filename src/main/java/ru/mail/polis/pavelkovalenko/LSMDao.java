@@ -25,6 +25,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -44,6 +45,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     private final Config config;
     private final Serializer serializer;
     private final AtomicInteger sstablesSize = new AtomicInteger(0);
+    private final AtomicBoolean filesAppearedSinceLastCompact = new AtomicBoolean();
 
     private long curBytesForEntries;
 
@@ -56,7 +58,7 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             sstablesForWrite.add(new SSTable());
         }
 
-        runnables = new Runnables(config, sstablesSize, serializer, interThreadedLock,
+        runnables = new Runnables(config, sstablesSize, filesAppearedSinceLastCompact, serializer, interThreadedLock,
                 sstablesForWrite, sstablesForFlush);
     }
 
@@ -167,14 +169,14 @@ public class LSMDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void compact() throws IOException {
-        if (sstablesSize.get() == 0) {
+        if (DaoUtils.noNeedsInCompact(sstablesSize, filesAppearedSinceLastCompact)) {
             return;
         }
 
         rwlock.writeLock().lock();
         interThreadedLock.lock();
         try {
-            if (sstablesSize.get() == 0) {
+            if (DaoUtils.noNeedsInCompact(sstablesSize, filesAppearedSinceLastCompact)) {
                 return;
             }
 
