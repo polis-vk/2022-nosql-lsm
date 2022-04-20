@@ -21,10 +21,8 @@ public class CompactExecutor implements Runnable {
                     storageSystem.compact();
                 }
             }
-        } catch (InterruptedException e) {
-            throw new RuntimeException("Compact executor was interrupted.");
-        } catch (IOException e) {
-            throw new RuntimeException("IOException during compacting.");
+        } catch (InterruptedException | IOException e) {
+            throw new RuntimeException(e);
         }
     }
 }

@@ -12,13 +12,13 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.LinkedBlockingQueue;
-
 import java.util.concurrent.atomic.AtomicLong;
 
 public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     private volatile ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memTable = new ConcurrentSkipListMap<>();
     // Poison pill is empty map
-    private final BlockingQueue<ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>>> flushQueue = new ArrayBlockingQueue<>(1);
+    private final BlockingQueue<ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>>> flushQueue =
+            new ArrayBlockingQueue<>(1);
     // True is signal to start compact, False is poison pill.
     private final BlockingQueue<Boolean> compactionQueue = new LinkedBlockingQueue<>();
     private volatile boolean isClosed;
@@ -45,9 +45,7 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public Entry<ByteBuffer> get(ByteBuffer key) throws IOException {
-        if (isClosed) {
-            throw new RuntimeException("In memory dao closed.");
-        }
+        checkClose();
 
         Entry<ByteBuffer> ans = memTable.get(key);
 
@@ -71,21 +69,21 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public Iterator<Entry<ByteBuffer>> get(ByteBuffer from, ByteBuffer to) throws IOException {
-        if (isClosed) {
-            throw new RuntimeException("In memory dao closed.");
-        }
+        checkClose();
 
         var cutMemTable = cutMemTable(memTable, from, to);
-        return storageSystem == null ? cutMemTable.values().iterator() :
-                storageSystem.getMergedEntrys(from, to, cutMemTable, cutMemTable(flushQueue.peek(), from, to), // Try to avoid race
-                        cutMemTable(flushExecutor.getInFlushing(), from, to));
+        if (storageSystem == null && cutMemTable != null) {
+            cutMemTable.values().iterator();
+        }
+
+        return storageSystem != null ? storageSystem.getMergedEntrys(from, to, cutMemTable,
+                cutMemTable(flushQueue.peek(), from, to), // Try to avoid race
+                cutMemTable(flushExecutor.getInFlushing(), from, to)) : null;
     }
 
     @Override
     public void upsert(Entry<ByteBuffer> entry) {
-        if (isClosed) {
-            throw new RuntimeException("In memory dao closed.");
-        }
+        checkClose();
 
         int entrySize = getEntryInMemorySize(entry);
         if (memTableByteSize.addAndGet(entrySize) > flushThresholdBytes) {
@@ -101,9 +99,7 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void flush() throws IOException {
-        if (isClosed) {
-            throw new RuntimeException("In memory dao closed.");
-        }
+        checkClose();
 
         if (!memTable.isEmpty()) {
             // Empty mem table is poison bill.
@@ -116,10 +112,7 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
     public void compact() throws IOException {
-        if (isClosed) {
-            throw new RuntimeException("In memory dao closed.");
-        }
-
+        checkClose();
         compactionQueue.add(true);
     }
 
@@ -134,21 +127,24 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             flushQueue.put(memTable);
             compactionQueue.put(CompactExecutor.POISON_PILL);
             flushQueue.put(FlushExecutor.POISON_PILL);
-        } catch (InterruptedException e) {
-            throw new RuntimeException("Interrupted Queue");
-        }
-
-        try {
             compactThread.join();
             flushThread.join();
         } catch (InterruptedException e) {
-            throw new RuntimeException("Join while closing was interrupted.");
+            throw new RuntimeException(e);
         }
 
         storageSystem.close();
     }
 
+    private void checkClose() {
+        if (isClosed) {
+            throw new RuntimeException("In memory dao closed.");
+        }
+    }
+
     /**
+     * Cuts mem table in given range.
+     *
      * @return null if memTable is null, otherwise cut with given range memTable.
      */
     private static ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> cutMemTable(

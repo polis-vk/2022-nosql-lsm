@@ -4,7 +4,10 @@ import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -133,7 +136,8 @@ public final class StorageSystem implements AutoCloseable {
                 continue;
             }
 
-            IndexedPeekIterator localIter = new IndexedPeekIterator(memTable.values().iterator(), Integer.MAX_VALUE - priority);
+            IndexedPeekIterator localIter = new IndexedPeekIterator(memTable.values().iterator(),
+                    Integer.MAX_VALUE - priority);
             if (localIter.peek() != null) {
                 binaryHeap.add(localIter);
             }

@@ -44,7 +44,8 @@ public class StoragePart implements AutoCloseable {
     }
 
     // Entrys count will be written in the end of index file
-    public static void saveSTPart(Path indexPath, Path memoryPath, Iterator<Entry<ByteBuffer>> entrysToWrite) throws IOException {
+    public static void saveSTPart(Path indexPath, Path memoryPath, Iterator<Entry<ByteBuffer>> entrysToWrite)
+            throws IOException {
         ByteBuffer memBufferToWrite = ByteBuffer.allocate(DEFAULT_ALLOC_SIZE);
         ByteBuffer indBufferToWrite = ByteBuffer.allocate(Integer.BYTES * IND_BUFF_SIZE);
         int bytesWritten = 0;
@@ -247,4 +248,3 @@ public class StoragePart implements AutoCloseable {
         }
     }
 }
-
