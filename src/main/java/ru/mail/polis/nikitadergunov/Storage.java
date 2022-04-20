@@ -129,6 +129,7 @@ final class Storage implements Closeable {
             throw new UncheckedIOException(e);
         }
     }
+
     private static void deleteSstables(Path path) {
         try {
             Files.deleteIfExists(path);

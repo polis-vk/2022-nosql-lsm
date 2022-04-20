@@ -34,8 +34,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         this.storage = Storage.load(config);
     }
 
-
-
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         lock.readLock().lock();
