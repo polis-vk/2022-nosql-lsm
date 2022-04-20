@@ -2,7 +2,6 @@ package ru.mail.polis.alexanderkiselyov;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import ru.mail.polis.BaseEntry;
 
 import java.io.IOException;
