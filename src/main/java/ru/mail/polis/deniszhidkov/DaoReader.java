@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class DaoReader implements Closeable {
@@ -20,10 +21,12 @@ public class DaoReader implements Closeable {
     private String endReadFactor;
     private int startReadIndex;
     private final ReentrantLock lock = new ReentrantLock();
+    private AtomicBoolean isRemoved;
 
     public DaoReader(Path pathToDataFile, Path pathToOffsetsFile) throws IOException {
         this.reader = new RandomAccessFile(pathToDataFile.toString(), "r");
         this.offsets = initOffsets(pathToOffsetsFile);
+        this.isRemoved = new AtomicBoolean(false);
     }
 
     public BaseEntry<String> findByKey(String key) throws IOException {
@@ -159,5 +162,13 @@ public class DaoReader implements Closeable {
         byte[] buffer = new byte[stringLength * Character.BYTES];
         reader.readFully(buffer);
         return new String(buffer, StandardCharsets.UTF_16);
+    }
+
+    public void setRemoved() {
+        isRemoved.compareAndSet(false, true);
+    }
+
+    public boolean getIsRemoved() {
+        return isRemoved.get();
     }
 }

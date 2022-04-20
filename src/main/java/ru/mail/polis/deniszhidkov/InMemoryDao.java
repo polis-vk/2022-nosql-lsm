@@ -37,14 +37,14 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private static final String COMPACTED_QUALIFIER = "compacted_";
     private static final String FILE_EXTENSION = ".txt";
     private final AtomicBoolean isClosed = new AtomicBoolean(true);
-    private final AtomicInteger filesCounter;
+    private final AtomicInteger storagesCounter;
     private final AtomicLong storageMemoryUsage = new AtomicLong(0);
-    private final AtomicLong compactQueueSize = new AtomicLong(0);
     private final ExecutorService flushExecutor;
     private final ExecutorService compactExecutor;
     private final List<DaoReader> readers;
     private final Path directoryPath;
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final ReadWriteLock getsLock = new ReentrantReadWriteLock();
+    private final ReadWriteLock flushLock = new ReentrantReadWriteLock();
     private final long flushThresholdBytes;
     private ConcurrentNavigableMap<String, BaseEntry<String>> storage = new ConcurrentSkipListMap<>();
     private ConcurrentNavigableMap<String, BaseEntry<String>> flushingStorage = new ConcurrentSkipListMap<>();
@@ -57,9 +57,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         this.flushExecutor = Executors.newSingleThreadExecutor();
         this.compactExecutor = Executors.newSingleThreadExecutor();
         finishCompact();
-        this.filesCounter = new AtomicInteger(validateDAOFiles());
+        this.storagesCounter = new AtomicInteger(validateDAOFiles());
         this.readers = initDaoReaders();
-        this.writer = new DaoWriter(getStoragePath(filesCounter.get()), getOffsetsPath(filesCounter.get()));
+        this.writer = new DaoWriter(getStoragePath(storagesCounter.get()), getOffsetsPath(storagesCounter.get()));
         this.isClosed.set(false);
         BlockingMergeIterator.freeIterators();
     }
@@ -73,21 +73,37 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 Comparator.comparing((PriorityPeekIterator o) ->
                         o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
         );
-        lock.readLock().lock();
-        long startTime = System.currentTimeMillis();
+        getsLock.readLock().lock();
         try {
-            PriorityPeekIterator storageIterator = findInMemoryStorageIteratorByRange(storage, from, to, 0);
+            int priorityIndex = 0;
+            PriorityPeekIterator storageIterator = findInMemoryStorageIteratorByRange(
+                    storage,
+                    from,
+                    to,
+                    priorityIndex
+            );
             if (storageIterator.hasNext()) {
                 iteratorsQueue.add(storageIterator);
+                priorityIndex++;
             }
-            PriorityPeekIterator flushingStorageIterator = findInMemoryStorageIteratorByRange(flushingStorage, from, to, 1);
+            PriorityPeekIterator flushingStorageIterator = findInMemoryStorageIteratorByRange(
+                    flushingStorage,
+                    from,
+                    to,
+                    priorityIndex
+            );
             if (flushingStorageIterator.hasNext()) {
                 iteratorsQueue.add(flushingStorageIterator);
+                priorityIndex++;
             }
-            iteratorsQueue.addAll(getFilesIteratorsByRange(from, to, iteratorsQueue.size()));
+            for (int i = 0; i < storagesCounter.get(); i++) {
+                FileIterator fileIterator = new FileIterator(from, to, readers.get(i));
+                if (fileIterator.hasNext()) {
+                    iteratorsQueue.add(new PriorityPeekIterator(fileIterator, priorityIndex++));
+                }
+            }
         } finally {
-            lock.readLock().unlock();
-            System.out.println("Range: " + (System.currentTimeMillis() - startTime));
+            getsLock.readLock().unlock();
         }
         return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new BlockingMergeIterator(iteratorsQueue);
     }
@@ -103,10 +119,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             if (value != null) {
                 return value;
             }
-            lock.readLock().lock();
-            long startTime = System.currentTimeMillis();
+            getsLock.readLock().lock();
             try {
-                for (int i = 0; i < filesCounter.get(); i++) {
+                for (int i = 0; i < storagesCounter.get(); i++) {
                     value = readers.get(i).findByKey(key);
                     if (value != null) {
                         return value.value() == null ? null : value;
@@ -114,8 +129,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 }
                 value = new BaseEntry<>(null, null);
             } finally {
-                lock.readLock().unlock();
-                System.out.println("Get: " + (System.currentTimeMillis() - startTime));
+                getsLock.readLock().unlock();
             }
         }
         return value.value() == null ? null : value;
@@ -137,13 +151,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 throw new UncheckedIOException(e);
             }
         }
-        lock.readLock().lock();
-        long startTime = System.currentTimeMillis();
+        getsLock.writeLock().lock();
         try {
             storage.put(entry.key(), entry);
         } finally {
-            lock.readLock().unlock();
-            System.out.println("upsert: " + (System.currentTimeMillis() - startTime));
+            getsLock.writeLock().unlock();
         }
         storageMemoryUsage.addAndGet(entrySize);
     }
@@ -162,14 +174,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (flushResult != null && !flushResult.isDone()) {
             throw new IllegalStateException("Flush queue overflow");
         }
-        lock.writeLock().lock();
-        long startTime = System.currentTimeMillis();
+        getsLock.writeLock().lock();
         try {
             flushingStorage = storage;
             storage = new ConcurrentSkipListMap<>();
         } finally {
-            System.out.println("flush: " + (System.currentTimeMillis() - startTime));
-            lock.writeLock().unlock();
+            getsLock.writeLock().unlock();
         }
         storageMemoryUsage.set(0);
         flushResult = flushExecutor.submit(() -> {
@@ -182,10 +192,15 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private void backgroundFlush() throws IOException {
-        writer.writeDAO(flushingStorage);
-        readers.add(0, new DaoReader(getStoragePath(filesCounter.get()), getOffsetsPath(filesCounter.get())));
-        filesCounter.incrementAndGet();
-        writer = new DaoWriter(getStoragePath(filesCounter.get()), getOffsetsPath(filesCounter.get()));
+        flushLock.writeLock().lock();
+        try {
+            writer.writeDAO(flushingStorage);
+            readers.add(0, new DaoReader(getStoragePath(storagesCounter.get()), getOffsetsPath(storagesCounter.get())));
+            storagesCounter.incrementAndGet();
+            writer = new DaoWriter(getStoragePath(storagesCounter.get()), getOffsetsPath(storagesCounter.get()));
+        } finally {
+            flushLock.writeLock().unlock();
+        }
     }
 
     @Override
@@ -197,23 +212,36 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return;
         }
         compactExecutor.submit(() -> {
-           try {
-               backgroundCompact();
-           } catch (IOException e) {
-               throw new UncheckedIOException(e);
-           }
+            try {
+                backgroundCompact();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         });
-        compactQueueSize.incrementAndGet();
     }
 
     private void backgroundCompact() throws IOException {
-        Iterator<BaseEntry<String>> allData = new BlockingMergeIterator(getFilesIteratorsByRange(null, null, 0));
+        Queue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
+                Comparator.comparing((PriorityPeekIterator o) ->
+                        o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
+        );
+        int priorityIndex = 0;
+        int lastConsiderFile = -1; // Всегда будет хотя бы два файла для компакта, если зашли в этот метод
+        int startCompactFilesAmount = storagesCounter.get();
+        for (int i = 0; i < startCompactFilesAmount; i++) {
+            FileIterator fileIterator = new FileIterator(null, null, readers.get(i));
+            if (fileIterator.hasNext()) {
+                iteratorsQueue.add(new PriorityPeekIterator(fileIterator, priorityIndex++));
+                lastConsiderFile = i;
+            }
+        }
+        Iterator<BaseEntry<String>> allData = new BlockingMergeIterator(iteratorsQueue);
         int allDataSize = 0;
         while (allData.hasNext()) {
             allDataSize++;
             allData.next();
         }
-        allData = new BlockingMergeIterator(getFilesIteratorsByRange(null, null, 0));
+        allData = new BlockingMergeIterator(iteratorsQueue);
         Path pathToTmpDataFile = getStoragePath(TMP_QUALIFIER);
         Path pathToTmpOffsetsFile = getOffsetsPath(TMP_QUALIFIER);
 
@@ -223,28 +251,16 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
          *  До этого не будем учитывать tmp файлы при восстановлении. */
         Files.move(pathToTmpDataFile, getStoragePath(COMPACTED_QUALIFIER), StandardCopyOption.ATOMIC_MOVE);
         Files.move(pathToTmpOffsetsFile, getOffsetsPath(COMPACTED_QUALIFIER), StandardCopyOption.ATOMIC_MOVE);
-        finishCompact(); // Не доделан
-    }
-
-    @Override
-    public synchronized void close() throws IOException {
-        if (isClosed.get()) {
-            return;
-        }
-        flushExecutor.shutdown();
-        compactExecutor.shutdown();
+        finishCompact();
+        // Маркируем скомпакченные файлы, как удалённые, чтобы не читать из них и удалить их в close()
+        flushLock.writeLock().lock();
         try {
-            flushExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
-            compactExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+            for (int i = storagesCounter.get() - startCompactFilesAmount; i < lastConsiderFile; i++) {
+                readers.get(i).setRemoved();
+            }
+        } finally {
+            flushLock.writeLock().unlock();
         }
-        flushingStorage = storage;
-        storage = new ConcurrentSkipListMap<>();
-        backgroundFlush();
-        closeReaders();
-        BlockingMergeIterator.blockIterators();
-        isClosed.set(true); // Не доделан
     }
 
     private void finishCompact() throws IOException {
@@ -257,33 +273,87 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (!isDataCompacted && !isOffsetsCompacted) {
             return;
         }
-        /* Если только offsets файл compacted, то в соответствии с последовательностью на строках 185-186 значит,
-         *  что мы упали между переводом файла storage и файла offsets из compacted в нормальное состояние */
+        /* Если только offsets файл compacted, то в соответствии с последовательностью на строках <> значит,
+         * что мы упали между <>. Не берём lock, т. к. попадём в это условие только при аварийной ситуации */
         if (!isDataCompacted) {
-            Files.move(pathToCompactedOffsetsFile, getOffsetsPath(0), StandardCopyOption.ATOMIC_MOVE);
+            Files.move(pathToCompactedOffsetsFile, getOffsetsPath(storagesCounter.get()), StandardCopyOption.ATOMIC_MOVE);
             return;
         }
         Path pathToTmpOffsetsFile = getOffsetsPath(TMP_QUALIFIER);
         /* Если data файл compacted и offsets файл не compacted, значит, что не успели перевести файл offsets из tmp в
-         *  compacted. При этом запись полностью прошла в соответствии с последовательностью на строках 144-145 */
+         * compacted. При этом запись полностью прошла в соответствии с последовательностью на строках <> */
         if (Files.exists(pathToTmpOffsetsFile)) {
             Files.move(pathToTmpOffsetsFile, pathToCompactedOffsetsFile, StandardCopyOption.ATOMIC_MOVE);
         }
-        /* Код на строках 184-187 выполниться и в том случае, если мы зайдём в данный метод из метода compact, поскольку
-         *  в таком случае у нас оба файла будут compacted. */
-        Files.move(pathToCompactedDataFile, getStoragePath(0), StandardCopyOption.ATOMIC_MOVE);
-        Files.move(pathToCompactedOffsetsFile, getOffsetsPath(0), StandardCopyOption.ATOMIC_MOVE);
+        /* Код ниже выполнится и в том случае, если мы зайдём в данный метод из метода backgroundCompact(), поскольку
+         * в таком случае у нас оба файла будут compacted. Берём lock, чтобы не произошёл конфликт с flush
+         * в нумерации файлов. */
+        flushLock.writeLock().lock();
+        try {
+            Path pathToNewStorage = getStoragePath(storagesCounter.get());
+            Path pathToNewOffsets = getOffsetsPath(storagesCounter.get());
+            Files.move(pathToCompactedDataFile, pathToNewStorage, StandardCopyOption.ATOMIC_MOVE);
+            Files.move(pathToCompactedOffsetsFile, pathToNewOffsets, StandardCopyOption.ATOMIC_MOVE);
+            readers.add(0, new DaoReader(pathToNewStorage, pathToNewOffsets));
+            storagesCounter.incrementAndGet();
+            writer = new DaoWriter(getStoragePath(storagesCounter.get()), getOffsetsPath(storagesCounter.get()));
+        } finally {
+            flushLock.writeLock().unlock();
+        }
     }
 
-    private void removeOldFiles() throws IOException {
-        try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(directoryPath)) {
-            for (Path file : directoryStream) {
-                String fileName = file.getFileName().toString();
-                if (fileName.startsWith(DATA_FILE_NAME) || fileName.startsWith(OFFSETS_FILE_NAME)) {
-                    Files.delete(file);
-                }
+    @Override
+    public synchronized void close() throws IOException {
+        if (isClosed.get()) {
+            return;
+        }
+        isClosed.set(true);
+        BlockingMergeIterator.blockIterators();
+        flushExecutor.shutdown();
+        compactExecutor.shutdown();
+        try {
+            flushExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+            compactExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            flushExecutor.shutdownNow();
+            compactExecutor.shutdownNow();
+        }
+        int currentFileNumber = storagesCounter.get() - 1;
+        List<Integer> numbersOfFilesToRename = new ArrayList<>();
+        boolean needToRename = false;
+        for (DaoReader reader : readers) {
+            boolean isRemoved = reader.getIsRemoved();
+            reader.close();
+            if (isRemoved) {
+                Files.delete(getStoragePath(currentFileNumber));
+                Files.delete(getOffsetsPath(currentFileNumber--));
+                needToRename = true;
+            } else {
+                numbersOfFilesToRename.add(currentFileNumber--);
             }
         }
+        /* Если ни один из storage в памяти не был заполнен, то это означает, что никаких операций upsert или flush
+         * не производилось. Если numbersOfFilesToRename тоже пуст, значит не было и компакта. Если всех вышеописанных
+         * операций не производилось, то имеет смысл закончить close() здесь, чтобы не делать лишней работы
+         * (все нужные ресурсы уже освобождены). */
+        if (storage.isEmpty() && flushingStorage.isEmpty() && !needToRename) {
+            readers.clear();
+            return;
+        }
+        /* Так как поиск файлов при инициализации DAO зависит от количества файлов, нужно, чтобы все номера файлов
+         *  в названии были меньше количества файлов, поэтому необходимо переименовать файлы. */
+        Collections.reverse(numbersOfFilesToRename);
+        int numberOfNewFile = 0;
+        for (int numberOfFile : numbersOfFilesToRename) {
+            Files.move(getStoragePath(numberOfFile), getStoragePath(numberOfNewFile), StandardCopyOption.ATOMIC_MOVE);
+            Files.move(getOffsetsPath(numberOfFile), getOffsetsPath(numberOfNewFile++), StandardCopyOption.ATOMIC_MOVE);
+        }
+        storagesCounter.set(numberOfNewFile);
+        writer = new DaoWriter(getStoragePath(storagesCounter.get()), getOffsetsPath(storagesCounter.get()));
+        writer.writeDAO(storage);
+        flushingStorage.clear();
+        storage.clear();
+        readers.clear();
     }
 
     private Path getStoragePath(int index) {
@@ -323,7 +393,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         for (int i = 0; i < numberOfStorages; i++) {
             if (!Files.exists(getOffsetsPath(i))) {
-                throw new IllegalStateException("There is no offsets file for some storage");
+                throw new IllegalStateException("There is no offsets file for some storage: storage number " + i);
             }
         }
         return numberOfStorages;
@@ -331,7 +401,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private List<DaoReader> initDaoReaders() throws IOException {
         List<DaoReader> resultList = new ArrayList<>();
-        for (int i = filesCounter.get() - 1; i >= 0; i--) {
+        for (int i = storagesCounter.get() - 1; i >= 0; i--) {
             resultList.add(new DaoReader(getStoragePath(i), getOffsetsPath(i)));
         }
         return resultList;
@@ -351,31 +421,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return new PriorityPeekIterator(storage.tailMap(from).values().iterator(), priorityIndex);
         } else {
             return new PriorityPeekIterator(storage.subMap(from, to).values().iterator(), priorityIndex);
-        }
-    }
-
-
-    private Queue<PriorityPeekIterator> getFilesIteratorsByRange(
-            String from,
-            String to,
-            int priorityIndex
-    ) throws IOException {
-        Queue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
-                Comparator.comparing((PriorityPeekIterator o) ->
-                        o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
-        );
-        for (int i = 0; i < filesCounter.get(); i++) {
-            FileIterator fileIterator = new FileIterator(from, to, readers.get(i));
-            if (fileIterator.hasNext()) {
-                iteratorsQueue.add(new PriorityPeekIterator(fileIterator, priorityIndex++));
-            }
-        }
-        return iteratorsQueue;
-    }
-
-    private void closeReaders() throws IOException {
-        for (DaoReader reader : readers) {
-            reader.close();
         }
     }
 }
