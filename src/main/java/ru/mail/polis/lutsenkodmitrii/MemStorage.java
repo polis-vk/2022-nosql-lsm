@@ -39,7 +39,6 @@ public class MemStorage {
         return memTables.get(0).onFlush().get();
     }
 
-
     public void firstTableSetOnFlush() {
         memTables.get(0).onFlush().set(true);
     }
