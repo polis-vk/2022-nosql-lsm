@@ -15,7 +15,7 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void backgroundCompact(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 3 * Utils.N_ENTRIES_FOR_FLUSH;
+        int count = 3 * Utils.SUPREMUM_N_ENTRIES_FOR_FLUSH;
         List<Entry<String>> entries = entries("k", "v", count);
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
@@ -38,7 +38,7 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void emptyCompactFromDisk(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.N_ENTRIES_FOR_FLUSH - 1;
+        int count = Utils.INFIMUM_N_ENTRIES_FOR_FLUSH - 1;
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
 
@@ -51,7 +51,7 @@ public class CompactTest extends BaseTest {
     }
 
     @DaoTest(stage = 5)
-    void singleSSTableWithoutTombstones(Dao<String, Entry<String>> dao) throws Exception {
+    void singleLightSSTableWithoutTombstones(Dao<String, Entry<String>> dao) throws Exception {
         Entry<String> entry = entryAt(1);
         dao.upsert(entry);
         dao.flush();
@@ -70,7 +70,7 @@ public class CompactTest extends BaseTest {
     }
 
     @DaoTest(stage = 5)
-    void singleSSTableWithTombstones(Dao<String, Entry<String>> dao) throws Exception {
+    void singleLightSSTableWithTombstones(Dao<String, Entry<String>> dao) throws Exception {
         Entry<String> entry = entryAt(1);
         dao.upsert(entry);
         Entry<String> tmb = new BaseEntry<>(keyAt(2), null);
@@ -95,7 +95,7 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void singleHugeSSTableWithoutTombstones(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.N_ENTRIES_FOR_FLUSH;
+        int count = Utils.SUPREMUM_N_ENTRIES_FOR_FLUSH;
         List<Entry<String>> entries = entries(count);
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
@@ -114,7 +114,7 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void singleHugeSSTableWithTombstones(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.N_ENTRIES_FOR_FLUSH;
+        int count = Utils.SUPREMUM_N_ENTRIES_FOR_FLUSH;
         List<Entry<String>> entries = new ArrayList<>();
         for (int i = 0; i < count; ++i) {
             Entry<String> curEntry;
@@ -142,7 +142,7 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void manySSTables(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.N_ENTRIES_FOR_FLUSH - 1;
+        int count = Utils.INFIMUM_N_ENTRIES_FOR_FLUSH - 1;
         int nIterations = 3;
 
         for (int i = 0; i < nIterations; ++i) {

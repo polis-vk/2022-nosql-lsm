@@ -13,7 +13,7 @@ public class FlushTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void backgroundFlush(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.N_ENTRIES_FOR_FLUSH;
+        int count = Utils.INFIMUM_N_ENTRIES_FOR_FLUSH - 1;
         List<Entry<String>> entries = entries("k", "v", count);
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
@@ -34,7 +34,7 @@ public class FlushTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void flushOverfill(Dao<String, Entry<String>> dao) {
-        int count = 100 * Utils.N_ENTRIES_FOR_FLUSH;
+        int count = 100 * Utils.SUPREMUM_N_ENTRIES_FOR_FLUSH;
 
         assertThrows(Exception.class,
                 () -> runInParallel(100, count, value -> dao.upsert(entryAt(value))).close());
@@ -42,7 +42,7 @@ public class FlushTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void manyFlushes(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.N_ENTRIES_FOR_FLUSH - 1;
+        int count = Utils.INFIMUM_N_ENTRIES_FOR_FLUSH - 1;
         int nThreads = 100;
 
         runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
