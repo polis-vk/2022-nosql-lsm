@@ -11,14 +11,14 @@ public class CloseTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void blockingClose(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 40_000;
+        int count = 100_000;
         int nThreads = 100;
 
         runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
         dao.flush();
 
         long millisElapsed = Timer.elapseMs(dao::close);
-        assertTrue(millisElapsed > 500);
+        assertTrue(millisElapsed > 300);
     }
 
 }

@@ -48,7 +48,7 @@ public class FlushTest extends BaseTest {
         runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
 
         long millisElapsed = Timer.elapseMs(() -> runInParallel(nThreads, task -> dao.flush()).close());
-        assertTrue(millisElapsed < 50 + nThreads*3);
+        assertTrue(millisElapsed < 100);
     }
 
 }
