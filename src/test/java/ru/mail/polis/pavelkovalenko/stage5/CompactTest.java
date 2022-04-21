@@ -90,7 +90,7 @@ public class CompactTest extends BaseTest {
             assertSame(dao.get(entry.key()), entry);
             assertSame(dao.get(tmb.key()), null);
         });
-        assertTrue(millisElapsed < 50);
+        assertTrue(millisElapsed < 100);
     }
 
     @DaoTest(stage = 5)
@@ -151,7 +151,7 @@ public class CompactTest extends BaseTest {
             dao.flush();
         }
 
-        Thread.sleep(1_500); // wait until dao is flushing
+        Thread.sleep(1_000); // wait until dao is flushing
 
         long millisElapsed = Timer.elapseMs(() -> {
             for (int i = 0; i < 5_000; ++i) {
