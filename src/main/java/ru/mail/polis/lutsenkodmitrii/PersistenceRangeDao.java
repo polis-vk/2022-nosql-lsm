@@ -120,26 +120,30 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         // вторая таблица на момент вызова ручного flush станет первой и запишется на диск
         // ротация таблиц всегда происходит под write lock.
         checkNotClosed();
-        if (memStorage.firstTableNotOnFlushAndSetTrue()) {
-            flushExecutor.execute(() -> {
+        flushExecutor.execute(() -> {
+            lock.writeLock().lock();
+            try {
+                memStorage.firstTableSetOnFlush();
+            } finally {
+                lock.writeLock().unlock();
+            }
+            try {
+                Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
+                DaoUtils.writeToFile(tempMemoryFilePath, firstTableIterator());
+                Path dataFilePath = generateNextFilePath();
+                Files.move(tempMemoryFilePath, dataFilePath);
+                FileInputStream inputStream = new FileInputStream(dataFilePath.toString());
+                lock.writeLock().lock();
                 try {
-                    Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
-                    DaoUtils.writeToFile(tempMemoryFilePath, firstTableIterator());
-                    Path dataFilePath = generateNextFilePath();
-                    Files.move(tempMemoryFilePath, dataFilePath);
-                    FileInputStream inputStream = new FileInputStream(dataFilePath.toString());
-                    lock.writeLock().lock();
-                    try {
-                        filesMap.put(dataFilePath, inputStream);
-                        memStorage.clearFirstTable();
-                    } finally {
-                        lock.writeLock().unlock();
-                    }
-                } catch (IOException e) {
-                    throw new RuntimeException("Flush first table failed", e);
+                    filesMap.put(dataFilePath, inputStream);
+                    memStorage.clearFirstTable();
+                } finally {
+                    lock.writeLock().unlock();
                 }
-            });
-        }
+            } catch (IOException e) {
+                throw new RuntimeException("Flush first table failed", e);
+            }
+        });
     }
 
     @Override
