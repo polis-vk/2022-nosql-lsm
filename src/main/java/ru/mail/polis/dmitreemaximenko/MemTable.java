@@ -15,9 +15,28 @@ public class MemTable implements Table {
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
             new ConcurrentSkipListMap<>(COMPARATOR);
+    private final long tableSpace;
+    private long spaceLeft;
 
-    public void put(MemorySegment key, Entry<MemorySegment> entry) {
-        data.put(key, entry);
+    public MemTable(long tableSpace) {
+        this.tableSpace = tableSpace;
+        this.spaceLeft = tableSpace;
+    }
+
+    public boolean put(MemorySegment key, Entry<MemorySegment> entry) {
+        // #fixMe data race with space
+        long possibleSpaceLeft = spaceLeft;
+        if (data.containsKey(key)) {
+            possibleSpaceLeft += data.get(key).value().byteSize();
+        }
+
+        if (spaceLeft < entry.value().byteSize()) {
+            data.put(key, entry);
+            spaceLeft = possibleSpaceLeft - entry.value().byteSize();
+            return true;
+        }
+
+        return false;
     }
 
     public boolean isEmpty() {

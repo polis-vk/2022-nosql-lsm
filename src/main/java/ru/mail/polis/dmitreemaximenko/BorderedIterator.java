@@ -17,6 +17,10 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
     private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
     private final NavigableMap<MemorySegment, Source> sources;
 
+    public BorderedIterator(List<Table> tables) throws IOException {
+        this(null, null, tables);
+    }
+
     private static class Source {
         Iterator<Entry<MemorySegment>> iterator;
         Entry<MemorySegment> element;
