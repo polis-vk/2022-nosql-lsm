@@ -9,7 +9,6 @@ import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -17,8 +16,10 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.ConcurrentNavigableMap;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -27,14 +28,19 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private static final String LOG_NAME = "log";
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
     private static final long NULL_VALUE_SIZE = -1;
+    private static final int FLUSHING_QUEUE_SIZE = 2;
     private static final String TMP_SUFFIX = "tmp";
     private static final int LOG_INDEX_START = 0;
+    private volatile boolean flushFinish = false;
     private int logIndexNextFileName;
-    private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
-            new ConcurrentSkipListMap<>(COMPARATOR);
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private MemTable activeMemTable = new MemTable();
+    private BlockingQueue<MemTable> flushingTables = new ArrayBlockingQueue<MemTable>(FLUSHING_QUEUE_SIZE);
+    private List<SSTable> ssTables;
+    private Thread flusher;
+    private ExecutorService compactor;
+    private volatile MemTable flushingTable;
+    private final ReadWriteLock DBTablesLock = new ReentrantReadWriteLock();
     private final Config config;
-    private final List<MemorySegment> logs;
     private final ResourceScope scope = ResourceScope.globalScope();
 
     public MemorySegmentDao() throws IOException {
@@ -43,42 +49,108 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     public MemorySegmentDao(Config config) throws IOException {
         this.config = config;
+        this.compactor = Executors.newSingleThreadExecutor();
+
+        flusher = new Thread(() -> {
+            while (!flushFinish) {
+                try {
+                    try {
+                        MemTable tableToFlush = flushingTables.take();
+
+                        DBTablesLock.writeLock().lock();
+                        flushingTable = tableToFlush;
+                        Path filename = getLogName();
+                        DBTablesLock.writeLock().unlock();
+
+                        if (!flushingTable.isEmpty()) {
+                            writeValuesToFile(flushingTable, filename);
+                            DBTablesLock.writeLock().lock();
+                            ssTables.add(new SSTable(filename, scope));
+                            DBTablesLock.writeLock().unlock();
+                        }
+
+                    } catch (InterruptedException e) {
+                        while (!flushingTables.isEmpty()) {
+                            flushingTable = flushingTables.poll();
+                            if (!flushingTable.isEmpty()) {
+                                writeValuesToFile(flushingTable, getLogName());
+                            }
+                        }
+                        break;
+                    }
+                } catch (IOException ioException)
+                {
+                    ioException.printStackTrace();
+                }
+            }
+
+            while (!flushingTables.isEmpty()) {
+                MemTable tableToFlush = flushingTables.poll();
+
+                DBTablesLock.writeLock().lock();
+                flushingTable = tableToFlush;
+                Path filename = getLogName();
+                DBTablesLock.writeLock().unlock();
+
+                if (!flushingTable.isEmpty()) {
+                    try {
+                        writeValuesToFile(flushingTable, filename);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        });
+        flusher.start();
+
+
         if (config == null) {
-            logs = null;
+            ssTables = null;
         } else {
             List<Path> logPaths = getLogPaths();
             logIndexNextFileName = logPaths.size();
-            logs = new ArrayList<>(logPaths.size());
+            ssTables = new ArrayList<>(logPaths.size());
 
+            DBTablesLock.writeLock().lock();
             for (Path logPath : logPaths) {
-                MemorySegment log;
-                try {
-                    long size = Files.size(logPath);
-                    log = MemorySegment.mapFile(logPath, 0, size, FileChannel.MapMode.READ_ONLY, scope);
-                } catch (NoSuchFileException e) {
-                    log = null;
-                }
-                logs.add(log);
+                ssTables.add(new SSTable(logPath, scope));
             }
+            DBTablesLock.writeLock().unlock();
         }
     }
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
-        lock.readLock().lock();
-        MemorySegment fromValue = from;
-        try {
-            if (from == null) {
-                fromValue = VERY_FIRST_KEY;
-            }
 
-            if (to == null) {
-                return new BorderedIterator(fromValue, null, data.tailMap(fromValue).values().iterator(), logs);
-            }
-            return new BorderedIterator(fromValue, to, data.subMap(fromValue, to).values().iterator(), logs);
-        } finally {
-            lock.readLock().unlock();
+        MemorySegment fromValue = from;
+
+        if (from == null) {
+            fromValue = VERY_FIRST_KEY;
         }
+
+        if (to == null) {
+            return new BorderedIterator(fromValue, null, getAvailableTables());
+        }
+        return new BorderedIterator(fromValue, to, getAvailableTables());
+
+    }
+
+    // should get them in correct order
+    private List<Table> getAvailableTables() {
+        List<Table> result = new LinkedList<>();
+        DBTablesLock.readLock().lock();
+        try {
+            result.add(activeMemTable);
+            result.addAll(flushingTables);
+            if (flushingTable != null) {
+                result.add(flushingTable);
+            }
+            result.addAll(ssTables);
+        } finally {
+            DBTablesLock.readLock().unlock();
+        }
+
+        return result;
     }
 
     private List<Path> getLogPaths() {
@@ -137,12 +209,21 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public void upsert(Entry<MemorySegment> entry) {
-        lock.readLock().lock();
+        activeMemTable.put(entry.key(), entry);
+    }
+
+    @Override
+    public void flush() throws IOException {
+        DBTablesLock.writeLock().lock();
+
         try {
-            data.put(entry.key(), entry);
+            flushingTables.add(activeMemTable);
+            activeMemTable = new MemTable();
         } finally {
-            lock.readLock().unlock();
+            DBTablesLock.writeLock().unlock();
         }
+
+//        logIndexNextFileName += 1;
     }
 
     // values_amount index1 index2 ... indexN k1_size v1_size k1 v1 ....
@@ -151,28 +232,26 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (!scope.isAlive()) {
             return;
         }
-
-        lock.writeLock().lock();
+        flush();
+        flushFinish = true;
         try {
-            if (!data.isEmpty()) {
-                writeValuesToFile(data.values().iterator(), data.values().iterator(), getLogName());
-            }
-        } finally {
-            lock.writeLock().unlock();
+            flusher.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
+
+        compactor.shutdown();
     }
 
-    private void writeValuesToFile(Iterator<Entry<MemorySegment>> valuesIterator,
-                                   Iterator<Entry<MemorySegment>> valuesIteratorCopy,
+    private void writeValuesToFile(Iterable<Entry<MemorySegment>> values,
                                    Path fileName)
             throws IOException {
         try (ResourceScope writeScope = ResourceScope.newConfinedScope()) {
             long size = Long.BYTES;
             long valuesAmount = 0;
 
-            while (valuesIterator.hasNext()) {
+            for (Entry<MemorySegment> value : values) {
                 valuesAmount++;
-                Entry<MemorySegment> value = valuesIterator.next();
                 if (value.value() == null) {
                     size += value.key().byteSize();
                 } else {
@@ -199,8 +278,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             long indexOffset = Long.BYTES;
             long dataOffset = Long.BYTES + valuesAmount * Long.BYTES;
 
-            while (valuesIteratorCopy.hasNext()) {
-                Entry<MemorySegment> value = valuesIteratorCopy.next();
+            for (Entry<MemorySegment> value : values) {
                 MemoryAccess.setLongAtOffset(log, indexOffset, dataOffset);
                 indexOffset += Long.BYTES;
 
@@ -226,27 +304,54 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public void compact() throws IOException {
-        lock.writeLock().lock();
-        try {
-            Path tmpLogFileName = getTmpLogFileName();
+        compactor.execute(() -> {
+            try {
+                DBTablesLock.readLock().lock();
+                if (ssTables.size() <= 1) {
+                    DBTablesLock.readLock().unlock();
+                    return;
+                }
+                DBTablesLock.readLock().unlock();
 
-            // we guarantee here correct behaviour even if crash happens at any time
-            // suppose we have logs: L1, L2 and M (memory values)
-            // 1) first we right compact log into: L_TMP
-            // 2) then we atomically change L1 with L_TMP
-            // 3) then we delete L2
+                Path tmpLogFileName = getTmpLogFileName();
 
-            // if we crashed after step 1 - nothing happens, because we will ignore L_TMP and lose only M.
-            // if we crashed after step 2 - values that was only in L1 - still in L1 (which is compact), values that
-            // were in L1 and L2 we will use still from L2, values that was in memory now in L1,
-            // values that was both in memory and L1 or L2 now in L1
-            writeValuesToFile(get(null, null), get(null, null), tmpLogFileName);
-            Files.move(tmpLogFileName, getFirstLogFileName(), StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING);
-            removeLogFilesExceptFirst();
-            logIndexNextFileName = 1;
-        } finally {
-            lock.writeLock().unlock();
-        }
+                // we guarantee here correct behaviour even if crash happens at any time
+                // suppose we have logs: L1, L2 and M (memory values)
+                // 1) first we right compact log into: L_TMP
+                // 2) then we atomically change L1 with L_TMP
+                // 3) then we delete L2
+
+                // if we crashed after step 1 - nothing happens, because we will ignore L_TMP and lose only M.
+                // if we crashed after step 2 - values that was only in L1 - still in L1 (which is compact), values that
+                // were in L1 and L2 we will use still from L2, values that was in memory now in L1,
+                // values that was both in memory and L1 or L2 now in L1
+                writeValuesToFile(new Iterable<>() {
+                    @Override
+                    public Iterator<Entry<MemorySegment>> iterator() {
+                        try {
+                            return get(null, null);
+                        } catch (IOException e) {
+                            return null;
+                        }
+                    }
+                }, tmpLogFileName);
+
+                Files.move(tmpLogFileName, getFirstLogFileName(), StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+                removeLogFilesExceptFirst();
+
+                DBTablesLock.writeLock().lock();
+                try {
+                    ssTables.clear();
+                    ssTables.add(new SSTable(getFirstLogFileName(), scope));
+                    logIndexNextFileName = 1;
+                } finally {
+                    DBTablesLock.writeLock().unlock();
+                }
+            } catch (IOException e)
+            {
+                e.printStackTrace();
+            }
+        });
     }
 }
