@@ -12,9 +12,8 @@ public class CloseTest extends BaseTest {
     @DaoTest(stage = 5)
     void blockingClose(Dao<String, Entry<String>> dao) throws Exception {
         int count = 100_000;
-        int nThreads = 100;
 
-        runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
+        runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
         dao.flush();
 
         long millisElapsed = Timer.elapseMs(dao::close);

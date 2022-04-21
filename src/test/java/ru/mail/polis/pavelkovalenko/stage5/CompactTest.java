@@ -39,9 +39,8 @@ public class CompactTest extends BaseTest {
     @DaoTest(stage = 5)
     void emptyCompactFromDisk(Dao<String, Entry<String>> dao) throws Exception {
         int count = Utils.N_ENTRIES_FOR_FLUSH - 1;
-        int nThreads = 100;
 
-        runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
+        runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
 
         long millisElapsed = Timer.elapseMs(() -> {
             for (int i = 0; i < 5_000; ++i) {
