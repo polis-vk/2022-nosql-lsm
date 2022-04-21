@@ -17,7 +17,7 @@ class Utils {
     private static final String COMPACTED_STORAGE_PREFIX = "compact";
 
     static final int TMP_FILE_NUMBER = -1;
-    static final int COMPACTED_FILE_NUMBER = -2;
+    static final int TMP_COMPACTED_FILE_NUMBER = -2;
     private final Path basePath;
 
     Utils(Config config) {
@@ -34,7 +34,7 @@ class Utils {
             return basePath.resolve(TMP_PREFIX + STORAGE_FILE_NAME);
         }
 
-        if (number == COMPACTED_FILE_NUMBER) {
+        if (number == TMP_COMPACTED_FILE_NUMBER) {
             return basePath.resolve(COMPACTED_STORAGE_PREFIX + STORAGE_FILE_NAME);
         }
 
@@ -81,9 +81,11 @@ class Utils {
         return path.getFileName().toString().startsWith(STORAGE_FILE_NAME);
     }
 
-    public void deleteStorageFiles() throws IOException {
+    public void deleteStorageFiles(int number) throws IOException {
         try (Stream<Path> stream = Files.list(basePath)) {
             stream.filter(this::isStorageFile)
+                    .sorted()
+                    .limit(number)
                     .forEach(this::deletePath);
         }
     }

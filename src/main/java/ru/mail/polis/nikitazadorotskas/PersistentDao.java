@@ -7,53 +7,53 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ConcurrentNavigableMap;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
-    private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory
-            = new ConcurrentSkipListMap<>(this::compareMemorySegment);
-    private final AtomicLong storageSizeInBytes = new AtomicLong(0);
-    private final MemorySegmentReader[] readers;
     private final Utils utils;
+    private final AtomicLong storageSizeInBytes = new AtomicLong(0);
+    private final ExecutorService compacter = Executors.newFixedThreadPool(1);
+    private final ExecutorService flusher = Executors.newFixedThreadPool(1);
+    private final Config config;
+    private final ReadWriteLock memoryLock = new ReentrantReadWriteLock();
+    private final ReadWriteLock readersLock = new ReentrantReadWriteLock();
     private final ResourceScope scope = ResourceScope.newSharedScope();
-    private boolean memoryFlushed;
+    private ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory
+            = new ConcurrentSkipListMap<>(this::compareMemorySegment);
+    private ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> flushingMemory;
+    private List<MemorySegmentReader> readers;
+    private Future<?> flushTask;
+    private Future<?> compactTask;
 
     public PersistentDao(Config config) throws IOException {
+        this.config = config;
         utils = new Utils(config);
-
         readers = initReaders(config);
     }
 
-    private MemorySegmentReader[] initReaders(Config config) throws IOException {
+    private List<MemorySegmentReader> initReaders(Config config) throws IOException {
         if (config == null) {
-            return new MemorySegmentReader[0];
+            return new ArrayList<>();
         }
 
-        try {
-            return getReaderOfCompactedTable();
-        } catch (NoSuchFileException e) {
-            return getReadersOfAllTables();
-        }
+        return getReadersOfAllTables();
     }
 
-    @SuppressWarnings("DuplicateThrows")
-    private MemorySegmentReader[] getReaderOfCompactedTable() throws NoSuchFileException, IOException {
-        return new MemorySegmentReader[]{new MemorySegmentReader(utils, scope, Utils.COMPACTED_FILE_NUMBER)};
-    }
+    private List<MemorySegmentReader> getReadersOfAllTables() throws IOException {
+        List<MemorySegmentReader> result = new ArrayList<>();
 
-    private MemorySegmentReader[] getReadersOfAllTables() throws IOException {
-        MemorySegmentReader[] result = new MemorySegmentReader[utils.countStorageFiles()];
-
-        for (int i = 0; i < result.length; i++) {
-            result[i] = new MemorySegmentReader(utils, scope, i);
+        int readersSize = utils.countStorageFiles();
+        for (int i = 0; i < readersSize; i++) {
+            result.add(new MemorySegmentReader(utils, scope, i));
         }
 
         return result;
@@ -69,51 +69,100 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
     }
 
     private List<PeekIterator> getIterators(MemorySegment from, MemorySegment to) {
+        List<PeekIterator> iterators;
+        int numberOfMemoryIterators;
+
+        readersLock.readLock().lock();
+        try {
+            iterators = getFilesIterators(from, to);
+            numberOfMemoryIterators = readers.size();
+        } finally {
+            readersLock.readLock().unlock();
+        }
+
+        if (flushingMemory != null) {
+            iterators.add(getPeekIterator(numberOfMemoryIterators++, from, to, flushingMemory));
+        }
+
+        memoryLock.readLock().lock();
+        try {
+            iterators.add(getPeekIterator(numberOfMemoryIterators, from, to, memory));
+        } finally {
+            memoryLock.readLock().unlock();
+        }
+        return iterators;
+    }
+
+    private List<PeekIterator> getFilesIterators(MemorySegment from, MemorySegment to) {
         List<PeekIterator> iterators = new ArrayList<>();
         for (MemorySegmentReader reader : readers) {
             iterators.add(reader.getFromDisk(from, to));
         }
-        iterators.add(new PeekIterator(readers.length, getMap(from, to).values().iterator()));
 
         return iterators;
     }
 
+    private PeekIterator getPeekIterator(
+            int number,
+            MemorySegment from,
+            MemorySegment to,
+            ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> source
+    ) {
+        return new PeekIterator(number, getMap(from, to, source).values().iterator());
+    }
+
     private ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> getMap(
-            MemorySegment from, MemorySegment to
+            MemorySegment from, MemorySegment to, ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> map
     ) {
         if (from == null && to == null) {
-            return memory;
+            return map;
         }
 
         if (from == null) {
-            return memory.headMap(to);
+            return map.headMap(to);
         }
 
         if (to == null) {
-            return memory.tailMap(from);
+            return map.tailMap(from);
         }
 
-        return memory.subMap(from, to);
+        return map.subMap(from, to);
     }
 
     @Override
     public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
-        BaseEntry<MemorySegment> result = memory.get(key);
+        BaseEntry<MemorySegment> result;
+
+        memoryLock.readLock().lock();
+        try {
+            result = memory.get(key);
+        } finally {
+            memoryLock.readLock().unlock();
+        }
+
+        if (result == null && flushingMemory != null) {
+            result = flushingMemory.get(key);
+        }
 
         if (result != null) {
             return utils.checkIfWasDeleted(result);
         }
 
-        if (readers.length == 0) {
-            return null;
-        }
+        readersLock.readLock().lock();
+        try {
+            if (readers.size() == 0) {
+                return null;
+            }
 
-        return getFromStorage(key);
+            return getFromStorage(key);
+        } finally {
+            readersLock.readLock().unlock();
+        }
     }
 
     private BaseEntry<MemorySegment> getFromStorage(MemorySegment key) {
-        for (int i = readers.length - 1; i >= 0; i--) {
-            BaseEntry<MemorySegment> res = readers[i].getFromDisk(key);
+        for (int i = readers.size() - 1; i >= 0; i--) {
+            BaseEntry<MemorySegment> res = readers.get(i).getFromDisk(key);
             if (res != null) {
                 return utils.checkIfWasDeleted(res);
             }
@@ -128,50 +177,67 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
             throw new IllegalStateException("called compact after close");
         }
 
-        if (readers.length == 1 && memory.isEmpty()) {
+        compactTask = compacter.submit(this::doCompact);
+    }
+
+    private void doCompact() {
+        int currentFilesNumber = readers.size();
+        if (currentFilesNumber == 0) {
             return;
         }
 
         int entriesCount = 0;
         long byteSize = 0;
-        Iterator<BaseEntry<MemorySegment>> allEntries = all();
+
+        Iterator<BaseEntry<MemorySegment>> allEntries = allFilesIterator();
         while (allEntries.hasNext()) {
             entriesCount++;
             byteSize += byteSizeOfEntry(allEntries.next());
         }
 
-        writeToTmpFile(entriesCount, byteSize);
-        //tmp файл читать не будем, поскольку он, возможно, не успел до конца записаться
+        try {
+            writeToTmpFile(entriesCount, byteSize);
+            deleteOldFilesAndMoveCompactFile(currentFilesNumber);
 
-        scope.close();
-        memory.clear();
+            readersLock.writeLock().lock();
+            try {
+                moveNewFlushedFiles(currentFilesNumber, readers.size());
+                readers = initReaders(config);
+            } finally {
+                readersLock.writeLock().unlock();
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
-        moveTmpFileToCompactedFile();
-        //если прервались здесь или далее во время удаления,
-        //то будем читать только новый файл, помеченный как компактный, старые файлы не читаем,
-        //однако они не будут удаляться до следующего вызова compact/flush
+    private Iterator<BaseEntry<MemorySegment>> allFilesIterator() {
+        readersLock.readLock().lock();
+        try {
+            return new MergedIterator(getFilesIterators(null, null), utils);
+        } finally {
+            readersLock.readLock().unlock();
+        }
+    }
 
-        deleteOldFilesAndMoveCompactFile();
-        //теперь остался 1 файл
+    private void moveNewFlushedFiles(int oldFilesNumber, int newFilesNumber) throws IOException {
+        for (int i = oldFilesNumber; i < newFilesNumber; i++) {
+            Files.move(
+                    utils.getStoragePath(oldFilesNumber),
+                    utils.getStoragePath(i - oldFilesNumber + 1),
+                    StandardCopyOption.ATOMIC_MOVE);
+        }
     }
 
     private void writeToTmpFile(int entriesCount, long byteSize) throws IOException {
-        Files.deleteIfExists(utils.getStoragePath(Utils.TMP_FILE_NUMBER));
-        flush(all(), Utils.TMP_FILE_NUMBER, entriesCount, byteSize);
+        Files.deleteIfExists(utils.getStoragePath(Utils.TMP_COMPACTED_FILE_NUMBER));
+        flush(allFilesIterator(), Utils.TMP_COMPACTED_FILE_NUMBER, entriesCount, byteSize);
     }
 
-    private void moveTmpFileToCompactedFile() throws IOException {
+    private void deleteOldFilesAndMoveCompactFile(int oldFilesNumber) throws IOException {
+        utils.deleteStorageFiles(oldFilesNumber);
         Files.move(
-                utils.getStoragePath(Utils.TMP_FILE_NUMBER),
-                utils.getStoragePath(Utils.COMPACTED_FILE_NUMBER),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING);
-    }
-
-    private void deleteOldFilesAndMoveCompactFile() throws IOException {
-        utils.deleteStorageFiles();
-        Files.move(
-                utils.getStoragePath(Utils.COMPACTED_FILE_NUMBER),
+                utils.getStoragePath(Utils.TMP_COMPACTED_FILE_NUMBER),
                 utils.getStoragePath(0),
                 StandardCopyOption.ATOMIC_MOVE);
     }
@@ -199,22 +265,65 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
 
     @Override
     public void flush() throws IOException {
-        if (readers.length == 1 && readers[0].getNumber() == Utils.COMPACTED_FILE_NUMBER) {
-            deleteOldFilesAndMoveCompactFile();
-        }
-
-        if (memory.isEmpty() || memoryFlushed) {
+        if (memory.isEmpty()) {
             return;
         }
-        memoryFlushed = true;
 
-        flush(memory.values().iterator(), readers.length, memory.size(), storageSizeInBytes.get());
+        if (flushTask != null && !flushTask.isDone()) {
+            throw new IOException("Too many flushes: one table is being written and one is full");
+        }
+
+        flushingMemory = memory;
+
+        long storageSize = storageSizeInBytes.get();
+        flushTask = flusher.submit(() -> doFlush(storageSize));
+        memory = new ConcurrentSkipListMap<>(this::compareMemorySegment);
+        storageSizeInBytes.set(0);
+    }
+
+    private void doFlush(long storageSize) {
+        try {
+            Files.deleteIfExists(utils.getStoragePath(Utils.TMP_FILE_NUMBER));
+            flush(flushingMemory.values().iterator(),
+                    Utils.TMP_FILE_NUMBER,
+                    flushingMemory.size(),
+                    storageSize);
+            Files.move(
+                    utils.getStoragePath(Utils.TMP_FILE_NUMBER),
+                    utils.getStoragePath(readers.size()),
+                    StandardCopyOption.ATOMIC_MOVE);
+            if (scope.isAlive()) {
+                readersLock.writeLock().lock();
+                try {
+                    readers.add(new MemorySegmentReader(utils, scope, readers.size()));
+                } finally {
+                    readersLock.writeLock().unlock();
+                }
+            }
+            flushingMemory = null;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
         storageSizeInBytes.addAndGet(byteSizeOfEntry(entry));
-        memory.put(entry.key(), entry);
+
+        memoryLock.writeLock().lock();
+        try {
+            memory.put(entry.key(), entry);
+        } finally {
+            memoryLock.writeLock().unlock();
+        }
+
+        try {
+            if (storageSizeInBytes.get() >= config.flushThresholdBytes()) {
+                flush();
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Override
@@ -222,9 +331,25 @@ public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment
         if (!scope.isAlive()) {
             return;
         }
-        scope.close();
 
         flush();
-        memory.clear();
+
+        try {
+            waitTask(compactTask);
+            scope.close();
+            waitTask(flushTask);
+        } catch (ExecutionException | InterruptedException e) {
+            throw new IllegalStateException(e);
+        }
+        flusher.shutdown();
+        compacter.shutdown();
+
+        memory = null;
+    }
+
+    private void waitTask(Future<?> task) throws ExecutionException, InterruptedException {
+        if (task != null) {
+            task.get();
+        }
     }
 }
