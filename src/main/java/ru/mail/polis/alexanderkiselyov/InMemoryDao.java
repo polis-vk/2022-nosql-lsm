@@ -7,15 +7,15 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -52,17 +52,18 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         State state = new State(getPairs(), fileOperations);
         lock.readLock().lock();
         try {
+            byte[] fromArr = from;
             if (from == null) {
-                from = VERY_FIRST_KEY;
+                fromArr = VERY_FIRST_KEY;
             }
             ArrayList<Iterator<BaseEntry<byte[]>>> iterators = new ArrayList<>();
             if (to == null) {
-                iterators.add(state.pairs.tailMap(from).values().iterator());
+                iterators.add(state.pairs.tailMap(fromArr).values().iterator());
             } else {
-                iterators.add(state.pairs.subMap(from, to).values().iterator());
+                iterators.add(state.pairs.subMap(fromArr, to).values().iterator());
             }
             iterators.add(state.getFlushingPairsIterator());
-            iterators.addAll(state.fileOperations.diskIterators(from, to));
+            iterators.addAll(state.fileOperations.diskIterators(fromArr, to));
             Iterator<BaseEntry<byte[]>> mergeIterator = MergeIterator.of(iterators, EntryKeyComparator.INSTANCE);
             return new TombstoneFilteringIterator(mergeIterator);
         } finally {

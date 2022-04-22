@@ -54,8 +54,8 @@ public class FileOperations {
         }
     }
 
-    ArrayList<Iterator<BaseEntry<byte[]>>> diskIterators(byte[] from, byte[] to) throws IOException {
-        ArrayList<Iterator<BaseEntry<byte[]>>> iterators = new ArrayList<>(ssTables.size());
+    List<Iterator<BaseEntry<byte[]>>> diskIterators(byte[] from, byte[] to) throws IOException {
+        List<Iterator<BaseEntry<byte[]>>> iterators = new ArrayList<>(ssTables.size());
         for (int i = 0; i < ssTables.size(); i++) {
             iterators.add(diskIterator(ssTables.get(i), ssIndexes.get(i), from, to));
         }

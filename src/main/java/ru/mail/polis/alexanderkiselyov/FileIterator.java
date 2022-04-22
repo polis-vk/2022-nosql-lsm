@@ -20,7 +20,8 @@ public class FileIterator implements Iterator<BaseEntry<byte[]>>, Closeable {
     private final long to;
     private final FileOperations fileOperations;
 
-    public FileIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to, long indexSize, FileOperations fileOperations) throws IOException {
+    public FileIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to, long indexSize,
+                        FileOperations fileOperations) throws IOException {
         rafTable = new RandomAccessFile(String.valueOf(ssTable), "r");
         rafIndex = new RandomAccessFile(String.valueOf(ssIndex), "r");
         channelTable = rafTable.getChannel();
