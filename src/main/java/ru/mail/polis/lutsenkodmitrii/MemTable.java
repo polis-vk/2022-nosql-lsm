@@ -13,9 +13,6 @@ public class MemTable {
     private final AtomicLong bytes = new AtomicLong();
     private final AtomicBoolean onFlush = new AtomicBoolean(false);
 
-    public MemTable() {
-    }
-
     public Iterator<BaseEntry<String>> iterator(String from, String to) {
         if (from == null && to == null) {
             return data.values().iterator();
