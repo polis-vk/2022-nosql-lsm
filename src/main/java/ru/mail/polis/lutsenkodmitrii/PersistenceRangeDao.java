@@ -94,16 +94,19 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
     @Override
     public void upsert(BaseEntry<String> entry) {
         checkNotClosed();
+        int entryBytes = DaoUtils.bytesOf(entry);
         lock.readLock().lock();
         try {
-            if (memStorage.firstTableOnFlush()) {
-                memStorage.upsertToSecondTable(entry);
+            if (memStorage.firstTableOnFlush().get()) {
+                memStorage.upsertToSecondTable(entry, entryBytes);
+            } else if (memStorage.firstTableBytes().addAndGet(entryBytes) < config.flushThresholdBytes()) {
+                memStorage.putFirstTable(entry);
             } else {
-                memStorage.upsertIfFitsFirstTable(entry);
-                if (memStorage.firstTableFull()) {
-                    flush();
-                    memStorage.upsertToSecondTable(entry);
+                if (memStorage.firstTableNotOnFlushAndSetTrue()) {
+                    memStorage.firstTableBytes().set(config.flushThresholdBytes());
+                    flushFirstMemTable();
                 }
+                memStorage.upsertToSecondTable(entry, entryBytes);
             }
         } finally {
             lock.readLock().unlock();
@@ -117,16 +120,21 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         // если вторая не пустая, значит первая уже на авто-flush,
         // так как одновременно выполняется один flush,
         // то в таком случае будет ожидание выполнения авто-flush,
-        // вторая таблица на момент вызова ручного flush станет первой и запишется на диск
-        // ротация таблиц всегда происходит под write lock.
+        // вторая таблица на момент вызова ручного flush станет первой и запишется на диск.
+        // Ротация таблиц / файлов всегда происходит под write lock.
         checkNotClosed();
-        flushExecutor.execute(() -> {
-            lock.writeLock().lock();
-            try {
-                memStorage.firstTableSetOnFlush();
-            } finally {
-                lock.writeLock().unlock();
+        lock.writeLock().lock(); // Только для ручного flush, автоматический соответствует вызову flushFirstMemTable()
+        try {
+            if (memStorage.firstTableNotOnFlushAndSetTrue()) {
+                flushFirstMemTable();
             }
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    private void flushFirstMemTable() {
+        flushExecutor.execute(() -> {
             try {
                 Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
                 DaoUtils.writeToFile(tempMemoryFilePath, firstTableIterator());
@@ -187,7 +195,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
             List<Map.Entry<Path, FileInputStream>> compactionFilesMapEntries;
             try {
                 MergeIterator allEntriesIterator = new MergeIterator(this, null, null, false);
-                compactionFilesMapEntries = allEntriesIterator.getFilesMapEntries();
+                compactionFilesMapEntries = allEntriesIterator.getFilesMapEntries(); // copy of filesMap in iterator
                 DaoUtils.writeToFile(tempCompactionFilePath, allEntriesIterator);
                 Files.move(tempCompactionFilePath, lastFilePath);
                 lastFileInputStream = new FileInputStream(lastFilePath.toString());

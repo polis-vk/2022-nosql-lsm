@@ -15,6 +15,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 public final class DaoUtils {
 
+    public static final int NULL_BYTES = 8;
     public static final int CHARS_IN_INT = Integer.SIZE / Character.SIZE + 1;
     public static final int OVERFLOW_LIMIT = Integer.MAX_VALUE - '0';
     public static final int DELETED_MARK = 0;
@@ -24,6 +25,10 @@ public final class DaoUtils {
     };
 
     private DaoUtils() {
+    }
+
+    public static int bytesOf(BaseEntry<String> entry) {
+        return entry.key().length() + (entry.value() == null ? NULL_BYTES : entry.value().length());
     }
 
     public static int readUnsignedInt(BufferedReader bufferedReader) throws IOException {

@@ -61,9 +61,42 @@ public class Stage5Test extends BaseTest {
     }
 
     @DaoTest(stage = 5)
+    void concurrentAutoFlushTest(Dao<String, Entry<String>> dao) throws Exception {
+        int threadsNumber = 10;
+        int sublistElements = 5000;
+        int count = threadsNumber * sublistElements;
+        List<Entry<String>> entries2 = entries("q", "w", count);
+        CountDownLatch countDownLatch = new CountDownLatch(threadsNumber);
+
+        List<Thread> threads = new ArrayList<>();
+        for (int i = 0; i < threadsNumber; i++) {
+            int finalI = i;
+            threads.add(new Thread(() -> {
+                List<Entry<String>> entries = entries2.subList(finalI * sublistElements, (finalI + 1) * sublistElements);
+                entries.forEach(dao::upsert);
+                countDownLatch.countDown();
+            }));
+        }
+        threads.forEach(Thread::start);
+        countDownLatch.await();
+        assertSame(dao.allFrom("q0000000000"), entries2);
+        dao.close();
+        Dao<String, Entry<String>> reopenDao = DaoFactory.Factory.reopen(dao);
+        assertSame(reopenDao.allFrom("q0000000000"), entries2);
+    }
+
+    @DaoTest(stage = 5)
     void autoFlushTest(Dao<String, Entry<String>> dao) throws Exception {
         int count = 100_000;
-        List<Entry<String>> entries = entries(count);
+        List<Entry<String>> entries = entries("q", "w", count);
+        entries.forEach(dao::upsert);
+        assertSame(dao.all(), entries);
+    }
+
+    @DaoTest(stage = 5)
+    void autoFlushTestWithClose(Dao<String, Entry<String>> dao) throws Exception {
+        int count = 50_000;
+        List<Entry<String>> entries = entries("q", "w", count);
         entries.forEach(dao::upsert);
         assertSame(dao.all(), entries);
         dao.close();

@@ -4,52 +4,52 @@ import ru.mail.polis.BaseEntry;
 
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.List;
 import java.util.NavigableMap;
 import java.util.TreeMap;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class MemStorage {
 
-    private final List<MemTable> memTables = new CopyOnWriteArrayList<>();
+    private volatile MemTable firstTable = new MemTable();
+    private volatile MemTable secondTable = new MemTable();
     private final long tableMaxBytesSize;
 
     public MemStorage(long tableMaxBytesSize) {
         this.tableMaxBytesSize = tableMaxBytesSize;
-        memTables.add(new MemTable(tableMaxBytesSize));
-        memTables.add(new MemTable(tableMaxBytesSize));
     }
 
-    public void upsertIfFitsFirstTable(BaseEntry<String> entry) {
-        memTables.get(0).upsertIfFits(entry);
-    }
-
-    public void upsertToSecondTable(BaseEntry<String> entry) {
-        memTables.get(1).upsertIfFits(entry);
-        if (memTables.get(1).isFull()) {
+    public void upsertToSecondTable(BaseEntry<String> entry, int entryBytes) {
+        if (secondTable.getBytes().addAndGet(entryBytes) < tableMaxBytesSize) {
+            secondTable.put(entry);
+        } else {
             rejectUpsert();
         }
     }
 
-    public boolean firstTableFull() {
-        return memTables.get(0).isFull();
+    public AtomicLong firstTableBytes() {
+        return firstTable.getBytes();
     }
 
-    public boolean firstTableOnFlush() {
-        return memTables.get(0).onFlush().get();
+    public AtomicBoolean firstTableOnFlush() {
+        return firstTable.onFlush();
     }
 
-    public void firstTableSetOnFlush() {
-        memTables.get(0).onFlush().set(true);
+    public void putFirstTable(BaseEntry<String> entry) {
+        firstTable.put(entry);
+    }
+
+    public boolean firstTableNotOnFlushAndSetTrue() {
+        return !firstTable.onFlush().getAndSet(true);
     }
 
     public void clearFirstTable() {
-        memTables.remove(0);
-        memTables.add(new MemTable(tableMaxBytesSize));
+        firstTable = secondTable;
+        secondTable = new MemTable();
     }
 
     public boolean isEmpty() {
-        return memTables.get(0).isEmpty() && memTables.get(1).isEmpty();
+        return firstTable.isEmpty() && secondTable.isEmpty();
     }
 
     public void rejectUpsert() {
@@ -57,16 +57,16 @@ public class MemStorage {
     }
 
     public Iterator<BaseEntry<String>> firstTableIterator(String from, String to) {
-        return memTables.get(0).iterator(from, to);
+        return firstTable.iterator(from, to);
     }
 
     public Iterator<BaseEntry<String>> secondTableIterator(String from, String to) {
-        return memTables.get(1).iterator(from, to);
+        return secondTable.iterator(from, to);
     }
 
     public Iterator<BaseEntry<String>> iterator(String from, String to) {
-        Iterator<BaseEntry<String>> firstTableIterator = memTables.get(0).iterator(from, to);
-        Iterator<BaseEntry<String>> secondTableIterator = memTables.get(1).iterator(from, to);
+        Iterator<BaseEntry<String>> firstTableIterator = firstTable.iterator(from, to);
+        Iterator<BaseEntry<String>> secondTableIterator = secondTable.iterator(from, to);
         if (!firstTableIterator.hasNext() && !secondTableIterator.hasNext()) {
             return Collections.emptyIterator();
         }
