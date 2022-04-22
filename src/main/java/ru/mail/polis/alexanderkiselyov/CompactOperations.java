@@ -28,12 +28,15 @@ public class CompactOperations {
     private final String fileExtension;
     private final String fileIndexName;
     private final String fileIndexExtension;
+    private final FileOperations fileOperations;
 
-    public CompactOperations(String fileName, String fileExtension, String fileIndexName, String fileIndexExtension) {
+    public CompactOperations(String fileName, String fileExtension, String fileIndexName, String fileIndexExtension,
+                             FileOperations fileOperations) {
         this.fileName = fileName;
         this.fileExtension = fileExtension;
         this.fileIndexName = fileIndexName;
         this.fileIndexExtension = fileIndexExtension;
+        this.fileOperations = fileOperations;
     }
 
     Map<Path, Path> checkFiles(Path basePath) throws IOException {
@@ -143,8 +146,8 @@ public class CompactOperations {
                 BaseEntry<byte[]> current = iterator.next();
                 Map.Entry<byte[], BaseEntry<byte[]>> currentBaseEntry =
                         Map.entry(current.key(), new BaseEntry<>(current.key(), current.value()));
-                FileOperations.writePair(writerFile.getFileChannel(), currentBaseEntry);
-                offset = FileOperations.writeEntryPosition(writerFile.getIndexChannel(), currentBaseEntry, offset);
+                fileOperations.writePair(writerFile.getFileChannel(), currentBaseEntry);
+                offset = fileOperations.writeEntryPosition(writerFile.getIndexChannel(), currentBaseEntry, offset);
                 elementsCount++;
             }
             writeIndexSize(elementsCount, writerFile.getIndexChannel());

@@ -37,7 +37,8 @@ public class FileOperations {
         ssIndexes = new ArrayList<>();
         tablesSizes = new ConcurrentHashMap<>();
         filesCount = new AtomicInteger();
-        compactOperations = new CompactOperations(FILE_NAME, FILE_EXTENSION, FILE_INDEX_NAME, FILE_INDEX_EXTENSION);
+        compactOperations = new CompactOperations(FILE_NAME, FILE_EXTENSION, FILE_INDEX_NAME, FILE_INDEX_EXTENSION,
+                this);
         Map<Path, Path> allData = compactOperations.checkFiles(basePath);
         getDataInfo(allData);
     }
@@ -53,13 +54,12 @@ public class FileOperations {
         }
     }
 
-    Iterator<BaseEntry<byte[]>> diskIterator(byte[] from, byte[] to) throws IOException {
-        List<IndexedPeekIterator> peekIterators = new ArrayList<>();
+    ArrayList<Iterator<BaseEntry<byte[]>>> diskIterators(byte[] from, byte[] to) throws IOException {
+        ArrayList<Iterator<BaseEntry<byte[]>>> iterators = new ArrayList<>(ssTables.size());
         for (int i = 0; i < ssTables.size(); i++) {
-            Iterator<BaseEntry<byte[]>> iterator = diskIterator(ssTables.get(i), ssIndexes.get(i), from, to);
-            peekIterators.add(new IndexedPeekIterator(i, iterator));
+            iterators.add(diskIterator(ssTables.get(i), ssIndexes.get(i), from, to));
         }
-        return MergeIterator.of(peekIterators, EntryKeyComparator.INSTANCE);
+        return iterators;
     }
 
     private Iterator<BaseEntry<byte[]>> diskIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to)
@@ -68,13 +68,28 @@ public class FileOperations {
             return null;
         }
         long indexSize = tablesSizes.get(ssIndex);
-        FileIterator fileIterator = new FileIterator(ssTable, ssIndex, from, to, indexSize);
+        FileIterator fileIterator = new FileIterator(ssTable, ssIndex, from, to, indexSize, this);
         fileIterators.add(fileIterator);
         return fileIterator;
     }
 
-    static long getEntryIndex(FileChannel channelTable, FileChannel channelIndex,
-                              byte[] key, long indexSize) throws IOException {
+    BaseEntry<byte[]> get(byte[] key) throws IOException {
+        for (int i = 0; i < ssTables.size(); i++) {
+            try (FileIterator fileIterator = new FileIterator(ssTables.get(i), ssIndexes.get(i), key, null,
+                    tablesSizes.get(ssIndexes.get(i)), this)) {
+                if (fileIterator.hasNext()) {
+                    BaseEntry<byte[]> currentEntry = fileIterator.next();
+                    if (currentEntry != null && Arrays.equals(currentEntry.key(), key)) {
+                        return currentEntry;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    long getEntryIndex(FileChannel channelTable, FileChannel channelIndex,
+                       byte[] key, long indexSize) throws IOException {
         long low = 0;
         long high = indexSize - 1;
         long mid = (low + high) / 2;
@@ -137,40 +152,35 @@ public class FileOperations {
         tablesSizes.put(newIndexPath, indexSize(newIndexPath));
     }
 
-    static void writePair(FileChannel channel, Map.Entry<byte[], BaseEntry<byte[]>> pair) throws IOException {
-        ByteBuffer intBuffer = ByteBuffer.allocate(Integer.BYTES);
-        intBuffer.putInt(pair.getKey().length);
-        intBuffer.flip();
-        channel.write(intBuffer);
-        intBuffer.clear();
-        channel.write(ByteBuffer.wrap(pair.getKey()));
-        if (pair.getValue().value() == null) {
-            intBuffer.putInt(-1);
-            intBuffer.flip();
-            channel.write(intBuffer);
-            intBuffer.clear();
+    void writePair(FileChannel channel, Map.Entry<byte[], BaseEntry<byte[]>> pair) throws IOException {
+        ByteBuffer buffer;
+        if (pair.getValue().isTombstone()) {
+            buffer = ByteBuffer.allocate(2 * Integer.BYTES + pair.getKey().length);
         } else {
-            intBuffer.putInt(pair.getValue().value().length);
-            intBuffer.flip();
-            channel.write(intBuffer);
-            intBuffer.clear();
-            channel.write(ByteBuffer.wrap(pair.getValue().value()));
+            buffer = ByteBuffer.allocate(2 * Integer.BYTES + pair.getKey().length
+                    + pair.getValue().value().length);
         }
+        buffer.putInt(pair.getKey().length);
+        buffer.put(pair.getKey());
+        if (pair.getValue().isTombstone()) {
+            buffer.putInt(-1);
+        } else {
+            buffer.putInt(pair.getValue().value().length);
+            buffer.put(pair.getValue().value());
+        }
+        buffer.flip();
+        channel.write(buffer);
     }
 
-    private static void writeFileSizeAndInitialPosition(FileChannel channel, long pairsSize) throws IOException {
-        ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
-        longBuffer.putLong(pairsSize);
-        longBuffer.flip();
-        channel.write(longBuffer);
-        longBuffer.clear();
-        longBuffer.putLong(0);
-        longBuffer.flip();
-        channel.write(longBuffer);
-        longBuffer.clear();
+    private void writeFileSizeAndInitialPosition(FileChannel channel, long pairsSize) throws IOException {
+        ByteBuffer buffer = ByteBuffer.allocate(2 * Long.BYTES);
+        buffer.putLong(pairsSize);
+        buffer.putLong(0);
+        buffer.flip();
+        channel.write(buffer);
     }
 
-    static long writeEntryPosition(FileChannel channel, Map.Entry<byte[],
+    long writeEntryPosition(FileChannel channel, Map.Entry<byte[],
             BaseEntry<byte[]>> pair, long size) throws IOException {
         ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
         long result = size;
@@ -182,11 +192,10 @@ public class FileOperations {
         longBuffer.putLong(result);
         longBuffer.flip();
         channel.write(longBuffer);
-        longBuffer.clear();
         return result;
     }
 
-    private static long indexSize(Path indexPath) throws IOException {
+    private long indexSize(Path indexPath) throws IOException {
         long size;
         try (RandomAccessFile raf = new RandomAccessFile(indexPath.toString(), "r")) {
             size = raf.readLong();
@@ -194,31 +203,54 @@ public class FileOperations {
         return size;
     }
 
-    static BaseEntry<byte[]> getCurrent(long pos, FileChannel channelTable,
-                                        FileChannel channelIndex) throws IOException {
+    BaseEntry<byte[]> getCurrent(long pos, FileChannel channelTable,
+                                 FileChannel channelIndex) throws IOException {
         long position;
         channelIndex.position((pos + 1) * Long.BYTES);
         ByteBuffer buffLong = ByteBuffer.allocate(Long.BYTES);
         channelIndex.read(buffLong);
         buffLong.flip();
         position = buffLong.getLong();
+        buffLong.clear();
+        channelIndex.position((pos + 2) * Long.BYTES);
+        channelIndex.read(buffLong);
+        buffLong.flip();
+        long positionNext = buffLong.getLong();
+
         channelTable.position(position);
-        ByteBuffer buffInt = ByteBuffer.allocate(Integer.BYTES);
-        channelTable.read(buffInt);
-        buffInt.flip();
-        int keyLength = buffInt.getInt();
-        buffInt.clear();
-        ByteBuffer currentKey = ByteBuffer.allocate(keyLength);
-        channelTable.read(currentKey);
-        channelTable.read(buffInt);
-        buffInt.flip();
-        int valueLength = buffInt.getInt();
-        if (valueLength == -1) {
-            return new BaseEntry<>(currentKey.array(), null);
+        if (positionNext == -1) {
+            ByteBuffer buffInt = ByteBuffer.allocate(Integer.BYTES);
+            channelTable.read(buffInt);
+            buffInt.flip();
+            int keyLength = buffInt.getInt();
+            ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES + keyLength);
+            channelTable.read(buffer);
+            buffer.flip();
+            byte[] key = new byte[keyLength];
+            buffer.get(key);
+            int valueLength = buffer.getInt();
+            if (valueLength == -1) {
+                return new BaseEntry<>(key, null);
+            }
+            ByteBuffer currentValue = ByteBuffer.allocate(valueLength);
+            channelTable.read(currentValue);
+            return new BaseEntry<>(key, currentValue.array());
+        } else {
+            ByteBuffer buffer = ByteBuffer.allocate((int) (positionNext - position));
+            channelTable.read(buffer);
+            buffer.flip();
+            int keyLength = buffer.getInt();
+            byte[] key = new byte[keyLength];
+            buffer.get(key);
+            int valueLength = buffer.getInt();
+            if (valueLength == -1) {
+                return new BaseEntry<>(key, null);
+            }
+            byte[] value = new byte[valueLength];
+            buffer.get(value);
+            return new BaseEntry<>(key, value);
         }
-        ByteBuffer currentValue = ByteBuffer.allocate(valueLength);
-        channelTable.read(currentValue);
-        return new BaseEntry<>(currentKey.array(), currentValue.array());
+
     }
 
     public void clearFileIterators() throws IOException {

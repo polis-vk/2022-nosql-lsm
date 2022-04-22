@@ -18,14 +18,16 @@ public class FileIterator implements Iterator<BaseEntry<byte[]>>, Closeable {
     private final RandomAccessFile rafIndex;
     private long pos;
     private final long to;
+    private final FileOperations fileOperations;
 
-    public FileIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to, long indexSize) throws IOException {
+    public FileIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to, long indexSize, FileOperations fileOperations) throws IOException {
         rafTable = new RandomAccessFile(String.valueOf(ssTable), "r");
         rafIndex = new RandomAccessFile(String.valueOf(ssIndex), "r");
         channelTable = rafTable.getChannel();
         channelIndex = rafIndex.getChannel();
-        pos = from == null ? 0 : FileOperations.getEntryIndex(channelTable, channelIndex, from, indexSize);
-        this.to = to == null ? indexSize : FileOperations.getEntryIndex(channelTable, channelIndex, to, indexSize);
+        pos = from == null ? 0 : fileOperations.getEntryIndex(channelTable, channelIndex, from, indexSize);
+        this.to = to == null ? indexSize : fileOperations.getEntryIndex(channelTable, channelIndex, to, indexSize);
+        this.fileOperations = fileOperations;
     }
 
     @Override
@@ -37,7 +39,7 @@ public class FileIterator implements Iterator<BaseEntry<byte[]>>, Closeable {
     public BaseEntry<byte[]> next() {
         BaseEntry<byte[]> entry;
         try {
-            entry = FileOperations.getCurrent(pos, channelTable, channelIndex);
+            entry = fileOperations.getCurrent(pos, channelTable, channelIndex);
         } catch (IOException e) {
             throw new NoSuchElementException("There is no next element!", e);
         }
