@@ -1,6 +1,6 @@
 package ru.mail.polis.pavelkovalenko.stage5;
 
-public class Utils {
+public final class Utils {
 
     private static final int FLUSH_TRESHOLD = 1 << 20; // 1 MB
 
@@ -17,4 +17,7 @@ public class Utils {
 
     public static final int INFIMUM_N_ENTRIES_FOR_FLUSH
             = (int) Math.ceil((double) FLUSH_TRESHOLD / SUPREMUM_N_BYTES_FOR_ENTRY);
+			
+	private Utils() {
+	}
 }
