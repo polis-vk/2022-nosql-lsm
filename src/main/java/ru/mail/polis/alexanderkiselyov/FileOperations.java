@@ -149,7 +149,7 @@ public class FileOperations {
                 offset = writeEntryPosition(writer.getIndexChannel(), pair, offset);
             }
         }
-        tablesSizes.put(newIndexPath, indexSize(newIndexPath));
+        tablesSizes.put(newIndexPath, (long) sortedPairs.size());
     }
 
     void writePair(FileChannel channel, Map.Entry<byte[], BaseEntry<byte[]>> pair) throws IOException {
@@ -212,13 +212,26 @@ public class FileOperations {
         buffLong.flip();
         position = buffLong.getLong();
         buffLong.clear();
-        channelIndex.position((pos + 2) * Long.BYTES);
-        channelIndex.read(buffLong);
-        buffLong.flip();
-        long positionNext = buffLong.getLong();
-
         channelTable.position(position);
-        if (positionNext == -1) {
+        if (channelIndex.size() > (pos + 2) * Long.BYTES) {
+            channelIndex.position((pos + 2) * Long.BYTES);
+            channelIndex.read(buffLong);
+            buffLong.flip();
+            long positionNext = buffLong.getLong();
+            ByteBuffer buffer = ByteBuffer.allocate((int) (positionNext - position));
+            channelTable.read(buffer);
+            buffer.flip();
+            int keyLength = buffer.getInt();
+            byte[] key = new byte[keyLength];
+            buffer.get(key);
+            int valueLength = buffer.getInt();
+            if (valueLength == -1) {
+                return new BaseEntry<>(key, null);
+            }
+            byte[] value = new byte[valueLength];
+            buffer.get(value);
+            return new BaseEntry<>(key, value);
+        } else {
             ByteBuffer buffInt = ByteBuffer.allocate(Integer.BYTES);
             channelTable.read(buffInt);
             buffInt.flip();
@@ -235,22 +248,7 @@ public class FileOperations {
             ByteBuffer currentValue = ByteBuffer.allocate(valueLength);
             channelTable.read(currentValue);
             return new BaseEntry<>(key, currentValue.array());
-        } else {
-            ByteBuffer buffer = ByteBuffer.allocate((int) (positionNext - position));
-            channelTable.read(buffer);
-            buffer.flip();
-            int keyLength = buffer.getInt();
-            byte[] key = new byte[keyLength];
-            buffer.get(key);
-            int valueLength = buffer.getInt();
-            if (valueLength == -1) {
-                return new BaseEntry<>(key, null);
-            }
-            byte[] value = new byte[valueLength];
-            buffer.get(value);
-            return new BaseEntry<>(key, value);
         }
-
     }
 
     public void clearFileIterators() throws IOException {
