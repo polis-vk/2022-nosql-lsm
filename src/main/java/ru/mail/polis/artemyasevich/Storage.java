@@ -40,7 +40,6 @@ public class Storage {
     Storage(Config config) throws IOException {
         this.pathToDirectory = config.basePath();
         int maxEntrySize = initFiles();
-        this.daoFilesCount = daoFiles.size();
         this.bufferSize = maxEntrySize == 0 ? DEFAULT_BUFFER_SIZE : maxEntrySize;
     }
 
@@ -101,7 +100,6 @@ public class Storage {
         daoFilesCount++;
         int maxEntrySize = savaData(dataIterator, pathToData, pathToMeta);
         if (maxEntrySize > bufferSize) {
-            //???
             entryReadWriter.forEach((key, value) -> value.increaseBufferSize(maxEntrySize));
             bufferSize = maxEntrySize;
         }
@@ -175,11 +173,7 @@ public class Storage {
 
     private int initFiles() throws IOException {
         int maxSize = 0;
-        Comparator<Path> comparator = (o1, o2) -> {
-            int n1 = Integer.parseInt(o1.getFileName().toString().replaceAll("[^\\d]", ""));
-            int n2 = Integer.parseInt(o2.getFileName().toString().replaceAll("[^\\d]", ""));
-            return n1 - n2;
-        };
+        Comparator<Path> comparator = Comparator.comparingInt(this::extractFileNumber);
         Queue<Path> dataFiles = new PriorityQueue<>(comparator);
         Queue<Path> metaFiles = new PriorityQueue<>(comparator);
         try (DirectoryStream<Path> paths = Files.newDirectoryStream(pathToDirectory)) {
@@ -193,14 +187,39 @@ public class Storage {
                 }
             }
         }
+        if (dataFiles.isEmpty() || metaFiles.isEmpty()) {
+            if (!dataFiles.isEmpty()) {
+                Files.delete(dataFiles.poll());
+            }
+            if (!metaFiles.isEmpty()) {
+                Files.delete(metaFiles.poll());
+            }
+            return 0;
+        }
+        if (dataFiles.size() > metaFiles.size()) {
+            Files.delete(dataFiles.poll());
+        } else if (metaFiles.size() > dataFiles.size()) {
+            Files.delete(metaFiles.poll());
+        }
+        int maxFileNumber = 0;
         while (!dataFiles.isEmpty() && !metaFiles.isEmpty()) {
             DaoFile daoFile = new DaoFile(dataFiles.poll(), metaFiles.poll(), false);
             if (daoFile.maxEntrySize() > maxSize) {
                 maxSize = daoFile.maxEntrySize();
             }
+            int fileNumber = extractFileNumber(daoFile.pathToFile());
+            if (fileNumber > maxFileNumber) {
+                maxFileNumber = fileNumber;
+            }
             daoFiles.addFirst(daoFile);
         }
+        this.daoFilesCount = maxFileNumber + 1;
         return maxSize;
+    }
+
+    private int extractFileNumber(Path path) {
+        String fileName = path.getFileName().toString();
+        return Integer.parseInt(fileName.substring(DATA_FILE.length(), fileName.length() - FILE_EXTENSION.length()));
     }
 
     private Path pathToMeta(int fileNumber) {
