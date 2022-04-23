@@ -19,6 +19,7 @@ public class FileIterator implements Iterator<BaseEntry<byte[]>>, Closeable {
     private long pos;
     private final long to;
     private final FileOperations fileOperations;
+    private static final byte[] VERY_FIRST_KEY = new byte[]{};
 
     public FileIterator(Path ssTable, Path ssIndex, byte[] from, byte[] to, long indexSize,
                         FileOperations fileOperations) throws IOException {
@@ -26,7 +27,7 @@ public class FileIterator implements Iterator<BaseEntry<byte[]>>, Closeable {
         rafIndex = new RandomAccessFile(String.valueOf(ssIndex), "r");
         channelTable = rafTable.getChannel();
         channelIndex = rafIndex.getChannel();
-        pos = from == null ? 0 : fileOperations.getEntryIndex(channelTable, channelIndex, from, indexSize);
+        pos = from == VERY_FIRST_KEY ? 0 : fileOperations.getEntryIndex(channelTable, channelIndex, from, indexSize);
         this.to = to == null ? indexSize : fileOperations.getEntryIndex(channelTable, channelIndex, to, indexSize);
         this.fileOperations = fileOperations;
     }
