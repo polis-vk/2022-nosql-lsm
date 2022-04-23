@@ -66,10 +66,6 @@ public final class FileUtils {
         return 2 * Integer.BYTES + entry.key().remaining() + (entry.value() == null ? 0 : entry.value().remaining());
     }
 
-    public static int sizeOnDisk(BaseEntry<ByteBuffer> entry) {
-        return sizeOfEntry(entry) + Integer.BYTES;
-    }
-
     public static ByteBuffer readBuffer(ByteBuffer buffer, int pos) {
         int size = buffer.getInt(pos);
         return buffer.slice(pos + Integer.BYTES, size);
