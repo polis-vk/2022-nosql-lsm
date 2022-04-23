@@ -29,18 +29,18 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final NavigableMap<byte[], BaseEntry<byte[]>> pairs1;
     private final AtomicInteger pairNum;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final Config config;
     private static final byte[] VERY_FIRST_KEY = new byte[]{};
     private State state;
+    private final long maxThresholdBytes;
 
     public InMemoryDao(Config config) throws IOException {
-        this.config = config;
         fileOperations = new FileOperations(config);
         isClosed = new AtomicBoolean(false);
         pairs0 = new ConcurrentSkipListMap<>(Arrays::compare);
         pairs1 = new ConcurrentSkipListMap<>(Arrays::compare);
         pairNum = new AtomicInteger(0);
         state = new State(getPairs(), fileOperations);
+        maxThresholdBytes = config.flushThresholdBytes();
     }
 
     @Override
@@ -98,7 +98,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         try {
             int entryValueLength = entry.value() == null ? 0 : entry.value().length;
             long delta = 2L * entry.key().length + entryValueLength;
-            if (currentState.getSize() + delta >= config.flushThresholdBytes()) {
+            if (currentState.getSize() + delta >= maxThresholdBytes) {
                 if (pairs0.size() > 0 && pairs1.size() > 0) {
                     throw new IllegalStateException("Unable to flush: all maps are full.");
                 }
