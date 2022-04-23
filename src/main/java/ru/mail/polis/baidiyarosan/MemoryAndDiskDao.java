@@ -98,16 +98,15 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         lock.readLock().lock();
         try {
             BaseEntry<ByteBuffer> previous = collection.put(entry.key(), entry);
-            int addBytes = Integer.BYTES + FileUtils.sizeOfEntry(entry) - ((previous == null) ? 0 : FileUtils.sizeOfEntry(previous));
+            int addBytes = Integer.BYTES + FileUtils.sizeOfEntry(entry)
+                    - ((previous == null) ? 0 : FileUtils.sizeOfEntry(previous));
             if (memBytes.addAndGet(addBytes) > memMaxBytes) {
                 needFlush = true;
             }
         } finally {
             lock.readLock().unlock();
         }
-        System.out.println(memBytes.get() + "/" + memMaxBytes);
         if (needFlush) {
-            System.out.println("can flush: " + (onFlushCollection == null));
             autoFlush();
         }
     }
