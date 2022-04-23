@@ -48,7 +48,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (isClosed.get()) {
             return null;
         }
-        State state = this.state;
+        State currentState = this.state;
         lock.readLock().lock();
         try {
             byte[] fromArr = from;
@@ -57,12 +57,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             }
             ArrayList<Iterator<BaseEntry<byte[]>>> iterators = new ArrayList<>();
             if (to == null) {
-                iterators.add(state.pairs.tailMap(fromArr).values().iterator());
+                iterators.add(currentState.pairs.tailMap(fromArr).values().iterator());
             } else {
-                iterators.add(state.pairs.subMap(fromArr, to).values().iterator());
+                iterators.add(currentState.pairs.subMap(fromArr, to).values().iterator());
             }
-            iterators.add(state.getFlushingPairsIterator());
-            iterators.addAll(state.fileOperations.diskIterators(fromArr, to));
+            iterators.add(currentState.getFlushingPairsIterator());
+            iterators.addAll(currentState.fileOperations.diskIterators(fromArr, to));
             Iterator<BaseEntry<byte[]>> mergeIterator = MergeIterator.of(iterators, EntryKeyComparator.INSTANCE);
             return new TombstoneFilteringIterator(mergeIterator);
         } finally {
@@ -75,12 +75,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (isClosed.get()) {
             return null;
         }
-        State state = this.state;
+        State currentState = this.state;
         lock.readLock().lock();
         try {
-            BaseEntry<byte[]> result = state.pairs.get(key);
+            BaseEntry<byte[]> result = currentState.pairs.get(key);
             if (result == null) {
-                result = state.fileOperations.get(key);
+                result = currentState.fileOperations.get(key);
             }
             return (result == null || result.isTombstone()) ? null : result;
         } finally {
@@ -93,20 +93,20 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (isClosed.get()) {
             return;
         }
-        State state = this.state;
+        State currentState = this.state;
         lock.readLock().lock();
         try {
             int entryValueLength = entry.value() == null ? 0 : entry.value().length;
             long delta = 2L * entry.key().length + entryValueLength;
-            if (state.getSize() + delta >= config.flushThresholdBytes()) {
+            if (currentState.getSize() + delta >= config.flushThresholdBytes()) {
                 if (pairs0.size() > 0 && pairs1.size() > 0) {
                     throw new IllegalStateException("Unable to flush: all maps are full.");
                 }
                 pairNum.set(1 - pairNum.get());
-                state.performBackgroundFlush();
+                currentState.performBackgroundFlush();
                 this.state = new State(getPairs(), fileOperations);
             }
-            state.pairs.put(entry.key(), entry);
+            currentState.pairs.put(entry.key(), entry);
         } finally {
             lock.readLock().unlock();
         }
@@ -114,14 +114,14 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
 
     @Override
     public synchronized void flush() throws IOException {
-        State state = this.state;
-        if (state.pairs.size() == 0 || isClosed.get()) {
+        State currentState = this.state;
+        if (currentState.pairs.size() == 0 || isClosed.get()) {
             return;
         }
         lock.writeLock().lock();
         try {
-            state.fileOperations.flush(state.pairs);
-            state.pairs.clear();
+            currentState.fileOperations.flush(currentState.pairs);
+            currentState.pairs.clear();
         } finally {
             lock.writeLock().unlock();
         }
@@ -132,10 +132,10 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (isClosed.get()) {
             return;
         }
-        State state = this.state;
+        State currentState = this.state;
         lock.writeLock().lock();
         try {
-            state.performCompact();
+            currentState.performCompact();
         } finally {
             lock.writeLock().unlock();
         }
@@ -146,12 +146,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (isClosed.get()) {
             return;
         }
-        State state = this.state;
+        State currentState = this.state;
         lock.writeLock().lock();
         try {
-            state.closeService();
+            currentState.closeService();
             flush();
-            state.fileOperations.clearFileIterators();
+            currentState.fileOperations.clearFileIterators();
             pairs0.clear();
             pairs1.clear();
             isClosed.set(true);
