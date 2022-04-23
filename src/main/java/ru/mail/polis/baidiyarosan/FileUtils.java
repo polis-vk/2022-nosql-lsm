@@ -66,6 +66,10 @@ public final class FileUtils {
         return 2 * Integer.BYTES + entry.key().remaining() + (entry.value() == null ? 0 : entry.value().remaining());
     }
 
+    public static int sizeOnDisk(BaseEntry<ByteBuffer> entry) {
+        return sizeOfEntry(entry) + Integer.BYTES;
+    }
+
     public static ByteBuffer readBuffer(ByteBuffer buffer, int pos) {
         int size = buffer.getInt(pos);
         return buffer.slice(pos + Integer.BYTES, size);
@@ -99,7 +103,7 @@ public final class FileUtils {
         return buffer.flip();
     }
 
-    public static void writeOnDisk(
+    public static void flush(
             NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection, Path path) throws IOException {
         ByteBuffer buffer = ByteBuffer.wrap(new byte[]{});
         ByteBuffer indexBuffer = ByteBuffer.allocate(Integer.BYTES);
@@ -150,6 +154,10 @@ public final class FileUtils {
                     indexOut.write(indexBuffer);
                     dataOut.write(writeEntryToBuffer(buffer, entry));
                 }
+            } catch (Exception e) {
+                Files.deleteIfExists(getIndexPath(path, fileNumber));
+                Files.deleteIfExists(getCompactedDataPath(path, fileNumber));
+                throw new IOException(e);
             }
         }
     }

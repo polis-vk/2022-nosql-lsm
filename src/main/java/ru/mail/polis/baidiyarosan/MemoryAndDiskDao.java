@@ -1,5 +1,7 @@
 package ru.mail.polis.baidiyarosan;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -31,9 +33,11 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    private final ExecutorService flushExecutor = Executors.newSingleThreadExecutor();
+    private static final Logger LOG = LoggerFactory.getLogger(MemoryAndDiskDao.class);
 
-    private final ExecutorService compactExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(
+            (r) -> new Thread(r, "MemoryAndDiskDao")
+    );
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
@@ -41,15 +45,17 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     private final List<MappedByteBuffer> fileIndexes = new ArrayList<>();
 
-    private final Path path;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    private final long memMaxBytes;
-
-    private final AtomicBoolean isClosed = new AtomicBoolean(false);
+    private final AtomicBoolean oversized = new AtomicBoolean(false);
 
     private final AtomicLong memBytes = new AtomicLong(0);
 
     private final AtomicInteger filesCount = new AtomicInteger(0);
+
+    private final Path path;
+
+    private final long memMaxBytes;
 
     private volatile NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection;
     // flush queue is single file
@@ -65,10 +71,6 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             Files.createDirectory(indexesDir);
         }
         FileUtils.clearOldFiles(filesCount.get(), path);
-    }
-
-    private void createMemoryData() {
-        collection = new ConcurrentSkipListMap<>();
     }
 
     @Override
@@ -94,26 +96,38 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     public void upsert(BaseEntry<ByteBuffer> entry) {
         validate();
         lock.readLock().lock();
+        boolean needFlush = false;
         try {
-            int entrySize = FileUtils.sizeOfEntry(entry);
-            if (memBytes.get() + entrySize > memMaxBytes) {
-                try {
-                    flush();
-                } catch (IOException e) {
-                    // can't access file system
-                    throw new UncheckedIOException(e);
-                }
-
+            BaseEntry<ByteBuffer> previous = collection.put(entry.key(), entry);
+            int addBytes = FileUtils.sizeOnDisk(entry) - ((previous != null) ? FileUtils.sizeOnDisk(previous) : 0);
+            if (memBytes.addAndGet(addBytes) > memMaxBytes) {
+                needFlush = oversized.getAndSet(true);
             }
-            memBytes.addAndGet(entrySize);
-            collection.put(entry.key(), entry);
         } finally {
             lock.readLock().unlock();
         }
+
+        if (needFlush) {
+            autoFlush();
+        }
+    }
+
+    private void createMemoryData() {
+        collection = new ConcurrentSkipListMap<>();
+    }
+
+    private synchronized void autoFlush() {
+        if (collection.isEmpty()) {
+            return;
+        }
+        if (onFlushCollection != null) {
+            throw new UnsupportedOperationException("Can't flush more");
+        }
+        executor.submit(this::executeFlush);
     }
 
     @Override
-    public void flush() throws IOException {
+    public synchronized void flush() throws IOException {
         validate();
 
         if (collection.isEmpty()) {
@@ -123,36 +137,51 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             throw new UnsupportedOperationException("Can't flush more");
         }
 
-        flushExecutor.execute(this::executeFlush);
+        //executor.execute(this::executeFlush);
+        executeFlush();
     }
 
     private void executeFlush() {
-        lock.writeLock().lock();
+        if (collection.isEmpty()) {
+            return;
+        }
+
         try {
-            if (collection.isEmpty()) {
-                return;
+            lock.writeLock().lock();
+            try {
+                onFlushCollection = collection;
+                createMemoryData();
+                memBytes.set(0);
+                oversized.set(false);
+            } finally {
+                lock.writeLock().unlock();
             }
-            onFlushCollection = collection;
-            createMemoryData();
-            memBytes.set(0);
-            FileUtils.writeOnDisk(onFlushCollection, path);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        } finally {
-            onFlushCollection = null;
-            filesCount.incrementAndGet();
-            lock.writeLock().unlock();
+
+            FileUtils.flush(onFlushCollection, path);
+            lock.writeLock().lock();
+
+            try {
+                onFlushCollection = null;
+                filesCount.incrementAndGet();
+            } finally {
+                lock.writeLock().unlock();
+            }
+
+        } catch (Exception e) {
+            LOG.error("Error while flushing", e);
+            // don't know how to do better
+            System.exit(-1);
         }
     }
 
     @Override
-    public void compact() throws IOException {
+    public synchronized void compact() throws IOException {
         validate();
         if (!(filesCount.get() > 1 || (filesCount.get() == 1 && !FileUtils.isCompacted(path, 1)))) {
             //don't need compaction
             return;
         }
-        compactExecutor.execute(this::executeCompact);
+        executeCompact();
     }
 
     private void executeCompact() {
@@ -170,26 +199,25 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     @Override
-    public void close() throws IOException {
-        if (isClosed.get()) {
+    public synchronized void close() throws IOException {
+        if (closed.get()) {
             return;
         }
-        flush();
-        flushExecutor.shutdown();
-        compactExecutor.shutdown();
+        executeFlush();
+        executor.shutdown();
         try {
             // waits infinitely
-            flushExecutor.awaitTermination(Integer.MAX_VALUE, TimeUnit.DAYS);
-            compactExecutor.awaitTermination(Integer.MAX_VALUE, TimeUnit.DAYS);
+            while (!executor.awaitTermination(Integer.MAX_VALUE, TimeUnit.DAYS)) ;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
-        isClosed.set(true);
+        closed.set(true);
     }
 
+
     private void validate() {
-        if (isClosed.get()) {
+        if (closed.get()) {
             throw new UnsupportedOperationException("DAO is closed");
         }
     }
