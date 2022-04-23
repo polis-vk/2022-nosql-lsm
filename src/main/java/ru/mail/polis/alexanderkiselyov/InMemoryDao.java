@@ -151,11 +151,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         State state = new State(getPairs(), fileOperations);
         lock.writeLock().lock();
         try {
+            state.closeService();
             compactManager.closeCompactThreadService();
             flush();
-            state.closeService();
             state.fileOperations.clearFileIterators();
-            state.pairs.clear();
+            pairs0.clear();
+            pairs1.clear();
             isClosed.set(true);
         } finally {
             lock.writeLock().unlock();
@@ -230,12 +231,6 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
                 }
             }
             taskResults.clear();
-            if (pairs != null) {
-                pairs.clear();
-            }
-            if (flushingPairs != null) {
-                flushingPairs.clear();
-            }
         }
     }
 }
