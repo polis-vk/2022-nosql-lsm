@@ -187,33 +187,21 @@ public class Storage {
                 }
             }
         }
-        if (dataFiles.isEmpty() || metaFiles.isEmpty()) {
-            if (!dataFiles.isEmpty()) {
-                Files.delete(dataFiles.poll());
-            }
-            if (!metaFiles.isEmpty()) {
-                Files.delete(metaFiles.poll());
-            }
-            return 0;
-        }
         if (dataFiles.size() > metaFiles.size()) {
             Files.delete(dataFiles.poll());
         } else if (metaFiles.size() > dataFiles.size()) {
             Files.delete(metaFiles.poll());
         }
-        int maxFileNumber = 0;
         while (!dataFiles.isEmpty() && !metaFiles.isEmpty()) {
             DaoFile daoFile = new DaoFile(dataFiles.poll(), metaFiles.poll(), false);
             if (daoFile.maxEntrySize() > maxSize) {
                 maxSize = daoFile.maxEntrySize();
             }
-            int fileNumber = extractFileNumber(daoFile.pathToFile());
-            if (fileNumber > maxFileNumber) {
-                maxFileNumber = fileNumber;
-            }
             daoFiles.addFirst(daoFile);
         }
-        this.daoFilesCount = maxFileNumber + 1;
+        if (!daoFiles.isEmpty()) {
+            this.daoFilesCount = extractFileNumber(daoFiles.peekFirst().pathToFile()) + 1;
+        }
         return maxSize;
     }
 
