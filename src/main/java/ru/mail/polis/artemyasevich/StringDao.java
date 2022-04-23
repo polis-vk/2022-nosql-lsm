@@ -6,13 +6,18 @@ import ru.mail.polis.Dao;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -22,12 +27,11 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class StringDao implements Dao<String, BaseEntry<String>> {
     private final Config config;
     private final Storage storage;
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final ReadWriteLock memoryLock = new ReentrantReadWriteLock();
-    private final Lock backgroundLock = new ReentrantLock();
-    private final AtomicLong memoryUsage = new AtomicLong();
-    private volatile ConcurrentNavigableMap<String, BaseEntry<String>> memory = new ConcurrentSkipListMap<>();
-    private volatile ConcurrentNavigableMap<String, BaseEntry<String>> reserveMemory = new ConcurrentSkipListMap<>();
+    private final ReadWriteLock upsertLock = new ReentrantReadWriteLock();
+    private final Lock storageLock = new ReentrantLock();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final AtomicBoolean autoFlushing = new AtomicBoolean();
+    private MemoryState memoryState = MemoryState.newMemoryState();
 
     public StringDao(Config config) throws IOException {
         this.config = config;
@@ -41,40 +45,34 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
-        lock.readLock().lock();
-        memoryLock.readLock().lock(); //Хотелось бы дождаться фонового флаша
+        //issue: close() is not forbidden to close files due iterators process
+        MemoryState memory = this.memoryState;
         List<PeekIterator> iterators = new ArrayList<>(3);
-        try {
-            if (to != null && to.equals(from)) {
-                return Collections.emptyIterator();
-            }
-            if (!memory.isEmpty()) {
-                iterators.add(new PeekIterator(memoryIterator(from, to), 0));
-            }
-            if (storage != null) {
-                iterators.add(new PeekIterator(storage.iterate(from, to), 1));
-            }
-        } finally {
-            memoryLock.readLock().unlock();
-            lock.readLock().unlock();
+        if (to != null && to.equals(from)) {
+            return Collections.emptyIterator();
+        }
+        if (!memory.memory.isEmpty()) {
+            iterators.add(new PeekIterator(memoryIterator(from, to, memory.memory), 0));
+        }
+        if (!memory.flushing.isEmpty()) {
+            iterators.add(new PeekIterator(memoryIterator(from, to, memory.flushing), 1));
+        }
+        if (storage != null) {
+            iterators.add(new PeekIterator(storage.iterate(from, to), 2));
         }
         return new MergeIterator(iterators);
     }
 
     @Override
     public BaseEntry<String> get(String key) throws IOException {
+        MemoryState state = this.memoryState;
         BaseEntry<String> entry;
-        lock.readLock().lock();
-        try {
-            entry = memory.get(key);
-            if (entry == null) {
-                entry = reserveMemory.get(key);
-            }
-            if (entry == null && storage != null) {
-                entry = storage.get(key);
-            }
-        } finally {
-            lock.readLock().unlock();
+        entry = state.memory.get(key);
+        if (entry == null && !state.flushing.isEmpty()) {
+            entry = state.flushing.get(key);
+        }
+        if (entry == null && storage != null) {
+            entry = storage.get(key);
         }
         return entry == null || entry.value() == null ? null : entry;
     }
@@ -82,28 +80,27 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     @Override
     public void upsert(BaseEntry<String> entry) {
         if (config == null || config.flushThresholdBytes() == 0) {
-            memory.put(entry.key(), entry);
+            memoryState.memory.put(entry.key(), entry);
             return;
         }
-        lock.readLock().lock();
+        upsertLock.readLock().lock();
         try {
-            long entrySize = EntryReadWriter.sizeOfEntry(entry);
-            long currentMemoryUsage = memoryUsage.addAndGet(entrySize);
-            if (currentMemoryUsage - entrySize > config.flushThresholdBytes()) {
+            BaseEntry<String> previous = memoryState.memory.get(entry.key());
+            long previousSize = previous == null ? 0 : EntryReadWriter.sizeOfEntry(previous);
+            long entrySizeDelta = EntryReadWriter.sizeOfEntry(entry) - previousSize;
+            long currentMemoryUsage = memoryState.memoryUsage.addAndGet(entrySizeDelta);
+            if (currentMemoryUsage > config.flushThresholdBytes()) {
                 if (currentMemoryUsage > config.flushThresholdBytes() * 2) {
+                    executor.shutdown();
                     throw new IllegalStateException("Memory is full");
                 }
-                reserveMemory.put(entry.key(), entry);
-                return;
+                if (!autoFlushing.getAndSet(true)) {
+                    executor.submit(this::flushMemory);
+                }
             }
-            if (currentMemoryUsage > config.flushThresholdBytes()) {
-                new Thread(() -> autoFlush(currentMemoryUsage - entrySize)).start();
-                reserveMemory.put(entry.key(), entry);
-                return;
-            }
-            memory.put(entry.key(), entry);
+            memoryState.memory.put(entry.key(), entry);
         } finally {
-            lock.readLock().unlock();
+            upsertLock.readLock().unlock();
         }
     }
 
@@ -112,28 +109,26 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         if (storage == null) {
             return;
         }
-        new Thread(() -> {
-            lock.readLock().lock();
-            backgroundLock.lock(); //Делаем фоновый компакт, если не идёт фоновый флаш
-            try {
-                storage.compact();
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            } finally {
-                backgroundLock.unlock();
-                lock.readLock().unlock();
-            }
-        }).start();
+        storageLock.lock();
+        try {
+            executor.submit(() -> {
+                storageLock.lock();
+                try {
+                    storage.compact();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                } finally {
+                    storageLock.unlock();
+                }
+            });
+        } finally {
+            storageLock.unlock();
+        }
     }
 
     @Override
     public void flush() throws IOException {
-        lock.writeLock().lock();
-        try {
-            flushMemoryIfNeeded();
-        } finally {
-            lock.writeLock().unlock();
-        }
+        flushMemory();
     }
 
     @Override
@@ -141,71 +136,88 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
         if (storage == null) {
             return;
         }
-        lock.writeLock().lock();
-        try {
-            flushMemoryIfNeeded();
-            storage.close();
-        } finally {
-            lock.writeLock().unlock();
-        }
+        executor.shutdown();
+        flushMemory();
+        storage.close();
     }
 
-    private void flushMemoryIfNeeded() throws IOException {
+    private void flushMemory() {
         if (storage == null) {
             return;
         }
-        if (!memory.isEmpty()) {
-            storage.flush(memory.values().iterator());
-        }
-        if (!reserveMemory.isEmpty()) {
-            storage.flush(reserveMemory.values().iterator());
-        }
-        clearMemory();
-    }
-
-    private void clearMemory() {
-        memory.clear();
-        reserveMemory.clear();
-        memoryUsage.set(0);
-    }
-
-    private void autoFlush(long memoryFlushed) {
-        lock.readLock().lock();
-        backgroundLock.lock(); //Не флашим, пока идёт компакт
+        storageLock.lock();
         try {
-            if (storage == null || memory.isEmpty()) {
+            upsertLock.writeLock().lock();
+            try {
+                this.memoryState = memoryState.prepareForFlush();
+            } finally {
+                upsertLock.writeLock().unlock();
+            }
+            if (memoryState.flushing.isEmpty()) {
                 return;
             }
-            storage.flush(memory.values().iterator());
-            memoryLock.writeLock().lock(); // Не чистим память, пока есть итераторы
+            storage.flush(memoryState.flushing.values().iterator());
+            upsertLock.writeLock().lock();
             try {
-                memory.clear();
-                ConcurrentNavigableMap<String, BaseEntry<String>> empty = memory;
-                memory = reserveMemory;
-                memoryUsage.addAndGet(-memoryFlushed); //Теперь upsertы пойдут на memory
-                reserveMemory = empty;
+                this.memoryState = memoryState.afterFlush();
             } finally {
-                memoryLock.writeLock().unlock();
+                upsertLock.writeLock().unlock();
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } finally {
-            backgroundLock.unlock();
-            lock.readLock().unlock();
+            autoFlushing.set(false);
+            storageLock.unlock();
         }
     }
 
-    private Iterator<BaseEntry<String>> memoryIterator(String from, String to) {
+    private Iterator<BaseEntry<String>> memoryIterator(String from, String to,
+                                                       NavigableMap<String, BaseEntry<String>> map) {
         Map<String, BaseEntry<String>> subMap;
         if (from == null && to == null) {
-            subMap = memory;
+            subMap = map;
         } else if (from == null) {
-            subMap = memory.headMap(to);
+            subMap = map.headMap(to);
         } else if (to == null) {
-            subMap = memory.tailMap(from);
+            subMap = map.tailMap(from);
         } else {
-            subMap = memory.subMap(from, to);
+            subMap = map.subMap(from, to);
         }
         return subMap.values().iterator();
     }
+
+    private static class MemoryState {
+        final ConcurrentNavigableMap<String, BaseEntry<String>> memory;
+        final ConcurrentNavigableMap<String, BaseEntry<String>> flushing;
+        final AtomicLong memoryUsage;
+
+        private MemoryState(ConcurrentNavigableMap<String, BaseEntry<String>> memory,
+                            ConcurrentNavigableMap<String, BaseEntry<String>> flushing) {
+            this.memory = memory;
+            this.flushing = flushing;
+            this.memoryUsage = new AtomicLong();
+        }
+
+        private MemoryState(ConcurrentNavigableMap<String, BaseEntry<String>> memory,
+                            ConcurrentNavigableMap<String, BaseEntry<String>> flushing,
+                            AtomicLong memoryUsage) {
+            this.memory = memory;
+            this.flushing = flushing;
+            this.memoryUsage = memoryUsage;
+        }
+
+        static MemoryState newMemoryState() {
+            return new MemoryState(new ConcurrentSkipListMap<>(), new ConcurrentSkipListMap<>());
+        }
+
+        MemoryState prepareForFlush() {
+            return new MemoryState(new ConcurrentSkipListMap<>(), memory, memoryUsage);
+        }
+
+        MemoryState afterFlush() {
+            return new MemoryState(memory, new ConcurrentSkipListMap<>());
+        }
+
+    }
+
 }
