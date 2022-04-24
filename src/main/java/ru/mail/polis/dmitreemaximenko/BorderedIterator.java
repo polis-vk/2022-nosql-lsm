@@ -155,7 +155,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
         private Entry<MemorySegment> next;
         private final long valuesAmount;
 
-        private class EntryContainer {
+        private static class EntryContainer {
             Entry<MemorySegment> entry;
             long entrySize;
 
@@ -197,7 +197,6 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
             EntryContainer nextEntry = getNextEntry();
             offset += nextEntry.entrySize;
             next = nextEntry.entry;
-            
             return result;
         }
 

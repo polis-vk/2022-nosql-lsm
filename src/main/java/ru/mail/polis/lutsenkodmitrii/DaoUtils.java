@@ -10,26 +10,35 @@ import java.nio.file.Path;
 
 public final class DaoUtils {
 
-    public static final int CHARS_IN_INT = Integer.SIZE / Character.SIZE;
+    public static final int CHARS_IN_INT = Integer.SIZE / Character.SIZE + 1;
+    public static final int OVERFLOW_LIMIT = Integer.MAX_VALUE - '0';
 
     private DaoUtils() {
     }
 
     public static void writeUnsignedInt(int k, BufferedWriter bufferedWriter) throws IOException {
-        bufferedWriter.write((k + '0') >>> 16);
-        bufferedWriter.write((k + '0'));
+        if (k < OVERFLOW_LIMIT) {
+            bufferedWriter.write((k + '0') >>> 16);
+            bufferedWriter.write(k + '0');
+            bufferedWriter.write('0');
+        } else {
+            bufferedWriter.write((OVERFLOW_LIMIT + '0') >>> 16);
+            bufferedWriter.write(OVERFLOW_LIMIT + '0');
+            bufferedWriter.write((k - OVERFLOW_LIMIT) + '0');
+        }
     }
 
     public static int readUnsignedInt(BufferedReader bufferedReader) throws IOException {
         int ch1 = bufferedReader.read();
         int ch2 = bufferedReader.read();
+        int ch3 = bufferedReader.read();
         // Для чтения везде используется BufferedReader.
         // Все его методы возвращают -1, когда достигнут конец файла
         // Для поддержания идентичного контракта и в этом методе возвращается -1 если достигнут конец файла
-        if (ch1 == -1 || ch2 == -1) {
+        if (ch1 == -1) {
             return -1;
         }
-        return (ch1 << 16) + ch2 - '0';
+        return (ch1 << 16) + ch2 - '0' + (ch3 - '0');
     }
 
     public static String readKey(BufferedReader bufferedReader) throws IOException {
@@ -38,7 +47,9 @@ public final class DaoUtils {
             return null;
         }
         char[] keyChars = new char[keyLength];
-        bufferedReader.read(keyChars);
+        for (int i = 0; i < keyLength; i++) {
+            keyChars[i] = (char) bufferedReader.read();
+        }
         return postprocess(new String(keyChars));
     }
 
@@ -52,8 +63,7 @@ public final class DaoUtils {
         bufferedReader.skip(CHARS_IN_INT); // Пропускаем длину предыдущей записи
         String key = readKey(bufferedReader);
         if (key == null) {
-            // Таким образом выполняется проверка конца файла, поэтому не кидается EOFExсeption
-            // Более изящный способ проверить конец файла для BufferedReader я не нашел/придумал
+            // Таким образом выполняется проверка конца файла аналогично стандартному readline()
             // На skip, который выше нельзя проверять так как там идет запись длины предыдущей записи
             // И на последней записи можно успешно сделать skip, но ключа уже не будет
             // Можно для последней записи не записывать длину, но код тогда будет некрасивый
@@ -67,8 +77,7 @@ public final class DaoUtils {
      * Для лучшего понимаю См. Описание формата файла в PersistenceRangeDao.
      * Все размер / длины ы в количественном измерении относительно char, то есть int это 2 char
      * Везде, где упоминается размер / длина, имеется в виду относительно char, а не байтов.
-     * left - левая граница, равная offset - сдвиг относительно начала файла
-     * offset нужен, чтобы пропустить к примеру минимальный и максимальный ключи в начале (См. Описание формата файла)
+     * left - левая граница,
      * right - правая граница равная размеру файла минус размер числа,
      * которое означает длину относящегося предыдущей записи
      * Минусуем, чтобы гарантированно читать это число целиком.
@@ -97,26 +106,25 @@ public final class DaoUtils {
      * В итоге идея следующая найти пару ключей, между которыми лежит исходный и вернуть второй или равный исходному,
      * при этом не храня индексы для сдвигов ключей вовсе.
      */
-    public static BaseEntry<String> ceilKey(Path path, BufferedReader bufferedReader,
-                                            String key, long offset) throws IOException {
+    public static BaseEntry<String> ceilKey(Path path, BufferedReader bufferedReader, String key) throws IOException {
         int prevEntryLength;
         String currentKey;
-        long left = offset;
+        long left = 0;
         long right = Files.size(path) - CHARS_IN_INT;
         long position;
-        while (left <= right) {
+        while (left < right) {
             position = (left + right) / 2;
             bufferedReader.mark((int) right);
             bufferedReader.skip(position - left);
             String leastPartOfLine = bufferedReader.readLine();
-            int readBytes = leastPartOfLine.length() + 1;
+            int readBytes = leastPartOfLine.length() + CHARS_IN_INT; // CHARS_IN_INT -> prevEntryLength
             prevEntryLength = readUnsignedInt(bufferedReader);
             if (position + readBytes >= right) {
                 bufferedReader.reset();
                 bufferedReader.skip(CHARS_IN_INT);
                 right = position - prevEntryLength + readBytes + 1;
-                position = left + CHARS_IN_INT;
                 readBytes = 0;
+                position = left;
             }
             currentKey = readKey(bufferedReader);
             String currentValue = readValue(bufferedReader);
@@ -141,16 +149,24 @@ public final class DaoUtils {
                 bufferedReader.reset();
             }
         }
-        return null;
+        return left == 0 ? readEntry(bufferedReader) : null;
     }
 
     public static String preprocess(String str) {
-        if (!str.contains("\n") && !str.contains("\\")) {
+        int i = -1;
+        for (int j = 0; j < str.length(); j++) {
+            char c = str.charAt(j);
+            if (c == '\n' || c == '\\') {
+                i = j;
+                break;
+            }
+        }
+        if (i == -1) {
             return str;
         }
-        StringBuilder stringBuilder = new StringBuilder();
-        char[] charArray = str.toCharArray();
-        for (char c : charArray) {
+        StringBuilder stringBuilder = new StringBuilder(str.substring(0, i));
+        while (i < str.length()) {
+            char c = str.charAt(i);
             if (c == '\\') {
                 stringBuilder.append("\\\\");
             } else if (c == '\n') {
@@ -158,25 +174,25 @@ public final class DaoUtils {
             } else {
                 stringBuilder.append(c);
             }
+            i++;
         }
         return stringBuilder.toString();
     }
 
     public static String postprocess(String str) {
-        if (!str.contains("\\")) {
+        int i = str.indexOf('\\');
+        if (i == -1) {
             return str;
         }
-        StringBuilder stringBuilder = new StringBuilder();
-        int i = 0;
-        char[] charArray = str.toCharArray();
-        while (i < charArray.length) {
-            while (i < charArray.length && charArray[i] != '\\') {
-                stringBuilder.append(charArray[i]);
+        StringBuilder stringBuilder = new StringBuilder(str.substring(0, i));
+        while (i < str.length()) {
+            while (i < str.length() && str.charAt(i) != '\\') {
+                stringBuilder.append(str.charAt(i));
                 i++;
             }
-            if (i < charArray.length - 1) {
-                // Все слэши парные, так что после слэша гарантированно идет 'n' или еще один слэш
-                stringBuilder.append(charArray[i + 1] == 'n' ? '\n' : '\\');
+            if (i < str.length() - 1) {
+                // Все слэши парные, поэтому после слэша гарантированно идет 'n' или еще один слэш
+                stringBuilder.append(str.charAt(i + 1) == 'n' ? '\n' : '\\');
                 i += 2;
             }
         }
