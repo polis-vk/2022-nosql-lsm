@@ -1,6 +1,7 @@
 package ru.mail.polis.levsaskov;
 
 import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Entry;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -8,6 +9,7 @@ import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -18,27 +20,44 @@ import java.util.Optional;
 
 public class StoragePart implements AutoCloseable {
     public static final int LEN_FOR_NULL = -1;
+    private static final int DEFAULT_ALLOC_SIZE = 2048;
+    private static final int INDEX_BOOST_PORTION = 3000;
+    private static final int MEMORY_BOOST_PORTION = 100000;
 
-    private int storagePartN;
-    private MappedByteBuffer memoryBB;
+    private final int storagePartN;
+    private final Path indexPath;
+    private final Path memoryPath;
     private MappedByteBuffer indexBB;
+    private MappedByteBuffer memoryBB;
     private int entrysC;
 
-    public void init(Path memoryPath, Path indexPath, int storagePartN) throws IOException {
+    private StoragePart(Path indexPath, Path memoryPath,
+                        MappedByteBuffer indexBB, MappedByteBuffer memoryBB, int storagePartN) {
+        this.indexPath = indexPath;
+        this.memoryPath = memoryPath;
         this.storagePartN = storagePartN;
-        memoryBB = mapFile(memoryPath);
-        indexBB = mapFile(indexPath);
-        entrysC = indexBB.capacity() / Long.BYTES;
+        this.memoryBB = memoryBB;
+        this.indexBB = indexBB;
+        // I write count of written entrys in the end of index file
+        if (indexBB.capacity() != 0) {
+            entrysC = indexBB.getInt(indexBB.capacity() - Integer.BYTES);
+        }
     }
 
-    public BaseEntry<ByteBuffer> get(ByteBuffer key) {
-        int position = binarySearch(entrysC - 1, key);
-        BaseEntry<ByteBuffer> res = readEntry(position);
+    public static StoragePart load(Path indexPath, Path memoryPath, int storagePartN) throws IOException {
+        MappedByteBuffer memoryBB = mapFile(memoryPath);
+        MappedByteBuffer indexBB = mapFile(indexPath);
+        return new StoragePart(indexPath, memoryPath, indexBB, memoryBB, storagePartN);
+    }
+
+    public Entry<ByteBuffer> get(ByteBuffer key) {
+        int position = getGreaterOrEqual(entrysC - 1, key);
+        Entry<ByteBuffer> res = readEntry(position);
         return res.key().equals(key) ? res : null;
     }
 
-    public PeekIterator get(ByteBuffer from, ByteBuffer to) {
-        return new PeekIterator(new StoragePartIterator(from, to), storagePartN);
+    public IndexedPeekIterator get(ByteBuffer from, ByteBuffer to) {
+        return new IndexedPeekIterator(new StoragePartIterator(from, to), storagePartN);
     }
 
     @Override
@@ -49,7 +68,60 @@ public class StoragePart implements AutoCloseable {
         memoryBB = null;
     }
 
-    private int binarySearch(int inLast, ByteBuffer key) {
+    // Entrys count will be written in the end of index file
+    public void write(Iterator<Entry<ByteBuffer>> entrysToWrite) throws IOException {
+        if (entrysC != 0) {
+            throw new FileAlreadyExistsException("Can't write in file that isn't empty!");
+        }
+
+        ByteBuffer bufferToWrite = ByteBuffer.allocate(DEFAULT_ALLOC_SIZE);
+        int bytesWritten = 0;
+
+        while (entrysToWrite.hasNext()) {
+            Entry<ByteBuffer> entry = entrysToWrite.next();
+            int entryBytesC = getPersEntryByteSize(entry);
+
+            // Проверяем, что размеров MappedByteBuffer хватает для дальнейшей записи
+            remapIfNeed(bytesWritten + entryBytesC);
+
+            indexBB.putInt(bytesWritten);
+            if (entryBytesC > bufferToWrite.capacity()) {
+                bufferToWrite = ByteBuffer.allocate(entryBytesC);
+            }
+            persistEntry(entry, bufferToWrite);
+            memoryBB.put(bufferToWrite);
+
+            bufferToWrite.clear();
+            bytesWritten += entryBytesC;
+
+            entrysC++;
+        }
+
+        indexBB.putInt(indexBB.capacity() - Integer.BYTES, entrysC);
+        indexBB.flip();
+        memoryBB.flip();
+        indexBB.force();
+        memoryBB.force();
+    }
+
+    public void delete() throws IOException {
+        close();
+        Files.delete(indexPath);
+        Files.delete(memoryPath);
+    }
+
+    private void remapIfNeed(int changedSize) throws IOException {
+        if (changedSize > memoryBB.capacity()) {
+            memoryBB = remap(memoryBB, memoryPath, changedSize + MEMORY_BOOST_PORTION);
+        }
+
+        // "2 *" because I need memory for writing entrysC in the end
+        if (indexBB.capacity() - indexBB.position() < 2 * Integer.BYTES) {
+            indexBB = remap(indexBB, indexPath, indexBB.capacity() + INDEX_BOOST_PORTION);
+        }
+    }
+
+    private int getGreaterOrEqual(int inLast, ByteBuffer key) {
         if (key == null) {
             return 0;
         }
@@ -57,7 +129,7 @@ public class StoragePart implements AutoCloseable {
         int first = 0;
         int last = inLast;
         int position = (first + last) / 2;
-        BaseEntry<ByteBuffer> curEntry = readEntry(position);
+        Entry<ByteBuffer> curEntry = readEntry(position);
 
         while (!curEntry.key().equals(key) && first <= last) {
             if (curEntry.key().compareTo(key) > 0) {
@@ -68,13 +140,19 @@ public class StoragePart implements AutoCloseable {
             position = (first + last) / 2;
             curEntry = readEntry(position);
         }
+
+        // Граничные случаи
+        if (position + 1 < entrysC && curEntry.key().compareTo(key) < 0) {
+            position++;
+        }
+
         return position;
     }
 
-    private BaseEntry<ByteBuffer> readEntry(int entryN) {
-        int ind = (int) indexBB.getLong(entryN * Long.BYTES);
+    private Entry<ByteBuffer> readEntry(int entryN) {
+        int ind = indexBB.getInt(entryN * Integer.BYTES);
         var key = readBytes(ind);
-        assert (key.isPresent());
+        assert key.isPresent();
         ind += Integer.BYTES + key.get().length;
         var value = readBytes(ind);
         return new BaseEntry<>(ByteBuffer.wrap(key.get()), value.map(ByteBuffer::wrap).orElse(null));
@@ -92,14 +170,61 @@ public class StoragePart implements AutoCloseable {
         return Optional.of(bytes);
     }
 
-    private static MappedByteBuffer mapFile(Path filePath) throws IOException {
+    /**
+     * Saves entry to byteBuffer.
+     *
+     * @param entry         that we want to save in bufferToWrite
+     * @param bufferToWrite buffer where we want to persist entry
+     */
+    private static void persistEntry(Entry<ByteBuffer> entry, ByteBuffer bufferToWrite) {
+        bufferToWrite.putInt(entry.key().array().length);
+        bufferToWrite.put(entry.key().array());
 
+        if (entry.value() == null) {
+            bufferToWrite.putInt(StoragePart.LEN_FOR_NULL);
+        } else {
+            bufferToWrite.putInt(entry.value().array().length);
+            bufferToWrite.put(entry.value().array());
+        }
+
+        bufferToWrite.flip();
+    }
+
+    /**
+     * Count byte size of entry, that we want to write in file.
+     *
+     * @param entry that we want to save
+     * @return count of bytes
+     */
+    private static int getPersEntryByteSize(Entry<ByteBuffer> entry) {
+        int keyLength = entry.key().array().length;
+        int valueLength = entry.value() == null ? 0 : entry.value().array().length;
+
+        return 2 * Integer.BYTES + keyLength + valueLength;
+    }
+
+    private static MappedByteBuffer remap(MappedByteBuffer oldMap, Path path, int newSize) throws IOException {
+        int position = oldMap.position();
+        unmap(oldMap);
+
+        MappedByteBuffer newMap = mapFile(path, newSize);
+        newMap.position(position);
+
+        return newMap;
+    }
+
+    private static MappedByteBuffer mapFile(Path filePath) throws IOException {
+        // Bad practice: Sys call, it will be better to refactor
+        return mapFile(filePath, (int) filePath.toFile().length());
+    }
+
+    private static MappedByteBuffer mapFile(Path filePath, int mapSize) throws IOException {
         MappedByteBuffer mappedFile;
         try (
                 FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath,
-                        EnumSet.of(StandardOpenOption.READ))
+                        EnumSet.of(StandardOpenOption.READ, StandardOpenOption.WRITE))
         ) {
-            mappedFile = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
+            mappedFile = fileChannel.map(FileChannel.MapMode.READ_WRITE, 0, mapSize);
         }
 
         return mappedFile;
@@ -118,20 +243,14 @@ public class StoragePart implements AutoCloseable {
         }
     }
 
-    private class StoragePartIterator implements Iterator<BaseEntry<ByteBuffer>> {
+    private class StoragePartIterator implements Iterator<Entry<ByteBuffer>> {
         private int nextPos;
         private final ByteBuffer to;
-        private BaseEntry<ByteBuffer> next;
+        private Entry<ByteBuffer> next;
 
         public StoragePartIterator(ByteBuffer from, ByteBuffer to) {
             this.to = to;
-            nextPos = binarySearch(entrysC - 1, from);
-            // Граничные случаи
-            if (nextPos + 1 < entrysC && from != null
-                    && readEntry(nextPos).key().compareTo(from) < 0) {
-                nextPos++;
-            }
-
+            nextPos = getGreaterOrEqual(entrysC - 1, from);
             next = readEntry(nextPos);
 
             if (from != null && next.key().compareTo(from) < 0) {
@@ -145,12 +264,12 @@ public class StoragePart implements AutoCloseable {
         }
 
         @Override
-        public BaseEntry<ByteBuffer> next() {
+        public Entry<ByteBuffer> next() {
             if (!hasNext()) {
                 throw new NoSuchElementException();
             }
 
-            BaseEntry<ByteBuffer> current = next;
+            Entry<ByteBuffer> current = next;
             nextPos++;
             if (nextPos < entrysC) {
                 next = readEntry(nextPos);
