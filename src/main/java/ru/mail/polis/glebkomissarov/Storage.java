@@ -250,7 +250,7 @@ final class Storage implements Closeable {
     }
 
     private long getTimestamp() {
-        return System.nanoTime();
+        return System.currentTimeMillis();
     }
 
     private Iterator<BaseEntry<MemorySegment>> getIterator(MemorySegment ssTable,
