@@ -30,7 +30,6 @@ public class SegmentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> 
     private final Storage storage;
 
     private ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> inMemory = getNewMap();
-    private Collection<BaseEntry<MemorySegment>> entriesToFlush;
 
     // Threads for flush() & compact()
     private final ExecutorService flusher = Executors.newSingleThreadExecutor();
@@ -87,14 +86,10 @@ public class SegmentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> 
             long valueSize = entry.value() == null ? Long.BYTES : entry.value().byteSize();
             long size = entry.key().byteSize() + valueSize;
             if (bytesInMemory.addAndGet(size) >= bytesToFlush) {
-                // save entries to flush
-                entriesToFlush = inMemory.values();
-                // Update map
-                inMemory = getNewMap();
                 bytesInMemory.set(0);
-                isAutoFlushed.set(true);
 
-                flush();
+                flushExecute(inMemory.values());
+                inMemory = getNewMap();
             }
         } finally {
             lock.writeLock().unlock();
@@ -131,35 +126,7 @@ public class SegmentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> 
 
     @Override
     public void flush() {
-        if (count.get() > 1) {
-            throw new OutOfMemoryError("Too much data is being written to disk");
-        }
-
-        entriesToFlush = entriesToFlush == null ? inMemory.values() : entriesToFlush;
-        count.incrementAndGet();
-
-        flusher.execute(() -> {
-            try {
-                storage.save(entriesToFlush, basePath);
-                entriesToFlush = null;
-                // Synchronized with allIterators() from compact()
-                synchronized (this) {
-                    // Lock to update files from disk & in memory map
-                    lock.writeLock().lock();
-                    try {
-                        if (isAutoFlushed.compareAndSet(true, false)) {
-                            inMemory = getNewMap();
-                        }
-                        storage.update(basePath);
-                    } finally {
-                        count.decrementAndGet();
-                        lock.writeLock().unlock();
-                    }
-                }
-            } catch (IOException e) {
-                log.severe("Broken Files");
-            }
-        });
+        flushExecute(null);
     }
 
     @Override
@@ -187,6 +154,44 @@ public class SegmentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> 
                 storage.close();
             }
         }
+    }
+
+    // entriesToFlush must be null if it is not autoflush
+    private void flushExecute(Collection<BaseEntry<MemorySegment>> entriesToFlush) {
+        if (count.get() > 1) {
+            throw new OutOfMemoryError("Too much data is being written to disk");
+        }
+
+        Collection<BaseEntry<MemorySegment>> entries;
+        if (entriesToFlush != null) {
+            entries = entriesToFlush;
+            isAutoFlushed.set(true);
+        } else {
+            entries = inMemory.values();
+        }
+
+        count.incrementAndGet();
+        flusher.execute(() -> {
+            try {
+                storage.save(entries, basePath);
+                // Synchronized with allIterators() from compact()
+                synchronized (this) {
+                    // Lock to update files from disk & in memory map
+                    lock.writeLock().lock();
+                    try {
+                        if (isAutoFlushed.compareAndSet(true, false)) {
+                            inMemory = getNewMap();
+                        }
+                        storage.update(basePath);
+                    } finally {
+                        count.decrementAndGet();
+                        lock.writeLock().unlock();
+                    }
+                }
+            } catch (IOException e) {
+                log.severe("Broken Files");
+            }
+        });
     }
 
     private List<PeekIterator> listOfIterators(MemorySegment from, MemorySegment to) {
