@@ -130,10 +130,6 @@ public class FileOperations {
         if (pairs == null) {
             throw new RuntimeException("Nothing to flush.");
         }
-        saveDataAndIndexes(pairs);
-    }
-
-    private void saveDataAndIndexes(NavigableMap<byte[], BaseEntry<byte[]>> sortedPairs) throws IOException {
         Path newFilePath = basePath.resolve(FILE_NAME + filesCount + FILE_EXTENSION);
         Path newIndexPath = basePath.resolve(FILE_INDEX_NAME + filesCount + FILE_INDEX_EXTENSION);
         filesCount.incrementAndGet();
@@ -143,13 +139,13 @@ public class FileOperations {
         ssIndexes.add(newIndexPath);
         long offset = 0;
         try (FileReaderWriter writer = new FileReaderWriter(newFilePath, newIndexPath)) {
-            writeFileSizeAndInitialPosition(writer.getIndexChannel(), sortedPairs.size());
-            for (var pair : sortedPairs.entrySet()) {
+            writeFileSizeAndInitialPosition(writer.getIndexChannel(), pairs.size());
+            for (var pair : pairs.entrySet()) {
                 writePair(writer.getFileChannel(), pair);
                 offset = writeEntryPosition(writer.getIndexChannel(), pair, offset);
             }
         }
-        tablesSizes.put(newIndexPath, (long) sortedPairs.size());
+        tablesSizes.put(newIndexPath, (long) pairs.size());
     }
 
     void writePair(FileChannel channel, Map.Entry<byte[], BaseEntry<byte[]>> pair) throws IOException {
