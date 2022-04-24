@@ -45,17 +45,17 @@ public final class MemorySegmentEntry implements Entry<MemorySegment> {
     }
 
     public void copyTo(MemorySegment entrySegment) {
-        MemoryAccess.setLongAtOffset(entrySegment, 0L, isTomStone() ? -1 : value.byteSize());
-        if (!isTomStone()) {
+        MemoryAccess.setLongAtOffset(entrySegment, 0L, isTombStone() ? -1 : value.byteSize());
+        if (!isTombStone()) {
             entrySegment.asSlice(Long.BYTES, value.byteSize()).copyFrom(value);
         }
-        entrySegment.asSlice(Long.BYTES + (isTomStone() ? 0 : value().byteSize())).copyFrom(key);
+        entrySegment.asSlice(Long.BYTES + (isTombStone() ? 0 : value().byteSize())).copyFrom(key);
     }
 
     /**
      * Determines if this is deletion entry.
      */
-    public boolean isTomStone() {
+    public boolean isTombStone() {
         return value == null;
     }
 }
