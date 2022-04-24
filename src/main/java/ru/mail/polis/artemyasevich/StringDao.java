@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
@@ -28,7 +29,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     private final Storage storage;
     private final ReadWriteLock upsertLock = new ReentrantReadWriteLock();
     private final Lock storageLock = new ReentrantLock();
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "StringDaoBg"));
     private final AtomicBoolean autoFlushing = new AtomicBoolean();
     private MemoryState memoryState = MemoryState.newMemoryState();
 
@@ -136,6 +137,14 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
             return;
         }
         executor.shutdown();
+        try {
+            boolean terminated;
+            do {
+                terminated = executor.awaitTermination(1, TimeUnit.DAYS);
+            } while (!terminated);
+        } catch (InterruptedException e) {
+            throw new IllegalStateException(e);
+        }
         flushMemory();
         storage.close();
     }
