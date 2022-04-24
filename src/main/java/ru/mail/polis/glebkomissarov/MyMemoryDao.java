@@ -15,6 +15,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
     private static final MemorySegment FIRST_KEY = MemorySegment.ofArray(new byte[]{});
+    private static final String CMP_DIR = "COMPACT DIRECTORY";
+    private static final int PRIORITY = 0;
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> data = new ConcurrentSkipListMap<>(
@@ -22,6 +24,8 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     );
     private final Path basePath;
     private final FileWorker fileWorker;
+
+    private boolean compacted;
 
     public MyMemoryDao(Config config) {
         basePath = config.basePath();
@@ -90,8 +94,32 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     @Override
-    public void flush() {
-        throw new UnsupportedOperationException("Not implemented");
+    public void flush() throws IOException {
+        fileWorker.writeEntries(data.values(), basePath, compacted, FileName.SAVED_DATA, FileName.OFFSETS);
+        if (compacted) {
+            compact();
+        }
+    }
+
+    @Override
+    public synchronized void compact() throws IOException {
+        compacted = true;
+        if (fileWorker.fileCount() < 2) {
+            return;
+        }
+
+        // Если выполнился, то за основу всё равно берутся старые файлы
+        CollapseTogether.createCompact(fileWorker,
+                basePath.resolve(CMP_DIR),
+                new RangeIterator(fileWorker.findEntries(null, null)));
+        // Если хотя бы частично выполнился, то при открытии дао старые данные
+        // будут удалены, а чтение будет производиться только из новых файлов
+        Path offset = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_OFFSETS.getName() + PRIORITY);
+        Path savedData = basePath.resolve(CMP_DIR).resolve(FileName.COMPACT_SAVED.getName() + PRIORITY);
+        CollapseTogether.moveFile(offset, basePath.resolve(FileName.COMPACT_OFFSETS.getName() + PRIORITY));
+        CollapseTogether.moveFile(savedData, basePath.resolve(FileName.COMPACT_SAVED.getName() + PRIORITY));
+        // Удаляет старые файлы, влияет только на то, когда будут удалены старые данные
+        CollapseTogether.removeOld(basePath);
     }
 
     @Override
@@ -101,7 +129,7 @@ public class MyMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             if (data.isEmpty()) {
                 return;
             }
-            fileWorker.writeEntries(data.values(), basePath);
+            flush();
         } finally {
             lock.writeLock().unlock();
         }

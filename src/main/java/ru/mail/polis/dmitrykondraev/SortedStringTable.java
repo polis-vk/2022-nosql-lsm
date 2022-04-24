@@ -10,10 +10,9 @@ import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
-
-import static ru.mail.polis.dmitrykondraev.MemorySegmentComparator.INSTANCE;
 
 final class SortedStringTable implements Closeable {
     public static final String INDEX_FILENAME = "index";
@@ -21,7 +20,7 @@ final class SortedStringTable implements Closeable {
 
     private final Path indexFile;
     private final Path dataFile;
-    // Either dataSegment and offsets both null or both non-null
+    // Either dataSegment and indexSegment both null or both non-null
     private MemorySegment dataSegment;
     private MemorySegment indexSegment;
     private final ResourceScope scope;
@@ -43,6 +42,12 @@ final class SortedStringTable implements Closeable {
         );
     }
 
+    public static void destroyFiles(SortedStringTable table) throws IOException {
+        Files.delete(table.dataFile);
+        Files.delete(table.indexFile);
+        Files.delete(table.dataFile.getParent());
+    }
+
     public SortedStringTable write(Collection<MemorySegmentEntry> entries) throws IOException {
         writeIndex(entries);
         dataSegment = MemorySegment.mapFile(
@@ -57,7 +62,16 @@ final class SortedStringTable implements Closeable {
             entry.copyTo(mappedEntrySegment(i));
             i++;
         }
+        dataSegment = dataSegment.asReadOnly();
         return this;
+    }
+
+    public SortedStringTable write(Iterator<MemorySegmentEntry> iterator) throws IOException {
+        ArrayList<MemorySegmentEntry> entries = new ArrayList<>();
+        while (iterator.hasNext()) {
+            entries.add(iterator.next());
+        }
+        return write(entries);
     }
 
     /**
@@ -74,7 +88,7 @@ final class SortedStringTable implements Closeable {
         int high = last;
         while (low < high) {
             int mid = low + (high - low) / 2;
-            int compare = INSTANCE.compare(mappedEntry(mid).key(), key);
+            int compare = MemorySegmentComparator.INSTANCE.compare(mappedEntry(mid).key(), key);
             if (compare < 0) {
                 low = mid + 1;
             } else if (compare > 0) {
@@ -116,6 +130,7 @@ final class SortedStringTable implements Closeable {
 
     /**
      * Get single entry.
+     *
      * @return null if either indexFile or dataFile does not exist,
      *         null if key does not exist in table
      * @throws IOException if other I/O error occurs
