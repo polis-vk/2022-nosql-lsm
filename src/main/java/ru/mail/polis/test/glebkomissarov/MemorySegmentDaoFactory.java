@@ -10,7 +10,7 @@ import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
 
-@DaoFactory(stage = 4, week = 1005000)
+@DaoFactory(stage = 5, week = 2)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
     @Override
     public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) throws IOException {
