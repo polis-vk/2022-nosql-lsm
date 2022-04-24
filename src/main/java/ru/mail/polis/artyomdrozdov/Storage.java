@@ -51,6 +51,7 @@ class Storage implements Closeable {
 
         return new Storage(scope, sstables);
     }
+
     // it is supposed that entries can not be changed externally during this method call
     static void save(
             Config config,
@@ -269,7 +270,6 @@ class Storage implements Closeable {
             scope.close();
         }
     }
-
 
     public boolean isClosed() {
         return !scope.isAlive();
