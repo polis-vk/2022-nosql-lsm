@@ -143,6 +143,7 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
                 terminated = executor.awaitTermination(1, TimeUnit.DAYS);
             } while (!terminated);
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new IllegalStateException(e);
         }
         flushMemory();
