@@ -230,7 +230,9 @@ final class Storage implements Closeable {
         List<MemorySegment> tables = new ArrayList<>();
         FileChannel.MapMode mode = FileChannel.MapMode.READ_ONLY;
         try (Stream<Path> str = Files.list(basePath)) {
-            Path[] paths = str.filter(i -> i.toString().contains(DATA_EXT)).toArray(Path[]::new);
+            Path[] paths = str.filter(i -> i.toString().contains(DATA_EXT))
+                    .sorted(Comparator::pathsCompare)
+                    .toArray(Path[]::new);
 
             for (Path path : paths) {
                 tables.add(getMappedFile(path, scope, Files.size(path), mode));
