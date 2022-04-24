@@ -67,7 +67,7 @@ final class SortedStringTable implements Closeable {
      * @param last  exclusive
      * @return first index such that key of entry with that index is equal to key,
      *         if no such index exists, result < 0, in that case use
-     * {@link SortedStringTable#insertionPoint(int)} to recover insertion point
+     *         {@link SortedStringTable#insertionPoint(int)} to recover insertion point
      */
     private int binarySearch(int first, int last, MemorySegment key) {
         int low = first;
