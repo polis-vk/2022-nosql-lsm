@@ -118,7 +118,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             } finally {
                 lock.writeLock().unlock();
             }
-            performBackgroundFlush();
+            performBackgroundFlush(currentState);
         } else {
             currentState.updateSize(delta);
         }
@@ -189,12 +189,12 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         isClosed.set(true);
     }
 
-    private void performBackgroundFlush() {
+    private void performBackgroundFlush(State state) {
         taskResults.add(service.submit(() -> {
             try {
                 isBackgroundFlushing.set(true);
-                fileOperations.flush(this.state.flushingPairs);
-                this.state.flushingPairs.clear();
+                state.fileOperations.flush(state.flushingPairs);
+                state.flushingPairs.clear();
                 isBackgroundFlushing.set(false);
             } catch (IOException e) {
                 logger.error("Flush operation was interrupted.", e);
@@ -206,7 +206,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         taskResults.add(service.submit(() -> {
             Iterator<BaseEntry<byte[]>> iterator;
             try {
-                iterator = MergeIterator.of(fileOperations.diskIterators(null, null), EntryKeyComparator.INSTANCE);
+                iterator = MergeIterator.of(state.fileOperations.diskIterators(null, null), EntryKeyComparator.INSTANCE);
                 if (!iterator.hasNext()) {
                     return;
                 }
