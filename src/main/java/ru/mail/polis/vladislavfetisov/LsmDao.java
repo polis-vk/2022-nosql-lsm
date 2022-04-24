@@ -1,6 +1,8 @@
 package ru.mail.polis.vladislavfetisov;
 
 import jdk.incubator.foreign.MemorySegment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
@@ -13,28 +15,46 @@ import java.util.List;
 import java.util.NavigableMap;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private final Config config;
-    private final List<SSTable> tables = new ArrayList<>();
-    private final NavigableMap<MemorySegment, Entry<MemorySegment>> storage = getStorage();
+    private List<SSTable> tables;
+    private final AtomicLong ssTableNum;
+    private NavigableMap<MemorySegment, Entry<MemorySegment>> storage = getNewStorage();
+    public static final Logger logger = LoggerFactory.getLogger(LsmDao.class);
 
     public LsmDao(Config config) {
         this.config = config;
-        tables.addAll(SSTable.getAllTables(config.basePath()));
+        List<SSTable> fromDisc = SSTable.getAllTables(config.basePath());
+        this.tables = fromDisc;
+        if (fromDisc.isEmpty()) {
+            ssTableNum = new AtomicLong(0);
+            return;
+        }
+        String tableName = fromDisc.get(fromDisc.size() - 1).getTableName().getFileName().toString();
+        ssTableNum = new AtomicLong(Long.parseLong(tableName) + 1);
     }
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
-        Iterator<Entry<MemorySegment>> memory = fromMemory(from, to);
-        Iterator<Entry<MemorySegment>> disc = tablesRange(from, to);
+        return get(from, to, storage, tables);
+    }
+
+    private Iterator<Entry<MemorySegment>> get(MemorySegment from,
+                                               MemorySegment to,
+                                               NavigableMap<MemorySegment, Entry<MemorySegment>> storage,
+                                               List<SSTable> tables) {
+
+        Iterator<Entry<MemorySegment>> memory = fromMemory(from, to, storage);
+        Iterator<Entry<MemorySegment>> disc = tablesRange(from, to, tables);
 
         PeekingIterator<Entry<MemorySegment>> merged = CustomIterators.mergeTwo(new PeekingIterator<>(disc),
                 new PeekingIterator<>(memory));
         return CustomIterators.skipTombstones(merged);
     }
 
-    private Iterator<Entry<MemorySegment>> tablesRange(MemorySegment from, MemorySegment to) {
+    private Iterator<Entry<MemorySegment>> tablesRange(MemorySegment from, MemorySegment to, List<SSTable> tables) {
         List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(tables.size());
         for (SSTable table : tables) {
             iterators.add(table.range(from, to));
@@ -42,7 +62,9 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return CustomIterators.merge(iterators);
     }
 
-    private Iterator<Entry<MemorySegment>> fromMemory(MemorySegment from, MemorySegment to) {
+    private Iterator<Entry<MemorySegment>> fromMemory(MemorySegment from,
+                                                      MemorySegment to,
+                                                      NavigableMap<MemorySegment, Entry<MemorySegment>> storage) {
         if (from == null && to == null) {
             return storage.values().iterator();
         }
@@ -57,6 +79,24 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             return storage.tailMap(from);
         }
         return storage.subMap(from, to);
+    }
+
+    /**
+     * Compact all SSTables.
+     * It will work properly only if {@link #flush()} will be called after this method.
+     */
+    @Override
+    public void compact() throws IOException {
+        List<SSTable> fixed = this.tables;
+        NavigableMap<MemorySegment, Entry<MemorySegment>> readOnlyStorage = this.storage;
+        Iterator<Entry<MemorySegment>> forSize = get(null, null, readOnlyStorage, fixed);
+        Iterator<Entry<MemorySegment>> forWrite = get(null, null, readOnlyStorage, fixed);
+
+        SSTable.Sizes sizes = Utils.getSizes(forSize);
+
+        this.tables = List.of(writeSSTable(forWrite, sizes.tableSize(), sizes.indexSize())); //immutable
+        this.storage = getNewStorage();
+        Utils.deleteTables(fixed);
     }
 
     @Override
@@ -79,15 +119,45 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public void flush() throws IOException {
-        tables.add(writeSSTable());
+        if (storage.isEmpty()) {
+            return;
+        }
+        NavigableMap<MemorySegment, Entry<MemorySegment>> readOnlyStorage = this.storage;
+        SSTable.Sizes sizes = Utils.getSizes(readOnlyStorage.values().iterator());
+        SSTable table = writeSSTable(readOnlyStorage.values().iterator(), sizes.tableSize(), sizes.indexSize());
+
+        tablesAtomicAdd(table); //need for concurrent get
+        this.storage = getNewStorage();
     }
 
-    private SSTable writeSSTable() throws IOException {
-        Path tableName = config.basePath().resolve(String.valueOf(tables.size()));
-        return SSTable.writeTable(tableName, storage.values());
+    private void tablesAtomicAdd(SSTable table) {
+        ArrayList<SSTable> newTables = new ArrayList<>(tables.size() + 1);
+        newTables.addAll(tables);
+        newTables.add(table);
+        tables = newTables;
     }
 
-    private static ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> getStorage() {
+    @Override
+    public void close() throws IOException {
+        flush();
+        for (SSTable table : tables) {
+            table.close();
+        }
+    }
+
+    private SSTable writeSSTable(Iterator<Entry<MemorySegment>> iterator,
+                                 long tableSize,
+                                 long indexSize) throws IOException {
+
+        Path tableName = nextTableName();
+        return SSTable.writeTable(tableName, iterator, tableSize, indexSize);
+    }
+
+    private Path nextTableName() {
+        return config.basePath().resolve(String.valueOf(ssTableNum.getAndIncrement()));
+    }
+
+    private static ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> getNewStorage() {
         return new ConcurrentSkipListMap<>(Utils::compareMemorySegments);
     }
 }

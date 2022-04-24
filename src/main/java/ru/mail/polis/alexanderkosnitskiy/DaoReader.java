@@ -18,11 +18,9 @@ public class DaoReader {
     }
 
     public BaseEntry<ByteBuffer> binarySearch(ByteBuffer key) {
-        mapper.position(0);
-        indexMapper.position(0);
         int lowerBond = 0;
-        int higherBond = indexMapper.getInt() - 1;
-        lastPosition = indexMapper.position((higherBond + 1) * Integer.BYTES).getInt();
+        int higherBond = indexMapper.getInt(0) - 1;
+        lastPosition = indexMapper.getInt((higherBond + 1) * Integer.BYTES);
         int middle = higherBond / 2;
 
         while (lowerBond <= higherBond) {
@@ -41,11 +39,9 @@ public class DaoReader {
     }
 
     public BaseEntry<ByteBuffer> nonPreciseBinarySearch(ByteBuffer key) {
-        mapper.position(0);
-        indexMapper.position(0);
         int lowerBond = 0;
-        int higherBond = indexMapper.getInt() - 1;
-        lastPosition = indexMapper.position((higherBond + 1) * Integer.BYTES).getInt();
+        int higherBond = indexMapper.getInt(0) - 1;
+        lastPosition = indexMapper.getInt((higherBond + 1) * Integer.BYTES);
         int middle = higherBond / 2;
         BaseEntry<ByteBuffer> result = null;
         while (lowerBond <= higherBond) {
@@ -70,11 +66,9 @@ public class DaoReader {
     }
 
     private BaseEntry<ByteBuffer> getEntry(int middle) {
-        indexMapper.position((middle + 1) * Integer.BYTES);
-        int curPosition = indexMapper.getInt();
-        mapper.position(curPosition);
-        int keyLen = mapper.getInt();
-        int valLen = mapper.getInt();
+        int curPosition = indexMapper.getInt((middle + 1) * Integer.BYTES);
+        int keyLen = mapper.getInt(curPosition);
+        int valLen = mapper.getInt(curPosition + Integer.BYTES);
         int newIndex = curPosition + Integer.BYTES * 2;
         ByteBuffer key = mapper.slice(newIndex, keyLen);
         newIndex += keyLen;
@@ -94,9 +88,8 @@ public class DaoReader {
         if (position > lastPosition) {
             return null;
         }
-        mapper.position(position);
-        int keyLen = mapper.getInt();
-        int valLen = mapper.getInt();
+        int keyLen = mapper.getInt(position);
+        int valLen = mapper.getInt(position + Integer.BYTES);
         int newIndex = position + Integer.BYTES * 2;
         ByteBuffer key = mapper.slice(newIndex, keyLen);
         newIndex += keyLen;
@@ -110,10 +103,8 @@ public class DaoReader {
     }
 
     public BaseEntry<ByteBuffer> getFirstEntry() {
-        mapper.position(0);
-        indexMapper.position(0);
-        int size = indexMapper.getInt();
-        lastPosition = indexMapper.position(size * Integer.BYTES).getInt();
+        int size = indexMapper.getInt(0);
+        lastPosition = indexMapper.getInt(size * Integer.BYTES);
         if (size != 0) {
             position = 0;
             return getNextEntry();

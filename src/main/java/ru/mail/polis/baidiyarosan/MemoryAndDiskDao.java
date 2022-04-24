@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> {
 
-    private final NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection = new ConcurrentSkipListMap<>();
+    private NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> collection = new ConcurrentSkipListMap<>();
 
     private final List<MappedByteBuffer> files = new ArrayList<>();
 
@@ -30,7 +30,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     private final Path path;
 
-    private final int filesCount;
+    private int filesCount;
 
     public MemoryAndDiskDao(Config config) throws IOException {
         this.path = config.basePath();
@@ -83,6 +83,20 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         }
 
         FileUtils.writeOnDisk(collection, path);
+        ++filesCount;
+        clear();
+    }
+
+    @Override
+    public void compact() throws IOException {
+        FileUtils.compact(get(null, null), path);
+        filesCount = 1;
+        clear();
+    }
+
+    // changed from collection.clear() due to the fact that it's slower
+    public void clear() {
+        collection = new ConcurrentSkipListMap<>();
     }
 
 }
