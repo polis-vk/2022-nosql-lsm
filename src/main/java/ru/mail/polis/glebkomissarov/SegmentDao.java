@@ -181,6 +181,7 @@ public class SegmentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> 
                     }
                 } catch (InterruptedException e) {
                     log.severe("Unexpected interrupt");
+                    Thread.currentThread().interrupt();
                 }
             } finally {
                 storage.close();

@@ -179,13 +179,16 @@ final class Storage implements Closeable {
 
     private static void deleteAndMove(Path basePath, Path temp,
                                       ResourceScope scope, MemorySegment countFile) throws IOException {
+        MemorySegment filesToDelete;
         Path countPath = basePath.resolve(COMPACT_DIR).resolve(COMPACTED_COUNT);
         if (countFile == null) {
-            countFile = getMappedFile(countPath, scope,
+            filesToDelete = getMappedFile(countPath, scope,
                     Long.BYTES, FileChannel.MapMode.READ_WRITE);
+        } else {
+            filesToDelete = countFile;
         }
 
-        long count = MemoryAccess.getLongAtIndex(countFile, 0);
+        long count = MemoryAccess.getLongAtIndex(filesToDelete, 0);
 
         // Deleting old files and service data
         try (Stream<Path> str = Files.list(basePath)) {
@@ -227,10 +230,7 @@ final class Storage implements Closeable {
         List<MemorySegment> tables = new ArrayList<>();
         FileChannel.MapMode mode = FileChannel.MapMode.READ_ONLY;
         try (Stream<Path> str = Files.list(basePath)) {
-            Path[] paths = str.filter(i -> i.toString().contains(DATA_EXT))
-                   // .sorted(Comparator::pathsCompare)
-                    .toArray(Path[]::new);
-
+            Path[] paths = str.filter(i -> i.toString().contains(DATA_EXT)).toArray(Path[]::new);
 
             for (Path path : paths) {
                 tables.add(getMappedFile(path, scope, Files.size(path), mode));
