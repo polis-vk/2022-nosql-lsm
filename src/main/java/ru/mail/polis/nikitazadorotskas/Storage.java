@@ -44,7 +44,6 @@ class Storage {
         return result;
     }
 
-
     List<PeekIterator> getFilesIterators(MemorySegment from, MemorySegment to) {
         List<PeekIterator> iterators = new ArrayList<>();
         for (MemorySegmentReader reader : readers) {

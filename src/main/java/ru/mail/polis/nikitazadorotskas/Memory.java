@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class Memory {
-    private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory
+    private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> map
             = new ConcurrentSkipListMap<>(this::compareMemorySegment);
     private final AtomicLong sizeInBytes = new AtomicLong(0);
 
@@ -29,39 +29,39 @@ public class Memory {
             MemorySegment from, MemorySegment to
     ) {
         if (from == null && to == null) {
-            return memory;
+            return map;
         }
 
         if (from == null) {
-            return memory.headMap(to);
+            return map.headMap(to);
         }
 
         if (to == null) {
-            return memory.tailMap(from);
+            return map.tailMap(from);
         }
 
-        return memory.subMap(from, to);
+        return map.subMap(from, to);
     }
 
     BaseEntry<MemorySegment> get(MemorySegment key) {
-        return memory.get(key);
+        return map.get(key);
     }
 
     Iterator<BaseEntry<MemorySegment>> getIterator() {
-        return memory.values().iterator();
+        return map.values().iterator();
     }
 
     boolean isEmpty() {
-        return memory.isEmpty();
+        return map.isEmpty();
     }
 
     int size() {
-        return memory.size();
+        return map.size();
     }
 
     void put(BaseEntry<MemorySegment> entry) {
-        BaseEntry<MemorySegment> oldValue = memory.get(entry.key());
-        memory.put(entry.key(), entry);
+        BaseEntry<MemorySegment> oldValue = map.get(entry.key());
+        map.put(entry.key(), entry);
         if (oldValue != null) {
             sizeInBytes.addAndGet(-Utils.byteSizeOfEntry(oldValue));
         }
