@@ -32,9 +32,8 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private static final byte[] VERY_FIRST_KEY = new byte[]{};
     private State state;
     private final long maxThresholdBytes;
-    private static final ExecutorService service = Executors.newSingleThreadExecutor(r ->
-            new Thread(r, "BackgroundFlushAndCompact"));
-    private static final List<Future<?>> taskResults = new ArrayList<>();
+    private final ExecutorService service;
+    private final List<Future<?>> taskResults;
 
     public InMemoryDao(Config config) throws IOException {
         fileOperations = new FileOperations(config);
@@ -44,6 +43,8 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         pairNum = new AtomicInteger(0);
         state = new State(getPairs(), fileOperations);
         maxThresholdBytes = config.flushThresholdBytes();
+        service = Executors.newSingleThreadExecutor(r -> new Thread(r, "BackgroundFlushAndCompact"));
+        taskResults = new ArrayList<>();
     }
 
     @Override
@@ -169,7 +170,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         return pairNum.get() == 0 ? pairs0 : pairs1;
     }
 
-    private static class State {
+    private class State {
         private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
         private NavigableMap<byte[], BaseEntry<byte[]>> flushingPairs;
         private final FileOperations fileOperations;
