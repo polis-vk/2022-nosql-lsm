@@ -100,7 +100,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         State currentState = this.state;
         lock.readLock().lock();
         try {
-            int entryValueLength = entry.value() == null ? 0 : entry.value().length;
+            int entryValueLength = entry.isTombstone() ? 0 : entry.value().length;
             long delta = 2L * entry.key().length + entryValueLength;
             if (currentState.getSize() + delta >= maxThresholdBytes) {
                 if (pairs0.size() > 0 && pairs1.size() > 0) {
