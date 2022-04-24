@@ -41,7 +41,7 @@ class Utils {
         return basePath.resolve(STORAGE_FILE_NAME + number);
     }
 
-    public int compareMemorySegment(MemorySegment first, MemorySegment second) {
+    public static int compareMemorySegment(MemorySegment first, MemorySegment second) {
         long firstMismatchByte = first.mismatch(second);
 
         if (firstMismatchByte == -1) {
@@ -100,5 +100,10 @@ class Utils {
 
     public BaseEntry<MemorySegment> checkIfWasDeleted(BaseEntry<MemorySegment> entry) {
         return entry.value() == null ? null : entry;
+    }
+
+    public static long byteSizeOfEntry(BaseEntry<MemorySegment> entry) {
+        long valueSize = entry.value() == null ? 0L : entry.value().byteSize();
+        return entry.key().byteSize() + valueSize;
     }
 }

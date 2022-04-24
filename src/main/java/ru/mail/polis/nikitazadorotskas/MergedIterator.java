@@ -9,12 +9,16 @@ import java.util.PriorityQueue;
 
 public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
     private final Utils utils;
+    private final Iterators iterators;
+    private final MemorySegment lastKey;
     private BaseEntry<MemorySegment> next;
     PriorityQueue<PeekIterator> minHeap = new PriorityQueue<>(this::comparePeekIterators);
 
-    public MergedIterator(List<PeekIterator> iterators, Utils utils) {
+    public MergedIterator(Iterators iterators, MemorySegment from, MemorySegment to, Utils utils) {
         this.utils = utils;
-        addIteratorsToHeap(iterators);
+        this.iterators = iterators;
+        this.lastKey = to;
+        addIteratorsToHeap(iterators.getPeekIterators(from, to));
         updateNext();
     }
 
@@ -60,7 +64,13 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
     @Override
     public BaseEntry<MemorySegment> next() {
         BaseEntry<MemorySegment> result = next;
-        updateNext();
+        try {
+            updateNext();
+        } catch (IllegalStateException e) {
+            minHeap.clear();
+            addIteratorsToHeap(iterators.getPeekIterators(next.key(), lastKey));
+            updateNext();
+        }
         return result;
     }
 
@@ -68,5 +78,9 @@ public class MergedIterator implements Iterator<BaseEntry<MemorySegment>> {
         while (!minHeap.isEmpty() && utils.compareBaseEntries(minHeap.peek().current(), current) == 0) {
             addIteratorToHeap(minHeap.remove());
         }
+    }
+
+    public interface Iterators {
+        List<PeekIterator> getPeekIterators(MemorySegment from, MemorySegment to);
     }
 }
