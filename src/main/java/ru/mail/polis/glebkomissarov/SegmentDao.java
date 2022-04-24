@@ -77,11 +77,11 @@ public class SegmentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> 
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
-        lock.writeLock().lock();
         if (!checkAvailability()) {
-            throw new RuntimeException("Too much data is being written to disk");
+            throw new OutOfMemoryError("Too much data is being written to disk");
         }
 
+        lock.writeLock().lock();
         try {
             inMemory.put(entry.key(), entry);
             long valueSize = entry.value() == null ? Long.BYTES : entry.value().byteSize();
@@ -132,7 +132,7 @@ public class SegmentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> 
     @Override
     public void flush() {
         if (count.get() > 1) {
-            throw new RuntimeException("Too much data is being written to disk");
+            throw new OutOfMemoryError("Too much data is being written to disk");
         }
 
         entriesToFlush = entriesToFlush == null ? inMemory.values() : entriesToFlush;
