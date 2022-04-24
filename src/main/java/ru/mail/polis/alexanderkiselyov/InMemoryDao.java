@@ -32,6 +32,8 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private static final byte[] VERY_FIRST_KEY = new byte[]{};
     private State state;
     private final long maxThresholdBytes;
+    private static ExecutorService service;
+    private static List<Future<?>> taskResults;
 
     public InMemoryDao(Config config) throws IOException {
         fileOperations = new FileOperations(config);
@@ -41,6 +43,8 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         pairNum = new AtomicInteger(0);
         state = new State(getPairs(), fileOperations);
         maxThresholdBytes = config.flushThresholdBytes();
+        service = Executors.newSingleThreadExecutor(r -> new Thread(r, "BackgroundFlushAndCompact"));
+        taskResults = new ArrayList<>();
     }
 
     @Override
@@ -122,6 +126,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         try {
             currentState.fileOperations.flush(currentState.pairs);
             currentState.pairs.clear();
+            this.state = new State(getPairs(), fileOperations);
         } finally {
             lock.writeLock().unlock();
         }
@@ -136,6 +141,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         lock.writeLock().lock();
         try {
             currentState.performCompact();
+            this.state = new State(getPairs(), fileOperations);
         } finally {
             lock.writeLock().unlock();
         }
@@ -168,15 +174,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
         private NavigableMap<byte[], BaseEntry<byte[]>> flushingPairs;
         private final FileOperations fileOperations;
-        private final ExecutorService service;
-        private final List<Future<?>> taskResults;
         private final Logger logger;
 
         private State(NavigableMap<byte[], BaseEntry<byte[]>> pairs, FileOperations fileOperations) {
             this.pairs = pairs;
             this.fileOperations = fileOperations;
-            service = Executors.newSingleThreadExecutor(r -> new Thread(r, "BackgroundFlushAndCompact"));
-            taskResults = new ArrayList<>();
             logger = LoggerFactory.getLogger(State.class);
             flushingPairs = null;
         }
