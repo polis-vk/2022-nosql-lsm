@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -20,7 +21,7 @@ import java.util.stream.Stream;
 
 final class Storage implements Closeable {
 
-    private final static ThreadLocal<Integer> compactedFilesCount = new ThreadLocal<>();
+    private static final ThreadLocal<Integer> compactedFilesCount = new ThreadLocal<>();
 
     // File structure
     // [Entries count][Entry1 offset]...[EntryN offset] | [KeySize][Key][ValueSize][Value]
@@ -37,8 +38,6 @@ final class Storage implements Closeable {
     private static final int TOMBSTONE = -1;
     private static final int VERY_FIRST_FILE = 0;
 
-    private static MemorySegment countFile;
-
     // Fresh files first
     // Created once at load read-only mapped files
     private List<MemorySegment> ssTables;
@@ -51,7 +50,7 @@ final class Storage implements Closeable {
         // Created compact file, but process stopped
         Path temp = basePath.resolve(COMPACT);
         if (Files.exists(temp)) {
-            deleteAndMove(basePath, temp, scope);
+            deleteAndMove(basePath, temp, scope, null);
         } else {
             // Clear directory if it exists
             if (Files.exists(basePath.resolve(COMPACT_DIR))) {
@@ -140,7 +139,6 @@ final class Storage implements Closeable {
     public boolean compact(Iterator<BaseEntry<MemorySegment>> all, Path basePath) throws IOException {
         // Nothing to compact
         int tablesCount = compactedFilesCount.get();
-//        System.out.println("tablesCount: " + tablesCount);
         if (tablesCount == 0 || tablesCount == 1) {
             return false;
         }
@@ -156,7 +154,7 @@ final class Storage implements Closeable {
         // Set compacted file to safe delete and parallel execute with flush()
         Path count = dir.resolve(COMPACTED_COUNT);
         createFile(count);
-        countFile = getMappedFile(count, resourceScope,
+        MemorySegment countFile = getMappedFile(count, resourceScope,
                 Long.BYTES, FileChannel.MapMode.READ_WRITE);
         MemoryAccess.setLongAtIndex(countFile,0, compactedFilesCount.get());
 
@@ -168,7 +166,7 @@ final class Storage implements Closeable {
         Files.move(Objects.requireNonNull(compactFile), temp, StandardCopyOption.ATOMIC_MOVE);
 
         // Delete old files + move temp file as default
-        deleteAndMove(basePath, temp, resourceScope);
+        deleteAndMove(basePath, temp, resourceScope, countFile);
         return true;
     }
 
@@ -179,7 +177,8 @@ final class Storage implements Closeable {
         resourceScope.close();
     }
 
-    private static void deleteAndMove(Path basePath, Path temp, ResourceScope scope) throws IOException {
+    private static void deleteAndMove(Path basePath, Path temp,
+                                      ResourceScope scope, MemorySegment countFile) throws IOException {
         Path countPath = basePath.resolve(COMPACT_DIR).resolve(COMPACTED_COUNT);
         if (countFile == null) {
             countFile = getMappedFile(countPath, scope,
@@ -191,7 +190,7 @@ final class Storage implements Closeable {
         // Deleting old files and service data
         try (Stream<Path> str = Files.list(basePath)) {
             Path[] paths = str.filter(i -> i.toString().contains(DATA_EXT))
-                    .sorted(Comparator::pathsCompare)
+                    .sorted(java.util.Comparator.comparing(Path::toString))
                     .toArray(Path[]::new);
 
             for (int i = 0; i < count; i++) {
@@ -229,7 +228,7 @@ final class Storage implements Closeable {
         FileChannel.MapMode mode = FileChannel.MapMode.READ_ONLY;
         try (Stream<Path> str = Files.list(basePath)) {
             Path[] paths = str.filter(i -> i.toString().contains(DATA_EXT))
-                    .sorted(Comparator::pathsCompare)
+                   // .sorted(Comparator::pathsCompare)
                     .toArray(Path[]::new);
 
 
@@ -237,6 +236,7 @@ final class Storage implements Closeable {
                 tables.add(getMappedFile(path, scope, Files.size(path), mode));
             }
         }
+        Collections.reverse(tables);
         return tables;
     }
 
