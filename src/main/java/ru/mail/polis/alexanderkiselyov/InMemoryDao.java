@@ -118,7 +118,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             } finally {
                 lock.writeLock().unlock();
             }
-            performBackgroundFlush(currentState);
+            performBackgroundFlush(this.state);
         } else {
             currentState.updateSize(delta);
         }
@@ -206,7 +206,8 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         taskResults.add(service.submit(() -> {
             Iterator<BaseEntry<byte[]>> iterator;
             try {
-                iterator = MergeIterator.of(state.fileOperations.diskIterators(null, null), EntryKeyComparator.INSTANCE);
+                iterator = MergeIterator.of(state.fileOperations.diskIterators(null, null),
+                        EntryKeyComparator.INSTANCE);
                 if (!iterator.hasNext()) {
                     return;
                 }
