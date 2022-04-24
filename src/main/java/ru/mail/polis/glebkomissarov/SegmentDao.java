@@ -163,11 +163,11 @@ public class SegmentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> 
         }
 
         Collection<BaseEntry<MemorySegment>> entries;
-        if (entriesToFlush != null) {
+        if (entriesToFlush == null) {
+            entries = inMemory.values();
+        } else {
             entries = entriesToFlush;
             isAutoFlushed.set(true);
-        } else {
-            entries = inMemory.values();
         }
 
         count.incrementAndGet();
