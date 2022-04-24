@@ -13,6 +13,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -25,218 +26,235 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     private final FileOperations fileOperations;
     private final AtomicBoolean isClosed;
-    private final NavigableMap<byte[], BaseEntry<byte[]>> pairs0;
-    private final NavigableMap<byte[], BaseEntry<byte[]>> pairs1;
-    private final AtomicInteger pairNum;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private static final byte[] VERY_FIRST_KEY = new byte[]{};
-    private State state;
+    private volatile State state;
     private final long maxThresholdBytes;
     private final ExecutorService service;
     private final List<Future<?>> taskResults;
+    private final Logger logger;
+    private final AtomicBoolean isBackgroundFlushing;
 
     public InMemoryDao(Config config) throws IOException {
         fileOperations = new FileOperations(config);
         isClosed = new AtomicBoolean(false);
-        pairs0 = new ConcurrentSkipListMap<>(Arrays::compare);
-        pairs1 = new ConcurrentSkipListMap<>(Arrays::compare);
-        pairNum = new AtomicInteger(0);
-        state = new State(getPairs(), fileOperations);
+        state = new State(new ConcurrentSkipListMap<>(Arrays::compare),
+                new ConcurrentSkipListMap<>(Arrays::compare), fileOperations);
         maxThresholdBytes = config.flushThresholdBytes();
         service = Executors.newSingleThreadExecutor(r -> new Thread(r, "BackgroundFlushAndCompact"));
-        taskResults = new ArrayList<>();
+        taskResults = new CopyOnWriteArrayList<>();
+        logger = LoggerFactory.getLogger(InMemoryDao.class);
+        isBackgroundFlushing = new AtomicBoolean(false);
     }
 
     @Override
     public Iterator<BaseEntry<byte[]>> get(byte[] from, byte[] to) throws IOException {
         if (isClosed.get()) {
-            return null;
+            throw new RuntimeException("Unable to get: close operation performed.");
         }
-        State currentState = this.state;
+        State currentState;
         lock.readLock().lock();
         try {
-            byte[] fromArr = from;
-            if (from == null) {
-                fromArr = VERY_FIRST_KEY;
-            }
-            ArrayList<Iterator<BaseEntry<byte[]>>> iterators = new ArrayList<>();
-            if (to == null) {
-                iterators.add(currentState.pairs.tailMap(fromArr).values().iterator());
-            } else {
-                iterators.add(currentState.pairs.subMap(fromArr, to).values().iterator());
-            }
-            iterators.add(currentState.getFlushingPairsIterator());
-            iterators.addAll(currentState.fileOperations.diskIterators(fromArr, to));
-            Iterator<BaseEntry<byte[]>> mergeIterator = MergeIterator.of(iterators, EntryKeyComparator.INSTANCE);
-            return new TombstoneFilteringIterator(mergeIterator);
+            currentState = this.state;
         } finally {
             lock.readLock().unlock();
         }
+        ArrayList<Iterator<BaseEntry<byte[]>>> iterators = new ArrayList<>();
+        if (from == null && to == null) {
+            iterators.add(currentState.pairs.values().iterator());
+        } else if (from == null) {
+            iterators.add(currentState.pairs.headMap(to).values().iterator());
+        } else if (to == null) {
+            iterators.add(currentState.pairs.tailMap(from).values().iterator());
+        } else {
+            iterators.add(currentState.pairs.subMap(from, to).values().iterator());
+        }
+        iterators.add(currentState.getFlushingPairsIterator());
+        iterators.addAll(currentState.fileOperations.diskIterators(from, to));
+        Iterator<BaseEntry<byte[]>> mergeIterator = MergeIterator.of(iterators, EntryKeyComparator.INSTANCE);
+        return new TombstoneFilteringIterator(mergeIterator);
     }
 
     @Override
     public BaseEntry<byte[]> get(byte[] key) throws IOException {
         if (isClosed.get()) {
-            return null;
+            throw new RuntimeException("Unable to get: close operation performed.");
         }
-        State currentState = this.state;
+        State currentState;
         lock.readLock().lock();
         try {
-            BaseEntry<byte[]> result = currentState.pairs.get(key);
-            if (result == null) {
-                result = currentState.fileOperations.get(key);
-            }
-            return (result == null || result.isTombstone()) ? null : result;
+            currentState = this.state;
         } finally {
             lock.readLock().unlock();
         }
+        BaseEntry<byte[]> result = currentState.pairs.get(key);
+        if (result == null) {
+            result = currentState.fileOperations.get(key);
+        }
+        return (result == null || result.isTombstone()) ? null : result;
     }
 
     @Override
     public void upsert(BaseEntry<byte[]> entry) {
         if (isClosed.get()) {
-            return;
+            throw new RuntimeException("Unable to upsert: close operation performed.");
         }
-        State currentState = this.state;
+        int entryValueLength = entry.isTombstone() ? 0 : entry.value().length;
+        int delta = 2 * entry.key().length + entryValueLength;
+        State currentState;
+        lock.writeLock().lock();
+        try {
+            currentState = this.state;
+        } finally {
+            lock.writeLock().unlock();
+        }
+        if (currentState.getSize() + delta >= maxThresholdBytes) {
+            if (isBackgroundFlushing.get()) {
+                throw new IllegalStateException("Unable to flush: all maps are full.");
+            }
+            lock.writeLock().lock();
+            try {
+                this.state = new State(new ConcurrentSkipListMap<>(Arrays::compare),
+                        currentState.pairs, fileOperations);
+            } finally {
+                lock.writeLock().unlock();
+            }
+            performBackgroundFlush();
+        } else {
+            currentState.updateSize(delta);
+        }
         lock.readLock().lock();
         try {
-            int entryValueLength = entry.isTombstone() ? 0 : entry.value().length;
-            long delta = 2L * entry.key().length + entryValueLength;
-            if (currentState.getSize() + delta >= maxThresholdBytes) {
-                if (pairs0.size() > 0 && pairs1.size() > 0) {
-                    throw new IllegalStateException("Unable to flush: all maps are full.");
-                }
-                pairNum.set(1 - pairNum.get());
-                currentState.performBackgroundFlush();
-                this.state = new State(getPairs(), fileOperations);
-            }
-            currentState.pairs.put(entry.key(), entry);
+            this.state.pairs.put(entry.key(), entry);
         } finally {
             lock.readLock().unlock();
         }
     }
 
     @Override
-    public synchronized void flush() throws IOException {
-        State currentState = this.state;
-        if (currentState.pairs.size() == 0 || isClosed.get()) {
-            return;
+    public void flush() throws IOException {
+        if (isClosed.get()) {
+            throw new RuntimeException("Unable to flush: close operation performed.");
         }
+        State currentState;
         lock.writeLock().lock();
         try {
-            currentState.fileOperations.flush(currentState.pairs);
-            currentState.pairs.clear();
-            this.state = new State(getPairs(), fileOperations);
+            currentState = new State(new ConcurrentSkipListMap<>(Arrays::compare), this.state.pairs, fileOperations);
+        } finally {
+            lock.writeLock().unlock();
+        }
+        if (currentState.flushingPairs.size() == 0) {
+            return;
+        }
+        currentState.fileOperations.flush(currentState.flushingPairs);
+        currentState.flushingPairs.clear();
+        lock.writeLock().lock();
+        try {
+            this.state = new State(new ConcurrentSkipListMap<>(Arrays::compare),
+                    new ConcurrentSkipListMap<>(Arrays::compare), fileOperations);
         } finally {
             lock.writeLock().unlock();
         }
     }
 
     @Override
-    public synchronized void compact() throws IOException {
+    public void compact() throws IOException {
         if (isClosed.get()) {
-            return;
+            throw new RuntimeException("Unable to compact: close operation performed.");
         }
-        State currentState = this.state;
+        State currentState;
         lock.writeLock().lock();
         try {
-            currentState.performCompact();
-            this.state = new State(getPairs(), fileOperations);
+            currentState = this.state;
         } finally {
             lock.writeLock().unlock();
         }
+        performCompact(currentState);
     }
 
     @Override
-    public synchronized void close() throws IOException {
+    public void close() throws IOException {
         if (isClosed.get()) {
-            return;
+            throw new RuntimeException("Unable to close one more time: close operation already performed.");
         }
-        State currentState = this.state;
+        State currentState;
         lock.writeLock().lock();
         try {
-            currentState.closeService();
-            flush();
-            currentState.fileOperations.clearFileIterators();
-            pairs0.clear();
-            pairs1.clear();
-            isClosed.set(true);
+            currentState = this.state;
         } finally {
             lock.writeLock().unlock();
         }
+        closeService();
+        flush();
+        currentState.fileOperations.clearFileIterators();
+        isClosed.set(true);
     }
 
-    private NavigableMap<byte[], BaseEntry<byte[]>> getPairs() {
-        return pairNum.get() == 0 ? pairs0 : pairs1;
+    private void performBackgroundFlush() {
+        taskResults.add(service.submit(() -> {
+            try {
+                isBackgroundFlushing.set(true);
+                fileOperations.flush(this.state.flushingPairs);
+                this.state.flushingPairs.clear();
+                isBackgroundFlushing.set(false);
+            } catch (IOException e) {
+                logger.error("Flush operation was interrupted.", e);
+            }
+        }));
     }
 
-    private class State {
+    public void performCompact(State state) {
+        taskResults.add(service.submit(() -> {
+            Iterator<BaseEntry<byte[]>> iterator;
+            try {
+                iterator = MergeIterator.of(fileOperations.diskIterators(null, null), EntryKeyComparator.INSTANCE);
+                if (!iterator.hasNext()) {
+                    return;
+                }
+                state.fileOperations.compact(iterator, state.pairs.size() != 0);
+            } catch (IOException e) {
+                logger.error("Compact operation was interrupted.", e);
+            }
+        }));
+    }
+
+    private void closeService() {
+        service.shutdown();
+        for (Future<?> taskResult : taskResults) {
+            if (taskResult != null && !taskResult.isDone()) {
+                try {
+                    taskResult.get();
+                } catch (ExecutionException | InterruptedException e) {
+                    logger.error("Current thread was interrupted.", e);
+                }
+            }
+        }
+        taskResults.clear();
+    }
+
+    private static class State {
         private final NavigableMap<byte[], BaseEntry<byte[]>> pairs;
-        private NavigableMap<byte[], BaseEntry<byte[]>> flushingPairs;
+        private final NavigableMap<byte[], BaseEntry<byte[]>> flushingPairs;
+        private final AtomicInteger pairsSize;
         private final FileOperations fileOperations;
-        private final Logger logger;
 
-        private State(NavigableMap<byte[], BaseEntry<byte[]>> pairs, FileOperations fileOperations) {
+        private State(NavigableMap<byte[], BaseEntry<byte[]>> pairs,
+                      NavigableMap<byte[], BaseEntry<byte[]>> flushingPairs, FileOperations fileOperations) {
             this.pairs = pairs;
             this.fileOperations = fileOperations;
-            logger = LoggerFactory.getLogger(State.class);
-            flushingPairs = null;
+            this.flushingPairs = flushingPairs;
+            pairsSize = new AtomicInteger(0);
         }
 
-        private long getSize() {
-            long size = 0;
-            for (var entry : pairs.entrySet()) {
-                size += 2L * entry.getKey().length;
-                size += entry.getValue().isTombstone() ? 0 : entry.getValue().value().length;
-            }
-            return size;
+        private int getSize() {
+            return pairsSize.get();
+        }
+
+        private void updateSize(int delta) {
+            pairsSize.getAndAdd(delta);
         }
 
         private Iterator<BaseEntry<byte[]>> getFlushingPairsIterator() {
             return flushingPairs == null ? null : flushingPairs.values().iterator();
-        }
-
-        private void performBackgroundFlush() {
-            flushingPairs = pairs;
-            taskResults.add(service.submit(() -> {
-                try {
-                    fileOperations.flush(flushingPairs);
-                    flushingPairs.clear();
-                } catch (IOException e) {
-                    logger.error("Flush operation was interrupted.", e);
-                }
-            }));
-        }
-
-        public synchronized void performCompact() {
-            taskResults.add(service.submit(() -> {
-                Iterator<BaseEntry<byte[]>> iterator;
-                try {
-                    iterator = new TombstoneFilteringIterator(
-                            MergeIterator.of(fileOperations.diskIterators(null, null), EntryKeyComparator.INSTANCE)
-                    );
-                    if (!iterator.hasNext()) {
-                        return;
-                    }
-                    fileOperations.compact(iterator, pairs.size() != 0);
-                } catch (IOException e) {
-                    logger.error("Compact operation was interrupted.", e);
-                }
-            }));
-        }
-
-        private void closeService() {
-            service.shutdown();
-            for (Future<?> taskResult : taskResults) {
-                if (taskResult != null && !taskResult.isDone()) {
-                    try {
-                        taskResult.get();
-                    } catch (ExecutionException | InterruptedException e) {
-                        logger.error("Current thread was interrupted.", e);
-                    }
-                }
-            }
-            taskResults.clear();
         }
     }
 }

@@ -128,7 +128,7 @@ public class FileOperations {
 
     void flush(NavigableMap<byte[], BaseEntry<byte[]>> pairs) throws IOException {
         if (pairs == null) {
-            return;
+            throw new RuntimeException("Nothing to flush.");
         }
         saveDataAndIndexes(pairs);
     }
