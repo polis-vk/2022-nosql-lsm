@@ -56,6 +56,8 @@ plugins:
     checks:
       squid:S00112:
         enabled: false
+      squid:S1854:
+        enabled: false
       squid:S2589:
         enabled: false
       squid:UnusedPrivateMethod:
