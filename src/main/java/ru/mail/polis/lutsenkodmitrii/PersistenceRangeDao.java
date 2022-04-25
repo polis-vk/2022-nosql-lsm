@@ -103,7 +103,6 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                 memStorage.putFirstTable(entry);
             } else {
                 if (memStorage.firstTableNotOnFlushAndSetTrue()) {
-                    memStorage.firstTableBytes().set(config.flushThresholdBytes());
                     flushFirstMemTable();
                 }
                 memStorage.upsertToSecondTable(entry, entryBytes);
@@ -115,13 +114,6 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void flush() {
-        // Автоматический flush записывает первую таблицу на диск и upsert идет во вторую.
-        // Ручной flush: если вторая таблица пустая, то аналогичен автоматическому
-        // если вторая не пустая, значит первая уже на авто-flush,
-        // так как одновременно выполняется один flush,
-        // то в таком случае будет ожидание выполнения авто-flush,
-        // вторая таблица на момент вызова ручного flush станет первой и запишется на диск.
-        // Ротация таблиц / файлов всегда происходит под write lock.
         checkNotClosed();
         lock.writeLock().lock(); // Только для ручного flush, автоматический соответствует вызову flushFirstMemTable()
         try {
@@ -211,7 +203,7 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
                     Files.delete(filesMapEntry.getKey());
                 }
             } catch (IOException e) {
-                throw new RuntimeException("Renaming compaction file or deleting old files failed", e);
+                throw new RuntimeException("Deleting old files failed", e);
             } finally {
                 lock.writeLock().unlock();
             }

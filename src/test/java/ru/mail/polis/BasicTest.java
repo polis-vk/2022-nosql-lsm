@@ -110,7 +110,6 @@ public class BasicTest extends BaseTest {
         );
     }
 
-    @Disabled
     @DaoTest(stage = 1)
     void testHugeData(Dao<String, Entry<String>> dao) throws Exception {
         int count = 100_000;
