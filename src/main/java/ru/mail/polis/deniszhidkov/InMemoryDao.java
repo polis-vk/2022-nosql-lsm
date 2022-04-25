@@ -63,7 +63,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         this.readers = initDaoReaders();
         this.writer = new DaoWriter(getStoragePath(storagesCounter.get()), getOffsetsPath(storagesCounter.get()));
         this.isClosed.set(false);
-        BlockingMergeIterator.freeIterators();
     }
 
     @Override
@@ -107,7 +106,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         } finally {
             getsLock.readLock().unlock();
         }
-        return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new BlockingMergeIterator(iteratorsQueue);
+        return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new MergeIterator(iteratorsQueue);
     }
 
     @Override
@@ -237,13 +236,13 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 lastConsiderFile = i;
             }
         }
-        Iterator<BaseEntry<String>> allData = new BlockingMergeIterator(iteratorsQueue);
+        Iterator<BaseEntry<String>> allData = new MergeIterator(iteratorsQueue);
         int allDataSize = 0;
         while (allData.hasNext()) {
             allDataSize++;
             allData.next();
         }
-        allData = new BlockingMergeIterator(iteratorsQueue);
+        allData = new MergeIterator(iteratorsQueue);
         Path pathToTmpDataFile = getStoragePath(TMP_QUALIFIER);
         Path pathToTmpOffsetsFile = getOffsetsPath(TMP_QUALIFIER);
         DaoWriter tmpWriter = new DaoWriter(pathToTmpDataFile, pathToTmpOffsetsFile);
@@ -312,7 +311,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return;
         }
         isClosed.set(true);
-        BlockingMergeIterator.blockIterators();
         flushExecutor.shutdown();
         compactExecutor.shutdown();
         try {
