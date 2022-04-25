@@ -1,44 +1,51 @@
 package ru.mail.polis.levsaskov;
 
-import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Entry;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileSystemException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class StorageSystem implements AutoCloseable {
-    private static final int DEFAULT_ALLOC_SIZE = 2048;
+public final class StorageSystem implements AutoCloseable {
+    private static final String COMPACT_PREFIX = "compact.bin";
     private static final String MEM_FILENAME = "daoMem.bin";
-    private static final String INDEX_FILENAME = "daoIndex.bin";
+    private static final String IND_FILENAME = "daoIndex.bin";
 
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private int storagePartsC;
-    private Path location;
-    private final List<StoragePart> storageParts = new ArrayList<>();
+    // Order is important, fresh in begin
+    private final List<StoragePart> storageParts;
+    private final Path location;
 
-    public boolean init(Path location) throws IOException {
-        if (!location.toFile().exists()) {
-            return false;
-        }
-
+    private StorageSystem(List<StoragePart> storageParts, Path location) {
+        this.storageParts = storageParts;
         this.location = location;
+    }
 
-        // On every part we write memory file and index file, so devide on 2
-        // TODO: walk through files
-        storagePartsC = location.toFile().list().length / 2;
-        for (int partN = 0; partN < storagePartsC; partN++) {
-            addStoragePart(partN);
+    public static StorageSystem load(Path location) throws IOException {
+        ArrayList<StoragePart> storageParts = new ArrayList<>();
+
+        for (int i = 0; i < Integer.MAX_VALUE; i++) {
+            Path nextIndFile = getIndexFilePath(location, i);
+            Path nextMemFile = getMemFilePath(location, i);
+            try {
+                storageParts.add(StoragePart.load(nextIndFile, nextMemFile, i));
+            } catch (NoSuchFileException e) {
+                break;
+            }
         }
 
-        return true;
+        // Reverse collection, so fresh is the first
+        Collections.reverse(storageParts);
+        return new StorageSystem(storageParts, location);
     }
 
     /**
@@ -47,34 +54,64 @@ public class StorageSystem implements AutoCloseable {
      * @param key - key for entry to find
      * @return entry with the same key or null if there is no entry with the same key
      */
-    public BaseEntry<ByteBuffer> findEntry(ByteBuffer key) throws IOException {
-        BaseEntry<ByteBuffer> res = null;
-        lock.readLock().lock();
-        try {
-            for (int partN = storagePartsC - 1; partN >= 0; partN--) {
-                res = storageParts.get(partN).get(key);
-                if (res != null) {
-                    break;
-                }
+    public Entry<ByteBuffer> findEntry(ByteBuffer key) throws IOException {
+        Entry<ByteBuffer> res = null;
+        for (StoragePart storagePart : storageParts) {
+            res = storagePart.get(key);
+            if (res != null) {
+                break;
             }
-        } finally {
-            lock.readLock().unlock();
         }
 
         return res;
     }
 
-    public Iterator<BaseEntry<ByteBuffer>> getMergedEntrys(
-            ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> localEntrys, ByteBuffer from, ByteBuffer to) {
-        BinaryHeap binaryHeap = new BinaryHeap();
+    public void compact(ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> localEntrys) throws IOException {
+        if (storageParts.size() <= 1 && localEntrys.isEmpty()) {
+            // Compacted already
+            return;
+        }
+
+        Path indCompPath = location.resolve(COMPACT_PREFIX + IND_FILENAME);
+        Path memCompPath = location.resolve(COMPACT_PREFIX + MEM_FILENAME);
+        if (!indCompPath.toFile().createNewFile()
+                || !memCompPath.toFile().createNewFile()) {
+            throw new FileAlreadyExistsException("Compaction file already exists.");
+        }
+
+        // Create compaction part and write all entrys there
+        StoragePart compactionPart = StoragePart.load(indCompPath, memCompPath, Integer.MAX_VALUE);
+        compactionPart.write(getMergedEntrys(localEntrys, null, null));
+        compactionPart.close();
+
         for (StoragePart storagePart : storageParts) {
-            PeekIterator peekIterator = storagePart.get(from, to);
+            storagePart.delete();
+        }
+        storageParts.clear();
+
+        // Rename compactionPart
+        Path indexFP = getIndexFilePath(0);
+        Path memFP = getMemFilePath(0);
+        if (!indCompPath.toFile().renameTo(indexFP.toFile())
+                || !memCompPath.toFile().renameTo(memFP.toFile())) {
+            throw new FileSystemException("Renaming compaction file error.");
+        }
+        storageParts.add(StoragePart.load(indexFP, memFP, 0));
+    }
+
+    public Iterator<Entry<ByteBuffer>> getMergedEntrys(
+            ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> localEntrys, ByteBuffer from, ByteBuffer to) {
+        PriorityQueue<IndexedPeekIterator> binaryHeap = new PriorityQueue<>(
+                Comparator.comparing(it -> it.peek().key()));
+
+        for (StoragePart storagePart : storageParts) {
+            IndexedPeekIterator peekIterator = storagePart.get(from, to);
             if (peekIterator.peek() != null) {
                 binaryHeap.add(peekIterator);
             }
         }
 
-        PeekIterator localIter = new PeekIterator(localEntrys.values().iterator(), Integer.MAX_VALUE);
+        IndexedPeekIterator localIter = new IndexedPeekIterator(localEntrys.values().iterator(), Integer.MAX_VALUE);
         if (localIter.peek() != null) {
             binaryHeap.add(localIter);
         }
@@ -82,22 +119,23 @@ public class StorageSystem implements AutoCloseable {
         return new StorageSystemIterator(binaryHeap);
     }
 
-    public void save(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> entrys) throws IOException {
-        if (entrys.size() == 0) {
+    public void save(ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> entrys) throws IOException {
+        if (entrys.isEmpty()) {
             return;
         }
 
-        ByteBuffer bufferForIndexes = ByteBuffer.allocate(entrys.size() * Long.BYTES);
-        lock.writeLock().lock();
-        try {
-            writeMemFile(entrys, getMemFilePath(storagePartsC), bufferForIndexes);
-            writeIndexFile(bufferForIndexes, getIndexFilePath(storagePartsC));
-        } finally {
-            lock.writeLock().unlock();
+        if (!getIndexFilePath(storageParts.size()).toFile().createNewFile()
+                || !getMemFilePath(storageParts.size()).toFile().createNewFile()) {
+            throw new FileAlreadyExistsException("Can't create file to save entrys");
         }
 
-        addStoragePart(storagePartsC);
-        storagePartsC++;
+        // This part of mem is most fresh, so add in begin
+        storageParts.add(0, StoragePart.load(
+                getIndexFilePath(storageParts.size()),
+                getMemFilePath(storageParts.size()),
+                storageParts.size()));
+
+        storageParts.get(0).write(entrys.values().iterator());
     }
 
     @Override
@@ -107,97 +145,19 @@ public class StorageSystem implements AutoCloseable {
         }
     }
 
-    private void addStoragePart(int partN) throws IOException {
-        StoragePart storagePart = new StoragePart();
-        storagePart.init(getMemFilePath(partN), getIndexFilePath(partN), partN);
-        storageParts.add(storagePart);
-    }
-
     private Path getMemFilePath(int num) {
-        return location.resolve(num + MEM_FILENAME);
+        return getMemFilePath(location, num);
     }
 
     private Path getIndexFilePath(int num) {
-        return location.resolve(num + INDEX_FILENAME);
+        return getIndexFilePath(location, num);
     }
 
-    /**
-     * Writes entrys in file (memFilePath).
-     * Scheme:
-     * [key size][key][value size][value]....
-     *
-     * @param bufferForIndexes in that buffer we write startPos of every entry
-     */
-    private static void writeMemFile(ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> entrys, Path memFileP,
-                                     ByteBuffer bufferForIndexes) throws IOException {
-
-        ByteBuffer bufferToWrite = ByteBuffer.allocate(DEFAULT_ALLOC_SIZE);
-        long entryStartPos = 0;
-
-        try (
-                RandomAccessFile daoMemfile = new RandomAccessFile(memFileP.toFile(), "rw");
-                FileChannel memChannel = daoMemfile.getChannel()
-        ) {
-            for (BaseEntry<ByteBuffer> entry : entrys.values()) {
-                bufferForIndexes.putLong(entryStartPos);
-                int bytesC = getPersEntryByteSize(entry);
-                if (bytesC > bufferToWrite.capacity()) {
-                    bufferToWrite = ByteBuffer.allocate(bytesC);
-                }
-
-                persistEntry(entry, bufferToWrite);
-                memChannel.write(bufferToWrite);
-                bufferToWrite.clear();
-                entryStartPos += bytesC;
-            }
-        }
-        bufferForIndexes.flip();
+    private static Path getMemFilePath(Path location, int num) {
+        return location.resolve(num + MEM_FILENAME);
     }
 
-    /**
-     * Write "start positions of entrys in daoMemFile" in indexFilePath.
-     *
-     * @param bufferForIndexes buffer with startPos of every entry
-     */
-    private static void writeIndexFile(ByteBuffer bufferForIndexes, Path indexFileP) throws IOException {
-        try (
-                RandomAccessFile indexFile = new RandomAccessFile(indexFileP.toFile(), "rw");
-                FileChannel indexChannel = indexFile.getChannel()
-        ) {
-            indexChannel.write(bufferForIndexes);
-        }
-    }
-
-    /**
-     * Saves entry to byteBuffer.
-     *
-     * @param entry         that we want to save in bufferToWrite
-     * @param bufferToWrite buffer where we want to persist entry
-     */
-    private static void persistEntry(BaseEntry<ByteBuffer> entry, ByteBuffer bufferToWrite) {
-        bufferToWrite.putInt(entry.key().array().length);
-        bufferToWrite.put(entry.key().array());
-
-        if (entry.value() == null) {
-            bufferToWrite.putInt(StoragePart.LEN_FOR_NULL);
-        } else {
-            bufferToWrite.putInt(entry.value().array().length);
-            bufferToWrite.put(entry.value().array());
-        }
-
-        bufferToWrite.flip();
-    }
-
-    /**
-     * Count byte size of entry, that we want to write in file.
-     *
-     * @param entry that we want to save
-     * @return count of bytes
-     */
-    private static int getPersEntryByteSize(BaseEntry<ByteBuffer> entry) {
-        int keyLength = entry.key().array().length;
-        int valueLength = entry.value() == null ? 0 : entry.value().array().length;
-
-        return 2 * Integer.BYTES + keyLength + valueLength;
+    private static Path getIndexFilePath(Path location, int num) {
+        return location.resolve(num + IND_FILENAME);
     }
 }

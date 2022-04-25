@@ -1,6 +1,5 @@
 package ru.mail.polis.test.levsaskov;
 
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
@@ -11,22 +10,25 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 3, week = 1)
-public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, BaseEntry<ByteBuffer>> {
+@DaoFactory(stage = 4, week = 1)
+public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Entry<ByteBuffer>> {
 
     @Override
-    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao() {
+    public Dao<ByteBuffer, Entry<ByteBuffer>> createDao() {
         return new InMemoryDao();
     }
 
     @Override
-    public Dao<ByteBuffer, BaseEntry<ByteBuffer>> createDao(Config config) throws IOException {
+    public Dao<ByteBuffer, Entry<ByteBuffer>> createDao(Config config) throws IOException {
         return new InMemoryDao(config);
     }
 
     @Override
     public String toString(ByteBuffer data) {
-        return data == null ? null : new String(data.array(), StandardCharsets.UTF_8);
+        ByteBuffer indPosBuff = data.asReadOnlyBuffer();
+        byte[] bytes = new byte[indPosBuff.capacity()];
+        indPosBuff.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     @Override
@@ -35,7 +37,7 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
     }
 
     @Override
-    public BaseEntry<ByteBuffer> fromBaseEntry(Entry<ByteBuffer> baseEntry) {
-        return new BaseEntry<>(baseEntry.key(), baseEntry.value());
+    public Entry<ByteBuffer> fromBaseEntry(Entry<ByteBuffer> baseEntry) {
+        return baseEntry;
     }
 }
