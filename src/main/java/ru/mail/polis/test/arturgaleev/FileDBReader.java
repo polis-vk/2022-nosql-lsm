@@ -2,87 +2,115 @@ package ru.mail.polis.test.arturgaleev;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ConcurrentNavigableMap;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.nio.file.Path;
 
-public class FileDBReader implements Closeable {
+public class FileDBReader implements AutoCloseable {
 
+    private final int size;
+    private final int fileID;
     private final RandomAccessFile reader;
     private final FileChannel channel;
-    ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
-    private int size;
-    private int[] positions;
+    private final MappedByteBuffer pageData;
+    private final MappedByteBuffer pageLinks;
 
-    public FileDBReader(String name) throws IOException {
-        reader = new RandomAccessFile(name, "r");
+    public FileDBReader(Path path) throws IOException {
+        String fileName = path.getFileName().toString();
+        fileID = Integer.parseInt(fileName.substring(0, fileName.length() - 4));
+        reader = new RandomAccessFile(path.toFile(), "r");
         channel = reader.getChannel();
+        MappedByteBuffer page = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
+        size = page.getInt(0);
+
+        pageData = page.slice(Integer.BYTES * (1 + size), page.limit() - Integer.BYTES * (1 + size));
+        pageLinks = page.slice(Integer.BYTES, Integer.BYTES * size);
     }
 
-    public void readArrayLinks() throws IOException {
-        size = readInt();
-        int mapBeginPos = (size + 1) * Integer.BYTES;
-        positions = new int[size];
-        for (int i = 0; i < size; i++) {
-            positions[i] = mapBeginPos + readInt();
+    public int getFileID() {
+        return fileID;
+    }
+
+    protected BaseEntry<ByteBuffer> readEntryByLink(int linkPos) {
+        int currentLinkPos = linkPos;
+        int keyLength = pageData.getInt(currentLinkPos);
+        currentLinkPos += Integer.BYTES;
+        int valueLength = pageData.getInt(currentLinkPos);
+        currentLinkPos += Integer.BYTES;
+        return new BaseEntry<>(pageData.slice(currentLinkPos, keyLength),
+                ((valueLength == -1) ? null : pageData.slice(currentLinkPos + keyLength, valueLength)));
+    }
+
+    public BaseEntry<ByteBuffer> readEntryByPos(int pos) {
+        if (pos < 0 || pos >= size) {
+            return null;
         }
+        return readEntryByLink(pageLinks.slice(pos * Integer.BYTES, Integer.BYTES).getInt());
     }
 
-    protected int readInt() throws IOException {
-        buffer.clear();
-        channel.read(buffer);
-        buffer.rewind();
-        return buffer.getInt();
+    protected ByteBuffer readKeyByLink(int linkPos) {
+        int currentLinkPos = linkPos;
+        int keyLength = pageData.getInt(currentLinkPos);
+        currentLinkPos += 2 * Integer.BYTES;
+        return pageData.slice(currentLinkPos, keyLength);
     }
 
-    protected BaseEntry<ByteBuffer> readEntry() throws IOException {
-        int keyLength = readInt();
-        int valueLength = readInt();
-        ByteBuffer keyBuffer = ByteBuffer.allocate(keyLength);
-        channel.read(keyBuffer);
-        ByteBuffer valueBuffer = ByteBuffer.allocate(valueLength);
-        channel.read(valueBuffer);
-        keyBuffer.rewind();
-        valueBuffer.rewind();
-        return new BaseEntry<>(keyBuffer, valueBuffer);
-    }
-
-    public ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> readMap() throws IOException {
-        ConcurrentNavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> map = new ConcurrentSkipListMap<>();
-        channel.position(positions[0]);
-        BaseEntry<ByteBuffer> entry;
-        for (int i = 0; i < size; i++) {
-            entry = readEntry();
-            map.put(entry.key(), entry);
+    public ByteBuffer readKeyByPos(int pos) {
+        if (pos < 0 || pos >= size) {
+            return null;
         }
-        return map;
+        return readKeyByLink(pageLinks.slice(pos * Integer.BYTES, Integer.BYTES).getInt());
     }
 
-    public BaseEntry<ByteBuffer> getByPos(int pos) throws IOException {
-        channel.position(positions[pos]);
-        return readEntry();
-    }
-
-    public BaseEntry<ByteBuffer> getByKey(ByteBuffer key) throws IOException {
+    private int getPosByKey(ByteBuffer key) {
         int low = 0;
         int high = size - 1;
+        int mid;
+        int result;
         while (low <= high) {
-            int mid = low + ((high - low) / 2);
-            int result = getByPos(mid).key().compareTo(key);
+            mid = low + ((high - low) / 2);
+            result = readKeyByPos(mid).compareTo(key);
             if (result < 0) {
                 low = mid + 1;
             } else if (result > 0) {
                 high = mid - 1;
             } else {
-                return getByPos(mid);
+                return mid;
             }
         }
-        return null;
+        return low;
+    }
+
+    public BaseEntry<ByteBuffer> getEntryByKey(ByteBuffer key) {
+        BaseEntry<ByteBuffer> entry = readEntryByPos(getPosByKey(key));
+        if (entry == null) {
+            return null;
+        }
+        return entry.key().equals(key) ? entry : null;
+    }
+
+    public FileIterator getIteratorByKey(ByteBuffer key) {
+        return new FileIterator(getPosByKey(key));
+    }
+
+    public FileIterator getFromToIterator(ByteBuffer fromBuffer, ByteBuffer toBuffer) {
+        if (fromBuffer == null && toBuffer == null) {
+            return new FileIterator(0, size);
+        } else if (fromBuffer == null) {
+            return new FileIterator(0, getPosByKey(toBuffer));
+        } else if (toBuffer == null) {
+            return new FileIterator(getPosByKey(fromBuffer), size);
+        } else {
+            return new FileIterator(getPosByKey(fromBuffer), getPosByKey(toBuffer));
+        }
+    }
+
+    FileIterator getIteratorByPos(int pos) {
+        return new FileIterator(pos);
     }
 
     @Override
@@ -91,8 +119,42 @@ public class FileDBReader implements Closeable {
         reader.close();
     }
 
-    public String toString(ByteBuffer data) {
-        return data == null ? null : new String(data.array(),
-                data.arrayOffset() + data.position(), data.remaining(), StandardCharsets.UTF_8);
+    public String toString(ByteBuffer in) {
+        ByteBuffer data = in.asReadOnlyBuffer();
+        byte[] bytes = new byte[data.remaining()];
+        data.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    public class FileIterator implements java.util.Iterator<BaseEntry<ByteBuffer>> {
+        private int lastPos = size;
+        private int currentPos = -1;
+        private BaseEntry<ByteBuffer> current;
+
+        private FileIterator() {
+        }
+
+        private FileIterator(int currentPos) {
+            this.currentPos = currentPos;
+        }
+
+        private FileIterator(int currentPos, int lastPos) {
+            this.lastPos = lastPos;
+            this.currentPos = currentPos;
+        }
+
+        public int getFileId() {
+            return fileID;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return current != null || (currentPos >= 0 && currentPos < size && currentPos < lastPos);
+        }
+
+        @Override
+        public BaseEntry<ByteBuffer> next() {
+            return readEntryByPos(currentPos++);
+        }
     }
 }
