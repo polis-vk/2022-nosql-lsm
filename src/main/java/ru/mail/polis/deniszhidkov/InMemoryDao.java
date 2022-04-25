@@ -41,8 +41,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final AtomicBoolean isClosed = new AtomicBoolean(true);
     private final AtomicInteger storagesCounter;
     private final AtomicLong storageMemoryUsage = new AtomicLong(0);
-    private final ExecutorService flushExecutor;
-    private final ExecutorService compactExecutor;
+    private final ExecutorService executor;
     private final List<DaoReader> readers;
     private final Path directoryPath;
     private final ReadWriteLock getsLock = new ReentrantReadWriteLock();
@@ -56,8 +55,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     public InMemoryDao(Config config) throws IOException {
         this.directoryPath = config.basePath();
         this.flushThresholdBytes = config.flushThresholdBytes();
-        this.flushExecutor = Executors.newSingleThreadExecutor();
-        this.compactExecutor = Executors.newSingleThreadExecutor();
+        this.executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "DaoBackgroundThread"));
         finishCompact();
         this.storagesCounter = new AtomicInteger(validateDAOFiles());
         this.readers = initDaoReaders();
@@ -183,7 +181,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             getsLock.writeLock().unlock();
         }
         storageMemoryUsage.set(0);
-        flushResult = flushExecutor.submit(() -> {
+        flushResult = executor.submit(() -> {
             try {
                 backgroundFlush();
             } catch (IOException e) {
@@ -212,7 +210,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (readers.size() <= 1) {
             return;
         }
-        compactExecutor.submit(() -> {
+        executor.submit(() -> {
             try {
                 backgroundCompact();
             } catch (IOException e) {
@@ -311,13 +309,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             return;
         }
         isClosed.set(true);
-        flushExecutor.shutdown();
-        compactExecutor.shutdown();
+        executor.shutdown();
         try {
-            flushExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
-            compactExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+            //noinspection StatementWithEmptyBody
+            while(executor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS));
         } catch (InterruptedException e) {
-            throw new InterruptedIOException();
+            throw new IllegalStateException(e);
         }
         int currentFileNumber = storagesCounter.get() - 1;
         List<Integer> numbersOfFilesToRename = new ArrayList<>();
