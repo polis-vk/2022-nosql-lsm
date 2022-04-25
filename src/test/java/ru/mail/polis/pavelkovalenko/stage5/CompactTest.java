@@ -15,7 +15,7 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void backgroundCompact(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 3 * Utils.SUPREMUM_N_ENTRIES_FOR_FLUSH;
+        int count = 2 * Utils.SUPREMUM_N_ENTRIES_FOR_FLUSH;
         List<Entry<String>> entries = entries("k", "v", count);
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
