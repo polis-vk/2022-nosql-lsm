@@ -11,11 +11,9 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -82,7 +80,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             priorityIndex++;
         }
         // FIXME?
-        iteratorsQueue.addAll(getInStorageValues(priorityIndex));
+        addInStorageValues(iteratorsQueue, from, to, priorityIndex);
         return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new MergeIterator(iteratorsQueue);
     }
 
@@ -194,8 +192,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private synchronized void backgroundCompact() throws IOException {
-        // FIXME?
-        Queue<PriorityPeekIterator> iteratorsQueue = getInStorageValues(0);
+        Queue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
+                Comparator.comparing((PriorityPeekIterator o) ->
+                        o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
+        );
+        addInStorageValues(iteratorsQueue, null, null, 0);
         Iterator<BaseEntry<String>> allData = new MergeIterator(iteratorsQueue);
         int allDataSize = 0;
         while (allData.hasNext()) {
@@ -218,26 +219,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 StandardCopyOption.ATOMIC_MOVE
         );
         finishCompact();
-        // Маркируем скомпакченные файлы, как удалённые, чтобы не читать из них и удалить их в close()
-        // FIXME?
-        for (int i = 0; i < state.getSizeOfStorage(); i++) {
-            state.readers.get(i).setRemoved();
-        }
-    }
-
-    private PriorityQueue<PriorityPeekIterator> getInStorageValues(int index) throws IOException {
-        PriorityQueue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
-                Comparator.comparing((PriorityPeekIterator o) ->
-                        o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
-        );
-        int priorityIndex = index;
-        for (int i = 0; i < state.getSizeOfStorage(); i++) {
-            FileIterator fileIterator = new FileIterator(null, null, state.readers.get(i));
-            if (fileIterator.hasNext()) {
-                iteratorsQueue.add(new PriorityPeekIterator(fileIterator, priorityIndex++));
-            }
-        }
-        return iteratorsQueue;
     }
 
     private void finishCompact() throws IOException {
@@ -279,7 +260,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public synchronized void close() throws IOException { // FIXME
+    public synchronized void close() throws IOException {
         if (isClosed.get()) {
             return;
         }
@@ -292,49 +273,29 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             throw new IllegalStateException(e);
         }
         State state = this.state;
-        int currentFileNumber = state.getSizeOfStorage() - 1;
-        List<Integer> numbersOfFilesToRename = new ArrayList<>();
-        boolean needToRename = false;
+        state.inFlushing.clear();
         for (DaoReader reader : state.readers) {
-            boolean isRemoved = reader.getIsRemoved();
             reader.close();
-            if (isRemoved) {
-                Files.delete(Utils.resolvePath(basePath, DATA_FILE_NAME, currentFileNumber));
-                Files.delete(Utils.resolvePath(basePath, OFFSETS_FILE_NAME, currentFileNumber--));
-                needToRename = true;
-            } else {
-                numbersOfFilesToRename.add(currentFileNumber--);
+        }
+        state.readers.clear();
+        if (!state.inMemory.isEmpty()) {
+            state.writer.writeDAO(state.inMemory);
+            state.inMemory.clear();
+        }
+    }
+
+    private void addInStorageValues(Queue<PriorityPeekIterator> iteratorsQueue,
+                                    String from,
+                                    String to,
+                                    int index
+    ) throws IOException {
+        int priorityIndex = index;
+        for (int i = 0; i < state.getSizeOfStorage(); i++) {
+            FileIterator fileIterator = new FileIterator(from, to, state.readers.get(i));
+            if (fileIterator.hasNext()) {
+                iteratorsQueue.add(new PriorityPeekIterator(fileIterator, priorityIndex++));
             }
         }
-        /* Если ни один из storage в памяти не был заполнен, то это означает, что никаких операций upsert или flush
-         * не производилось. Если numbersOfFilesToRename тоже пуст, значит не было и компакта. Если всех вышеописанных
-         * операций не производилось, то имеет смысл закончить close() здесь, чтобы не делать лишней работы
-         * (все нужные ресурсы уже освобождены). */
-        if (state.inMemory.isEmpty() && state.inFlushing.isEmpty() && !needToRename) {
-            state.readers.clear();
-            return;
-        }
-        /* Так как поиск файлов при инициализации DAO зависит от количества файлов, нужно, чтобы все номера файлов
-         *  в названии были меньше количества файлов, поэтому необходимо переименовать файлы. */
-        Collections.reverse(numbersOfFilesToRename);
-        int numberOfNewFile = 0;
-        for (int numberOfFile : numbersOfFilesToRename) {
-            Files.move(Utils.resolvePath(basePath, DATA_FILE_NAME, numberOfFile),
-                    Utils.resolvePath(basePath, DATA_FILE_NAME, numberOfNewFile),
-                    StandardCopyOption.ATOMIC_MOVE
-            );
-            Files.move(Utils.resolvePath(basePath, OFFSETS_FILE_NAME, numberOfFile),
-                    Utils.resolvePath(basePath, OFFSETS_FILE_NAME, numberOfNewFile++),
-                    StandardCopyOption.ATOMIC_MOVE
-            );
-        }
-        state.writer = new DaoWriter(Utils.resolvePath(basePath, DATA_FILE_NAME, numberOfNewFile),
-                Utils.resolvePath(basePath, OFFSETS_FILE_NAME, numberOfNewFile)
-        );
-        state.writer.writeDAO(state.inMemory);
-        state.inFlushing.clear();
-        state.inMemory.clear();
-        state.readers.clear();
     }
 
     private PriorityPeekIterator findInMemoryStorageIteratorByRange(
@@ -401,7 +362,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         private CopyOnWriteArrayList<DaoReader> initDaoReaders() throws IOException {
             CopyOnWriteArrayList<DaoReader> resultList = new CopyOnWriteArrayList<>();
             // Методом validateDaoFiles() гарантируется, что существуют все файлы по порядку от 0 до N.
-            for (int i = 0; ; i--) {
+            for (int i = 0; ; i++) {
                 try {
                     resultList.add(new DaoReader(
                                     Utils.resolvePath(basePath, DATA_FILE_NAME, i),
