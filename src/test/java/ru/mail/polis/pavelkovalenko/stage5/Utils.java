@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public final class Utils {
 
-    public static final int KEYSIZE_AND_VALUESIZE_TEST_ENTRY = new BaseTest().keyAt(0).length();
+    public static final int KEYSIZE_AND_VALUESIZE_TEST_ENTRY = 11;
 
 	private Utils() {
 	}
