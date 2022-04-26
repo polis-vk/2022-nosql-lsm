@@ -4,10 +4,12 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -85,6 +87,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             iteratorsQueue.add(flushingStorageIterator);
             priorityIndex++;
         }
+        // FIXME?
         iteratorsQueue.addAll(getInStorageValues(priorityIndex));
         return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new MergeIterator(iteratorsQueue);
     }
@@ -101,6 +104,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             if (value != null) {
                 return value;
             }
+            // FIXME?
             for (int i = 0; i < state.getSizeOfStorage(); i++) {
                 value = state.readers.get(i).findByKey(key);
                 if (value != null) {
@@ -196,6 +200,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private synchronized void backgroundCompact() throws IOException {
+        // FIXME?
         Queue<PriorityPeekIterator> iteratorsQueue = getInStorageValues(0);
         Iterator<BaseEntry<String>> allData = new MergeIterator(iteratorsQueue);
         int allDataSize = 0;
@@ -214,6 +219,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         Files.move(pathToTmpOffsetsFile, getOffsetsPath(basePath, COMPACTED_QUALIFIER), StandardCopyOption.ATOMIC_MOVE);
         finishCompact();
         // Маркируем скомпакченные файлы, как удалённые, чтобы не читать из них и удалить их в close()
+        // FIXME?
         for (int i = 0; i < state.getSizeOfStorage(); i++) {
             state.readers.get(i).setRemoved();
         }
@@ -288,7 +294,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public synchronized void close() throws IOException {
+    public synchronized void close() throws IOException { // FIXME
         if (isClosed.get()) {
             return;
         }
@@ -296,7 +302,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         executor.shutdown();
         try {
             //noinspection StatementWithEmptyBody
-            while (executor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS)) ;
+            while (!executor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS));
         } catch (InterruptedException e) {
             throw new IllegalStateException(e);
         }
@@ -366,11 +372,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
         State(Path basePath) throws IOException {
             this.basePath = basePath;
-            this.readers = initDaoReaders(validateDAOFiles());
+            validateDAOFiles();
+            this.readers = initDaoReaders();
             this.writer = new DaoWriter(getStoragePath(basePath, readers.size()), getOffsetsPath(basePath, readers.size()));
         }
 
-        private int validateDAOFiles() throws IOException {
+        private void validateDAOFiles() throws IOException {
             int numberOfStorages = 0;
             int numberOfOffsets = 0;
             // Удаляем файлы из директории, не относящиеся к нашей DAO, и считаем количество storage
@@ -394,14 +401,19 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     throw new IllegalStateException("There is no offsets file for some storage: storage number " + i);
                 }
             }
-            return numberOfStorages;
         }
 
-        private CopyOnWriteArrayList<DaoReader> initDaoReaders(int size) throws IOException {
+        private CopyOnWriteArrayList<DaoReader> initDaoReaders() throws IOException {
             CopyOnWriteArrayList<DaoReader> resultList = new CopyOnWriteArrayList<>();
-            for (int i = size - 1; i >= 0; i--) {
-                resultList.add(new DaoReader(getStoragePath(basePath, i), getOffsetsPath(basePath, i)));
+            // Методом validateDaoFiles() гарантируется, что существуют все файлы по порядку от 0 до N.
+            for (int i = 0; ; i--) {
+                try {
+                    resultList.add(new DaoReader(getStoragePath(basePath, i), getOffsetsPath(basePath, i)));
+                } catch (FileNotFoundException e) {
+                    break;
+                }
             }
+            Collections.reverse(resultList);
             return resultList;
         }
 
