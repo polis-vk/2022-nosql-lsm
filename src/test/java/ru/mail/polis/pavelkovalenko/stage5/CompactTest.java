@@ -8,6 +8,7 @@ import ru.mail.polis.Entry;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,12 +16,13 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void backgroundCompact(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 2 * Utils.SUPREMUM_N_ENTRIES_FOR_FLUSH;
+        int count = 2 * Utils.N_ENTRIES_FOR_GUARANTEED_AUTOFLUSH;
         List<Entry<String>> entries = entries("k", "v", count);
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
 
-        Thread.sleep(1_000); // wait until dao is flushing
+        // wait until dao is flushing
+        new ConfigRunnable(dao, new AtomicInteger()).run();
 
         long millisElapsed = Timer.elapseMs(dao::compact);
         assertTrue(millisElapsed < 50);
@@ -33,21 +35,21 @@ public class CompactTest extends BaseTest {
             dao.upsert(newEntry);
             assertSame(dao.get(newEntry.key()), newEntry);
         });
-        assertTrue(millisElapsed < 50);
+        assertTrue(millisElapsed < 100);
     }
 
     @DaoTest(stage = 5)
-    void emptyCompactFromDisk(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.INFIMUM_N_ENTRIES_FOR_FLUSH - 1;
+    void emptyCompact(Dao<String, Entry<String>> dao) throws Exception {
+        int count = Utils.N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
 
-        long millisElapsed = Timer.elapseMs(() -> {
-            for (int i = 0; i < 5_000; ++i) {
-                dao.compact();
-            }
-        });
+        Utils.assertNFilesInConfigDir(dao, 0);
+
+        long millisElapsed = Timer.elapseMs(() -> Utils.compactManyTimes(dao));
         assertTrue(millisElapsed < 50);
+
+        Utils.assertNFilesInConfigDir(dao, 0);
     }
 
     @DaoTest(stage = 5)
@@ -56,13 +58,10 @@ public class CompactTest extends BaseTest {
         dao.upsert(entry);
         dao.flush();
 
-        Thread.sleep(100); // wait until dao is flushing
+        // wait until dao is flushing
+        new ConfigRunnable(dao, new AtomicInteger()).run();
 
-        long millisElapsed = Timer.elapseMs(() -> {
-            for (int i = 0; i < 5_000; ++i) {
-                dao.compact();
-            }
-        });
+        long millisElapsed = Timer.elapseMs(() -> Utils.compactManyTimes(dao));
         assertTrue(millisElapsed < 50);
 
         millisElapsed = Timer.elapseMs(() -> assertSame(dao.get(keyAt(1)), entry));
@@ -77,13 +76,10 @@ public class CompactTest extends BaseTest {
         dao.upsert(tmb);
         dao.flush();
 
-        Thread.sleep(100); // wait until dao is flushing
+        // wait until dao is flushing
+        new ConfigRunnable(dao, new AtomicInteger()).run();
 
-        long millisElapsed = Timer.elapseMs(() -> {
-            for (int i = 0; i < 5_000; ++i) {
-                dao.compact();
-            }
-        });
+        long millisElapsed = Timer.elapseMs(() -> Utils.compactManyTimes(dao));
         assertTrue(millisElapsed < 50);
 
         millisElapsed = Timer.elapseMs(() -> {
@@ -95,17 +91,17 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void singleHugeSSTableWithoutTombstones(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.SUPREMUM_N_ENTRIES_FOR_FLUSH;
+        int count = Utils.N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
         List<Entry<String>> entries = entries(count);
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
-        Thread.sleep(1_000); // wait until dao is flushing
 
-        long millisElapsed = Timer.elapseMs(() -> {
-            for (int i = 0; i < 5_000; ++i) {
-                dao.compact();
-            }
-        });
+        dao.flush();
+
+        // wait until dao is flushing
+        new ConfigRunnable(dao, new AtomicInteger()).run();
+
+        long millisElapsed = Timer.elapseMs(() -> Utils.compactManyTimes(dao));
         assertTrue(millisElapsed < 50);
 
         millisElapsed = Timer.elapseMs(() -> assertSame(dao.all(), entries));
@@ -114,7 +110,7 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void singleHugeSSTableWithTombstones(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.SUPREMUM_N_ENTRIES_FOR_FLUSH;
+        int count = Utils.N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
         List<Entry<String>> entries = new ArrayList<>();
         for (int i = 0; i < count; ++i) {
             Entry<String> curEntry;
@@ -127,13 +123,12 @@ public class CompactTest extends BaseTest {
             dao.upsert(curEntry);
         }
 
-        Thread.sleep(1_000); // wait until dao is flushing
+        dao.flush();
 
-        long millisElapsed = Timer.elapseMs(() -> {
-            for (int i = 0; i < 5_000; ++i) {
-                dao.compact();
-            }
-        });
+        // wait until dao is flushing
+        new ConfigRunnable(dao, new AtomicInteger()).run();
+
+        long millisElapsed = Timer.elapseMs(() -> Utils.compactManyTimes(dao));
         assertTrue(millisElapsed < 50);
 
         millisElapsed = Timer.elapseMs(() -> assertSame(dao.all(), entries));
@@ -142,32 +137,28 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void manySSTables(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.INFIMUM_N_ENTRIES_FOR_FLUSH - 1;
-        int nIterations = 3;
+        int count = Utils.N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
+        int nSSTables = 3;
+        String unique = "brilliant";
 
-        for (int i = 0; i < nIterations; ++i) {
+        List<Entry<String>> uniques = new ArrayList<>(nSSTables);
+
+        for (int i = 0; i < nSSTables; ++i) {
             runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
-            dao.upsert(new BaseEntry<>(keyAt(i), null));
+            uniques.add(new BaseEntry<>(unique + i, unique));
+            dao.upsert(uniques.get(i));
             dao.flush();
         }
 
-        Thread.sleep(1_000); // wait until dao is flushing
+        Utils.assertNFilesInConfigDir(dao, nSSTables * 2);
 
-        long millisElapsed = Timer.elapseMs(() -> {
-            for (int i = 0; i < 5_000; ++i) {
-                dao.compact();
-            }
-        });
+        long millisElapsed = Timer.elapseMs(() -> Utils.compactManyTimes(dao));
         assertTrue(millisElapsed < 50);
 
-        for (int i = 0; i < nIterations; ++i) {
-            String tmb = keyAt(i);
-            millisElapsed = Timer.elapseMs(() -> assertSame(dao.get(tmb), null));
-            assertTrue(millisElapsed < 100);
+        for (int i = 0; i < nSSTables; ++i) {
+            Entry<String> curUnique = uniques.get(i);
+            millisElapsed = Timer.elapseMs(() -> assertSame(dao.get(curUnique.key()), curUnique));
+            assertTrue(millisElapsed < 100); // uniques are in the top of all entries
         }
-
-        millisElapsed = Timer.elapseMs(() -> assertSame(dao.get(keyAt(nIterations)), entryAt(nIterations)));
-        assertTrue(millisElapsed < 100);
     }
-
 }

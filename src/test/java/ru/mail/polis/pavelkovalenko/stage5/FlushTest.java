@@ -13,7 +13,7 @@ public class FlushTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void backgroundFlush(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.INFIMUM_N_ENTRIES_FOR_FLUSH - 1;
+        int count = Utils.N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
         List<Entry<String>> entries = entries("k", "v", count);
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
@@ -30,11 +30,13 @@ public class FlushTest extends BaseTest {
             assertSame(dao.get(newEntry.key()), newEntry);
         });
         assertTrue(millisElapsed < 50);
+
+        Utils.assertNFilesInConfigDir(dao, 2);
     }
 
     @DaoTest(stage = 5)
     void flushOverfill(Dao<String, Entry<String>> dao) {
-        int count = 100 * Utils.SUPREMUM_N_ENTRIES_FOR_FLUSH;
+        int count = 100 * Utils.N_ENTRIES_FOR_GUARANTEED_AUTOFLUSH;
 
         assertThrows(Exception.class,
                 () -> runInParallel(100, count, value -> dao.upsert(entryAt(value))).close());
@@ -42,13 +44,14 @@ public class FlushTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void manyFlushes(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.INFIMUM_N_ENTRIES_FOR_FLUSH - 1;
+        int count = Utils.N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
         int nThreads = 100;
 
         runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
 
         long millisElapsed = Timer.elapseMs(() -> runInParallel(nThreads, task -> dao.flush()).close());
         assertTrue(millisElapsed < 100);
-    }
 
+        Utils.assertNFilesInConfigDir(dao, 2);
+    }
 }

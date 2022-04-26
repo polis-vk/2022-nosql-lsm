@@ -11,7 +11,7 @@ public class CloseTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void blockingClose(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 100_000;
+        int count = 2 * Utils.N_ENTRIES_FOR_GUARANTEED_AUTOFLUSH;
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
         dao.flush();
@@ -19,5 +19,4 @@ public class CloseTest extends BaseTest {
         long millisElapsed = Timer.elapseMs(dao::close);
         assertTrue(millisElapsed > 300);
     }
-
 }
