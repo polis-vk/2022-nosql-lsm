@@ -81,7 +81,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             list.add(new PeekIterator<>(temp.iterator(), 0));
         }
         if (onFlushCollection != null) {
-            temp = FileUtils.getInMemoryCollection(collection, from, to);
+            temp = FileUtils.getInMemoryCollection(onFlushCollection, from, to);
             if (!temp.isEmpty()) {
                 list.add(new PeekIterator<>(temp.iterator(), 0));
             }
@@ -137,7 +137,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     @Override
     public synchronized void close() throws IOException {
-        if (closed.get()) {
+        if (closed.getAndSet(true)) {
             return;
         }
         executor.shutdown();
@@ -149,7 +149,6 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             throw new IllegalStateException(e);
         }
         executeFlush();
-        closed.set(true);
     }
 
     private void createMemoryData() {
@@ -163,9 +162,6 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     private synchronized void autoFlush() {
-        if (collection.isEmpty()) {
-            return;
-        }
         if (onFlushCollection != null) {
             throw new IllegalStateException("Can't flush more");
         }
@@ -202,16 +198,13 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     private void executeCompact() {
-        lock.writeLock().lock();
+        int count = filesCount.get();
         try {
-            int count = filesCount.get();
             FileUtils.compact(new MergingIterator(getFilesCollection(files, fileIndexes, null, null)), path);
             FileUtils.clearOldFiles(count, path);
-            filesCount.set(1);
+        filesCount.set(1);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
-        } finally {
-            lock.writeLock().unlock();
         }
     }
 
