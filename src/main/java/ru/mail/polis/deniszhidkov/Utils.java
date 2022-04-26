@@ -2,6 +2,8 @@ package ru.mail.polis.deniszhidkov;
 
 import java.nio.file.Path;
 
+import ru.mail.polis.BaseEntry;
+
 public class Utils {
 
     private static final String COMPACTED_QUALIFIER_NAME = "compacted_";
@@ -16,5 +18,11 @@ public class Utils {
             case TMP_QUALIFIER -> directoryPath.resolve(TMP_QUALIFIER_NAME + typeOfFile + FILE_EXTENSION);
             default -> directoryPath.resolve(typeOfFile + qualifier + FILE_EXTENSION);
         };
+    }
+
+    public static long getEntrySize(BaseEntry<String> entry) {
+        return entry.value() == null
+                ? entry.key().length() * 2L
+                : (entry.key().length() + entry.value().length()) * 2L;
     }
 }

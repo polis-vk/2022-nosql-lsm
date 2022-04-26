@@ -45,10 +45,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     public InMemoryDao(Config config) throws IOException {
         this.basePath = config.basePath();
-        this.state = new State(basePath);
         this.flushThresholdBytes = config.flushThresholdBytes();
-        this.executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "DaoBackgroundThread"));
         finishCompact();
+        this.state = new State(basePath);
+        this.executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "DaoBackgroundThread"));
         this.isClosed.compareAndSet(true, false);
     }
 
@@ -63,8 +63,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                         o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
         );
         int priorityIndex = 0;
-        PriorityPeekIterator storageIterator = findInMemoryStorageIteratorByRange(
-                state.inMemory,
+        PriorityPeekIterator storageIterator = findInMemoryStorageIteratorByRange(state.inMemory,
                 from,
                 to,
                 priorityIndex
@@ -73,8 +72,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             iteratorsQueue.add(storageIterator);
             priorityIndex++;
         }
-        PriorityPeekIterator flushingStorageIterator = findInMemoryStorageIteratorByRange(
-                state.inFlushing,
+        PriorityPeekIterator flushingStorageIterator = findInMemoryStorageIteratorByRange(state.inFlushing,
                 from,
                 to,
                 priorityIndex
@@ -118,7 +116,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
         State state = this.state;
-        long entrySize = getEntrySize(entry);
+        long entrySize = Utils.getEntrySize(entry);
         if (state.storageMemoryUsage.get() + entrySize >= flushThresholdBytes) {
             if (flushResult != null && !flushResult.isDone()) { // FIXME
                 throw new IllegalStateException("Flush queue overflow");
@@ -136,12 +134,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             upsertLock.readLock().unlock();
         }
         state.storageMemoryUsage.addAndGet(entrySize);
-    }
-
-    private long getEntrySize(BaseEntry<String> entry) {
-        return entry.value() == null
-                ? entry.key().length() * 2L
-                : (entry.key().length() + entry.value().length()) * 2L;
     }
 
     @Override
