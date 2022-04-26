@@ -22,8 +22,7 @@ public class CompactTest extends BaseTest
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
 
-        // wait until dao is flushing
-        new ConfigRunnable(dao, new AtomicInteger()).run();
+        waitUntilDaoIsFlushing(dao);
 
         long millisElapsed = Timer.elapseMs(dao::compact);
         assertTrue(millisElapsed < 50);
@@ -57,8 +56,7 @@ public class CompactTest extends BaseTest
         dao.upsert(entry);
         dao.flush();
 
-        // wait until dao is flushing
-        new ConfigRunnable(dao, new AtomicInteger()).run();
+        waitUntilDaoIsFlushing(dao);
 
         long millisElapsed = Timer.elapseMs(() -> Utils.compactManyTimes(dao));
         assertTrue(millisElapsed < 50);
@@ -75,8 +73,7 @@ public class CompactTest extends BaseTest
         dao.upsert(tmb);
         dao.flush();
 
-        // wait until dao is flushing
-        new ConfigRunnable(dao, new AtomicInteger()).run();
+        waitUntilDaoIsFlushing(dao);
 
         long millisElapsed = Timer.elapseMs(() -> Utils.compactManyTimes(dao));
         assertTrue(millisElapsed < 50);
@@ -95,8 +92,7 @@ public class CompactTest extends BaseTest
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
 
-        // wait until dao is flushing
-        new ConfigRunnable(dao, new AtomicInteger()).run();
+        waitUntilDaoIsFlushing(dao);
 
         long millisElapsed = Timer.elapseMs(() -> Utils.compactManyTimes(dao));
         assertTrue(millisElapsed < 50);
@@ -119,8 +115,7 @@ public class CompactTest extends BaseTest
             dao.upsert(curEntry);
         }
 
-        // wait until dao is flushing
-        new ConfigRunnable(dao, new AtomicInteger()).run();
+        waitUntilDaoIsFlushing(dao);
 
         long millisElapsed = Timer.elapseMs(() -> Utils.compactManyTimes(dao));
         assertTrue(millisElapsed < 50);
@@ -152,5 +147,9 @@ public class CompactTest extends BaseTest
             millisElapsed = Timer.elapseMs(() -> assertSame(dao.get(curUnique.key()), curUnique));
             assertTrue(millisElapsed < 100); // uniques are in the top of all entries
         }
+    }
+
+    void waitUntilDaoIsFlushing(Dao<String, Entry<String>> dao) {
+        new ConfigRunnable(dao, new AtomicInteger()).run();
     }
 }
