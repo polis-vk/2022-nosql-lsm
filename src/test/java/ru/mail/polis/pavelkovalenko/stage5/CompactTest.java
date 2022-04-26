@@ -12,11 +12,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class CompactTest extends BaseTest {
+public class CompactTest extends BaseTest
+        implements AbstractTest {
 
     @DaoTest(stage = 5)
     void backgroundCompact(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 2 * Utils.N_ENTRIES_FOR_GUARANTEED_AUTOFLUSH;
+        int count = 2 * N_ENTRIES_FOR_AUTOFLUSH;
         List<Entry<String>> entries = entries("k", "v", count);
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
@@ -40,9 +41,7 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void emptyCompact(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
-
-        runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
+        runInParallel(100, N_ENTRIES_FOR_ABSENT_AUTOFLUSH, value -> dao.upsert(entryAt(value))).close();
 
         Utils.assertNFilesInConfigDir(dao, 0);
 
@@ -91,12 +90,10 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void singleHugeSSTableWithoutTombstones(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
+        int count = N_ENTRIES_FOR_AUTOFLUSH;
         List<Entry<String>> entries = entries(count);
 
         runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
-
-        dao.flush();
 
         // wait until dao is flushing
         new ConfigRunnable(dao, new AtomicInteger()).run();
@@ -110,9 +107,8 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void singleHugeSSTableWithTombstones(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
         List<Entry<String>> entries = new ArrayList<>();
-        for (int i = 0; i < count; ++i) {
+        for (int i = 0; i < N_ENTRIES_FOR_AUTOFLUSH; ++i) {
             Entry<String> curEntry;
             if (i % 2 == 0) {
                 curEntry = entryAt(i);
@@ -122,8 +118,6 @@ public class CompactTest extends BaseTest {
             }
             dao.upsert(curEntry);
         }
-
-        dao.flush();
 
         // wait until dao is flushing
         new ConfigRunnable(dao, new AtomicInteger()).run();
@@ -137,17 +131,15 @@ public class CompactTest extends BaseTest {
 
     @DaoTest(stage = 5)
     void manySSTables(Dao<String, Entry<String>> dao) throws Exception {
-        int count = Utils.N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
         int nSSTables = 3;
         String unique = "brilliant";
 
         List<Entry<String>> uniques = new ArrayList<>(nSSTables);
 
         for (int i = 0; i < nSSTables; ++i) {
-            runInParallel(100, count, value -> dao.upsert(entryAt(value))).close();
+            runInParallel(100, N_ENTRIES_FOR_ABSENT_AUTOFLUSH, value -> dao.upsert(entryAt(value))).close();
             uniques.add(new BaseEntry<>(unique + i, unique));
             dao.upsert(uniques.get(i));
-            dao.flush();
         }
 
         Utils.assertNFilesInConfigDir(dao, nSSTables * 2);
