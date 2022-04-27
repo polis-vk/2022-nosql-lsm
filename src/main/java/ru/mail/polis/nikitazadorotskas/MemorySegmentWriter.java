@@ -10,21 +10,28 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 
 class MemorySegmentWriter {
-    private int arrayIndex;
+    private final long dataOffset;
+    private final MemorySegment mappedMemorySegment;
+    private final ResourceScope scope;
     private long lastSize;
     private long lastIndex;
-    private final MemorySegment mappedMemorySegmentForStorage;
-    private final MemorySegment mappedMemorySegmentForIndexes;
-    private final ResourceScope scope;
+    private int arrayIndex;
 
     MemorySegmentWriter(int arraySize, long storageSize, Utils utils, ResourceScope scope, int number)
             throws IOException {
         this.scope = scope;
-        mappedMemorySegmentForStorage = createMappedSegment(utils.getStoragePath(number), storageSize);
-        mappedMemorySegmentForIndexes = createMappedSegment(
-                utils.getIndexesPath(number),
-                Long.BYTES * (arraySize * 2L + 1)
-        );
+        utils.createStorageFile(number);
+
+        long numberOfEntries = arraySize * 2L + 1;
+        long indexesSize = Long.BYTES * numberOfEntries;
+        this.dataOffset = Long.BYTES + indexesSize;
+
+        // sizes:       1 long       numberOfEntries * 2 + 1 longs      storageSize
+        // storage: ((numberOfEntries)(key0index, value0index...)(key0, value0...))
+        this.mappedMemorySegment = createMappedSegment(
+                utils.getStoragePath(number),
+                dataOffset + storageSize);
+        MemoryAccess.setLongAtIndex(mappedMemorySegment, 0, numberOfEntries);
     }
 
     private MemorySegment createMappedSegment(Path path, long size) throws IOException {
@@ -36,7 +43,7 @@ class MemorySegmentWriter {
         writePartOfEntry(entry.value());
     }
 
-    void writePartOfEntry(MemorySegment data) {
+    private void writePartOfEntry(MemorySegment data) {
         if (data == null) {
             markIndexOfNullValue();
             return;
@@ -56,11 +63,15 @@ class MemorySegmentWriter {
     }
 
     private void setIndex(long index) {
-        MemoryAccess.setLongAtIndex(mappedMemorySegmentForIndexes, ++arrayIndex, index);
+        MemoryAccess.setLongAtIndex(mappedMemorySegment, ++arrayIndex + 1, index);
     }
 
     private void writeData(MemorySegment other) {
-        writeToMappedMemorySegment(mappedMemorySegmentForStorage, lastIndex - lastSize, lastSize, other);
+        writeToMappedMemorySegment(mappedMemorySegment, getCurrentOffset(), lastSize, other);
+    }
+
+    private long getCurrentOffset() {
+        return dataOffset + lastIndex - lastSize;
     }
 
     private void writeToMappedMemorySegment(MemorySegment mapped, long byteOffset, long byteSize, MemorySegment other) {
