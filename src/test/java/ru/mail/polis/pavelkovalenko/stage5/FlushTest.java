@@ -1,6 +1,5 @@
 package ru.mail.polis.pavelkovalenko.stage5;
 
-import ru.mail.polis.BaseTest;
 import ru.mail.polis.Dao;
 import ru.mail.polis.DaoTest;
 import ru.mail.polis.Entry;
@@ -9,8 +8,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class FlushTest extends BaseTest
-        implements AbstractTest {
+public class FlushTest extends AbstractTest {
 
     @DaoTest(stage = 5)
     void backgroundFlush(Dao<String, Entry<String>> dao) throws Exception {
@@ -45,9 +43,10 @@ public class FlushTest extends BaseTest
 
     @DaoTest(stage = 5)
     void manyFlushes(Dao<String, Entry<String>> dao) throws Exception {
+        int count = N_ENTRIES_FOR_ABSENT_AUTOFLUSH;
         int nThreads = 100;
 
-        runInParallel(nThreads, N_ENTRIES_FOR_ABSENT_AUTOFLUSH, value -> dao.upsert(entryAt(value))).close();
+        runInParallel(nThreads, count, value -> dao.upsert(entryAt(value))).close();
 
         long millisElapsed = Timer.elapseMs(() -> runInParallel(nThreads, task -> dao.flush()).close());
         assertTrue(millisElapsed < 100);
