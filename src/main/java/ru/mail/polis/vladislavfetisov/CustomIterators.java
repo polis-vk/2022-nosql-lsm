@@ -109,7 +109,7 @@ public final class CustomIterators {
                         it.next();
                     } catch (IllegalStateException e) {
                         LsmDao.logger.info("iterator is invoked again");
-                        it = lsmDao.getMergedIterator(prevKey, to);
+                        it = getMergedIterator(prevKey, to, lsmDao.getStorage()); //newest storage
                     }
                 }
             }
@@ -121,8 +121,23 @@ public final class CustomIterators {
                 }
                 return it.next();
             }
-        }
-
-                ;
+        };
     }
+
+    public static PeekingIterator<Entry<MemorySegment>> getMergedIterator(
+            MemorySegment from, MemorySegment to, Storage fixedStorage) {
+
+        List<SSTable> tables = fixedStorage.ssTables();
+
+        Iterator<Entry<MemorySegment>> memory = fixedStorage.memory().get(from, to);
+        Iterator<Entry<MemorySegment>> readOnly = fixedStorage.readOnlyMemory().get(from, to);
+        Iterator<Entry<MemorySegment>> disc = Utils.tablesRange(from, to, tables);
+
+        PeekingIterator<Entry<MemorySegment>> merged = CustomIterators.getMergedTwo(readOnly, memory);
+        if (!tables.isEmpty()) {
+            merged = CustomIterators.getMergedTwo(disc, merged);
+        }
+        return merged;
+    }
+
 }

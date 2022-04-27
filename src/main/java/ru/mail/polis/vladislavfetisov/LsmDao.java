@@ -65,26 +65,9 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         closeCheck();
-
-        PeekingIterator<Entry<MemorySegment>> merged = getMergedIterator(from, to);
-        return CustomIterators.skipTombstones(this, from, to, merged);
-    }
-
-    public PeekingIterator<Entry<MemorySegment>> getMergedIterator(
-            MemorySegment from, MemorySegment to) {
-
         Storage fixedStorage = this.storage;
-        List<SSTable> tables = fixedStorage.ssTables();
-
-        Iterator<Entry<MemorySegment>> memory = fixedStorage.memory().get(from, to);
-        Iterator<Entry<MemorySegment>> readOnly = fixedStorage.readOnlyMemory().get(from, to);
-        Iterator<Entry<MemorySegment>> disc = Utils.tablesRange(from, to, tables);
-
-        PeekingIterator<Entry<MemorySegment>> merged = CustomIterators.getMergedTwo(readOnly, memory);
-        if (!tables.isEmpty()) {
-            merged = CustomIterators.getMergedTwo(disc, merged);
-        }
-        return merged;
+        PeekingIterator<Entry<MemorySegment>> merged = CustomIterators.getMergedIterator(from, to, fixedStorage);
+        return CustomIterators.skipTombstones(this, from, to, merged);
     }
 
     @Override
@@ -106,22 +89,16 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     /**
      * Compact will be blocked until latest flush is done.
      */
-
     private void performCompact() throws IOException {
         flushSemaphore.acquireUninterruptibly();
         Path compactedPath;
         List<SSTable> fixed;
         try {
-            closeCheck();
             fixed = this.storage.ssTables();
-            if (fixed.size() <= 1) {
-                if (fixed.isEmpty()) {
-                    logger.info("Trying to compact empty ssTables");
-                    return;
-                } else if (fixed.get(0).isCompacted()) {
-                    logger.info("Trying to compact compacted table");
-                    return;
-                }
+            closeCheck();
+            if (fixed.isEmpty() || (fixed.size() == 1 && fixed.get(0).isCompacted())) {
+                logger.info("Reject compact because it's redundant");
+                return;
             }
             duringCompactionTables = new ArrayList<>();
             duringCompactionTables.add(null);//for compacted table in future
@@ -130,9 +107,9 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         } finally {
             flushSemaphore.release();
         }
-        SSTable.Sizes sizes = Utils.getSizes(tablesFilteredFullRange(fixed));
-        Iterator<Entry<MemorySegment>> forWrite = tablesFilteredFullRange(fixed);
-        SSTable compacted = writeSSTable(compactedPath, forWrite, sizes.tableSize(), sizes.indexSize());
+        SSTable.Sizes sizes = Utils.getSizes(Utils.tablesFilteredFullRange(fixed, this));
+        Iterator<Entry<MemorySegment>> forWrite = Utils.tablesFilteredFullRange(fixed, this);
+        SSTable compacted = SSTable.writeTable(compactedPath, forWrite, sizes.tableSize(), sizes.indexSize());
 
         synchronized (isCompact) { //sync between concurrent flush and compact
             duringCompactionTables.set(0, compacted);
@@ -224,7 +201,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             return;
         }
         SSTable.Sizes sizes = Utils.getSizes(readOnlyMemTable.values().iterator());
-        SSTable table = writeSSTable(
+        SSTable table = SSTable.writeTable(
                 nextOrdinaryTable(),
                 readOnlyMemTable.values().iterator(),
                 sizes.tableSize(),
@@ -284,13 +261,6 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return desired;
     }
 
-    private SSTable writeSSTable(Path table,
-                                 Iterator<Entry<MemorySegment>> iterator,
-                                 long tableSize,
-                                 long indexSize) throws IOException {
-        return SSTable.writeTable(table, iterator, tableSize, indexSize);
-    }
-
     private Path nextOrdinaryTable() {
         return nextTable(String.valueOf(nextTableNum.getAndIncrement()));
     }
@@ -303,15 +273,13 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return config.basePath().resolve(name);
     }
 
-    private Iterator<Entry<MemorySegment>> tablesFilteredFullRange(List<SSTable> fixed) {
-        Iterator<Entry<MemorySegment>> discIterator = Utils.tablesRange(null, null, fixed);
-        PeekingIterator<Entry<MemorySegment>> iterator = new PeekingIterator<>(discIterator);
-        return CustomIterators.skipTombstones(this, null, null, iterator);
-    }
-
     private void closeCheck() {
         if (isClosed) {
             throw new IllegalStateException("Already closed");
         }
+    }
+
+    public Storage getStorage() {
+        return storage;
     }
 }

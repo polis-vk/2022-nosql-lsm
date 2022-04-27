@@ -151,4 +151,10 @@ public final class Utils {
         }
         return new AtomicLong(Long.parseLong(lastTable) + 1);
     }
+
+    public static Iterator<Entry<MemorySegment>> tablesFilteredFullRange(List<SSTable> fixed, LsmDao lsmDao) {
+        Iterator<Entry<MemorySegment>> discIterator = Utils.tablesRange(null, null, fixed);
+        PeekingIterator<Entry<MemorySegment>> iterator = new PeekingIterator<>(discIterator);
+        return CustomIterators.skipTombstones(lsmDao, null, null, iterator);
+    }
 }
