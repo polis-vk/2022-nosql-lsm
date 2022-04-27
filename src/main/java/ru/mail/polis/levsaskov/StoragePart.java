@@ -100,8 +100,8 @@ public class StoragePart {
      * @return count of bytes
      */
     public static int getPersEntryByteSize(Entry<ByteBuffer> entry) {
-        int keyLength = entry.key().array().length;
-        int valueLength = entry.value() == null ? 0 : entry.value().array().length;
+        int keyLength = entry.key().capacity();
+        int valueLength = entry.value() == null ? 0 : entry.value().capacity();
 
         return 2 * Integer.BYTES + keyLength + valueLength;
     }
