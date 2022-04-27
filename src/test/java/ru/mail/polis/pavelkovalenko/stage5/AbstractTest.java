@@ -135,7 +135,7 @@ public class AbstractTest extends BaseTest {
                     Thread.sleep(4_000);
                     long millisElapsed = Timer.elapseMs(dao::close);
                     assertTrue(millisElapsed > 50);
-                    assertTrue(millisElapsed < 100);
+                    assertTrue(millisElapsed < 500);
                     Utils.assertNFilesInConfigDir(dao, 2);
                 }
         );
