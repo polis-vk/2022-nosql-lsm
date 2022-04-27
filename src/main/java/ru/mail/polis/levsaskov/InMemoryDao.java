@@ -29,6 +29,14 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     private final FlushExecutor flushExecutor;
     private volatile boolean isClosed;
 
+    public InMemoryDao() {
+        storageSystem = null;
+        flushThread = null;
+        flushExecutor = null;
+        compactThread = null;
+        flushThresholdBytes = 0;
+    }
+
     public InMemoryDao(Config config) throws IOException {
         flushThresholdBytes = config.flushThresholdBytes();
         storageSystem = StorageSystem.load(config.basePath());
