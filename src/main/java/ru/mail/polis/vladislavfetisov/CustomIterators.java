@@ -70,6 +70,7 @@ public final class CustomIterators {
                 }
                 Entry<MemorySegment> e1 = it1.peek();
                 Entry<MemorySegment> e2 = it2.peek();
+
                 int compare = Utils.compareMemorySegments(e1.key(), e2.key());
                 if (compare < 0) {
                     it1.next();
