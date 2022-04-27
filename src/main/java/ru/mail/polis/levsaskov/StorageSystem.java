@@ -114,8 +114,9 @@ public final class StorageSystem implements AutoCloseable {
         if (entrys.isEmpty()) {
             return;
         }
+
+        flushCompactLock.lock();
         try {
-            flushCompactLock.lock();
             Path indPath = getIndexFilePath(storageParts.size());
             Path memPath = getMemFilePath(storageParts.size());
             save(indPath, memPath, entrys.values().iterator());
@@ -131,8 +132,8 @@ public final class StorageSystem implements AutoCloseable {
     }
 
     public void compact() throws IOException {
+        flushCompactLock.lock();
         try {
-            flushCompactLock.lock();
             Path indCompPath = location.resolve(COMPACTED_IND_FILE);
             Path memCompPath = location.resolve(COMPACTED_MEM_FILE);
             save(indCompPath, memCompPath, getMergedEntrys(null, null));
