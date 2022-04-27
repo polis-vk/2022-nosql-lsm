@@ -1,7 +1,5 @@
 package ru.mail.polis.pavelkovalenko.stage5;
 
-import org.junit.jupiter.api.Assertions;
-import org.opentest4j.AssertionFailedError;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.BaseTest;
 import ru.mail.polis.Dao;
@@ -11,7 +9,6 @@ import ru.mail.polis.Entry;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
