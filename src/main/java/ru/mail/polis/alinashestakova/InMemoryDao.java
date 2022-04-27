@@ -98,15 +98,10 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     private Iterator<BaseEntry<MemorySegment>> getMemoryIterator(MemorySegment from, MemorySegment to,
                                                                  boolean isFlushingMemory, State tmpState) {
-        lock.readLock().lock();
-        try {
-            if (to == null) {
-                return (isFlushingMemory ? tmpState.flushingMemory : tmpState.memory).tailMap(from).values().iterator();
-            }
-            return (isFlushingMemory ? tmpState.flushingMemory : tmpState.memory).subMap(from, to).values().iterator();
-        } finally {
-            lock.readLock().unlock();
+        if (to == null) {
+            return (isFlushingMemory ? tmpState.flushingMemory : tmpState.memory).tailMap(from).values().iterator();
         }
+        return (isFlushingMemory ? tmpState.flushingMemory : tmpState.memory).subMap(from, to).values().iterator();
     }
 
     @Override
