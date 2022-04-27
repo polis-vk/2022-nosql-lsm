@@ -42,7 +42,6 @@ public final class StorageSystem implements AutoCloseable {
         }
 
         ArrayList<StoragePart> storageParts = new ArrayList<>();
-
         for (int i = 0; i < Integer.MAX_VALUE; i++) {
             Path nextIndFile = getIndexFilePath(location, i);
             Path nextMemFile = getMemFilePath(location, i);
@@ -74,42 +73,6 @@ public final class StorageSystem implements AutoCloseable {
         }
 
         return res;
-    }
-
-    public void compact() throws IOException {
-        try {
-            flushCompactLock.lock();
-            Path indCompPath = location.resolve(COMPACTED_IND_FILE);
-            Path memCompPath = location.resolve(COMPACTED_MEM_FILE);
-            save(indCompPath, memCompPath, getMergedEntrys(null, null));
-
-            // Not correct for windows, because of deleting files
-            finishCompact(location, indCompPath, memCompPath);
-
-            // Excluding risk of unvalid storageSystem and setting to compact file:
-            List<StoragePart> newStParts = new ArrayList<>();
-            newStParts.add(StoragePart.load(getIndexFilePath(0), getMemFilePath(0), 0));
-            var oldStParts = storageParts;
-            storageParts = newStParts;
-            closeParts(oldStParts);
-        } finally {
-            flushCompactLock.unlock();
-        }
-    }
-
-    private static void finishCompact(Path location, Path compactedInd, Path compactedMem) throws IOException {
-        for (int i = 0; ; i++) {
-            Path nextIndFile = getIndexFilePath(location, i);
-            Path nextMemFile = getMemFilePath(location, i);
-
-            if (!Files.deleteIfExists(nextIndFile)) {
-                break;
-            }
-            Files.deleteIfExists(nextMemFile);
-        }
-
-        Files.move(compactedInd, getIndexFilePath(location, 0), StandardCopyOption.ATOMIC_MOVE);
-        Files.move(compactedMem, getMemFilePath(location, 0), StandardCopyOption.ATOMIC_MOVE);
     }
 
     /**
@@ -151,7 +114,6 @@ public final class StorageSystem implements AutoCloseable {
         if (entrys.isEmpty()) {
             return;
         }
-
         try {
             flushCompactLock.lock();
             Path indPath = getIndexFilePath(storageParts.size());
@@ -168,14 +130,50 @@ public final class StorageSystem implements AutoCloseable {
 
     }
 
-    public boolean isCompacted() {
-        return storageParts.size() <= 1;
+    public void compact() throws IOException {
+        try {
+            flushCompactLock.lock();
+            Path indCompPath = location.resolve(COMPACTED_IND_FILE);
+            Path memCompPath = location.resolve(COMPACTED_MEM_FILE);
+            save(indCompPath, memCompPath, getMergedEntrys(null, null));
+
+            // Not correct for windows, because of deleting files
+            finishCompact(location, indCompPath, memCompPath);
+
+            // Excluding risk of unvalid storageSystem and setting to compact file:
+            List<StoragePart> newStParts = new ArrayList<>();
+            newStParts.add(StoragePart.load(getIndexFilePath(0), getMemFilePath(0), 0));
+            var oldStParts = storageParts;
+            storageParts = newStParts;
+            closeParts(oldStParts);
+        } finally {
+            flushCompactLock.unlock();
+        }
     }
 
     @Override
     public void close() {
         closeParts(storageParts);
         storageParts.clear();
+    }
+
+    public boolean isCompacted() {
+        return storageParts.size() <= 1;
+    }
+
+    private static void finishCompact(Path location, Path compactedInd, Path compactedMem) throws IOException {
+        for (int i = 0; ; i++) {
+            Path nextIndFile = getIndexFilePath(location, i);
+            Path nextMemFile = getMemFilePath(location, i);
+
+            if (!Files.deleteIfExists(nextIndFile)) {
+                break;
+            }
+            Files.deleteIfExists(nextMemFile);
+        }
+
+        Files.move(compactedInd, getIndexFilePath(location, 0), StandardCopyOption.ATOMIC_MOVE);
+        Files.move(compactedMem, getMemFilePath(location, 0), StandardCopyOption.ATOMIC_MOVE);
     }
 
     private static void closeParts(List<StoragePart> storageParts) {
@@ -200,7 +198,8 @@ public final class StorageSystem implements AutoCloseable {
         return location.resolve(num + IND_FILENAME);
     }
 
-    private static void save(Path indPath, Path memPath, Iterator<Entry<ByteBuffer>> entrysToWrite) throws IOException {
+    private static void save(Path indPath, Path memPath, Iterator<Entry<ByteBuffer>> entrysToWrite) throws
+            IOException {
         Path indTmpPath = indPath.resolveSibling(TMP_PREFIX + indPath.getFileName());
         Files.deleteIfExists(indTmpPath);
 

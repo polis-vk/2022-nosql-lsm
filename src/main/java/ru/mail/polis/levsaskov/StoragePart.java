@@ -9,6 +9,7 @@ import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -191,7 +192,7 @@ public class StoragePart implements AutoCloseable {
         MappedByteBuffer mappedFile;
         try (
                 FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath,
-                        EnumSet.of(StandardOpenOption.READ))
+                        EnumSet.of(StandardOpenOption.READ, StandardOpenOption.WRITE))
         ) {
             mappedFile = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, mapSize);
         }
