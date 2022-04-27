@@ -12,12 +12,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -169,12 +164,14 @@ public final class SSTable implements Closeable {
                 return Collections.emptyIterator();
             }
         }
+
         if (to != null) {
             ri = Utils.binarySearch(to, mapFile, mapIndex);
             if (ri == -1) {
                 return Collections.emptyIterator();
             }
         }
+
         long finalLi = li;
         long finalRi = ri;
         return new Iterator<>() {
@@ -200,6 +197,10 @@ public final class SSTable implements Closeable {
     @Override
     public void close() throws IOException {
         sharedScope.close();
+    }
+
+    public boolean isCompacted() {
+        return tableName.toString().endsWith(COMPACTED);
     }
 
     /**

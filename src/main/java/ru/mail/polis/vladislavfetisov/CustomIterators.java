@@ -19,10 +19,15 @@ public final class CustomIterators {
         return switch (iterators.size()) {
             case 0 -> Collections.emptyIterator();
             case 1 -> iterators.get(0);
-            case 2 -> mergeTwo(new PeekingIterator<>(iterators.get(0)),
-                    new PeekingIterator<>(iterators.get(1)));
+            case 2 -> getMergedTwo(iterators.get(0), iterators.get(1));
             default -> mergeList(iterators);
         };
+    }
+
+    public static PeekingIterator<Entry<MemorySegment>> getMergedTwo
+            (Iterator<Entry<MemorySegment>> first,
+             Iterator<Entry<MemorySegment>> second) {
+        return mergeTwo(new PeekingIterator<>(first), new PeekingIterator<>(second));
     }
 
     public static PeekingIterator<Entry<MemorySegment>> mergeList(
@@ -83,20 +88,29 @@ public final class CustomIterators {
     }
 
     public static Iterator<Entry<MemorySegment>> skipTombstones(
-            PeekingIterator<Entry<MemorySegment>> iterator) {
+            LsmDao lsmDao, MemorySegment from, MemorySegment to, PeekingIterator<Entry<MemorySegment>> merged) {
 
         return new Iterator<>() {
+            private MemorySegment prevKey = from;
+            private PeekingIterator<Entry<MemorySegment>> it = merged;
+
             @Override
             public boolean hasNext() {
                 while (true) {
-                    if (!iterator.hasNext()) {
-                        return false;
+                    try {
+                        if (!it.hasNext()) {
+                            return false;
+                        }
+                        Entry<MemorySegment> entry = it.peek();
+                        prevKey = entry.key();
+                        if (!entry.isTombstone()) {
+                            return true;
+                        }
+                        it.next();
+                    } catch (IllegalStateException e) {
+                        LsmDao.logger.info("iterator is invoked again");
+                        it = lsmDao.getMergedIterator(prevKey, to);
                     }
-                    Entry<MemorySegment> entry = iterator.peek();
-                    if (!entry.isTombstone()) {
-                        return true;
-                    }
-                    iterator.next();
                 }
             }
 
@@ -105,8 +119,10 @@ public final class CustomIterators {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
                 }
-                return iterator.next();
+                return it.next();
             }
-        };
+        }
+
+                ;
     }
 }

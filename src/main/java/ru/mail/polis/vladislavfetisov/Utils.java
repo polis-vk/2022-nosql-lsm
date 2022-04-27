@@ -12,10 +12,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class Utils {
 
@@ -138,9 +137,6 @@ public final class Utils {
 
     public static Iterator<Entry<MemorySegment>> tablesRange(
             MemorySegment from, MemorySegment to, List<SSTable> tables) {
-        if (tables.isEmpty()) {
-            return Collections.emptyIterator();
-        }
         List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(tables.size());
         for (SSTable table : tables) {
             iterators.add(table.range(from, to));
@@ -148,27 +144,11 @@ public final class Utils {
         return CustomIterators.merge(iterators);
     }
 
-    public static Iterator<Entry<MemorySegment>> fromMemory(
-            MemorySegment from,
-            MemorySegment to,
-            ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage) {
-        if (from == null && to == null) {
-            return storage.values().iterator();
+    public static AtomicLong getLastTableNum(List<SSTable> ssTables) {
+        String lastTable = ssTables.get(ssTables.size() - 1).getTableName().getFileName().toString();
+        if (lastTable.endsWith(SSTable.COMPACTED)) {
+            lastTable = Utils.removeSuffix(lastTable, SSTable.COMPACTED);
         }
-        return subMap(from, to, storage).values().iterator();
-    }
-
-    public static ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> subMap(
-            MemorySegment from,
-            MemorySegment to,
-            ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> storage) {
-
-        if (from == null) {
-            return storage.headMap(to);
-        }
-        if (to == null) {
-            return storage.tailMap(from);
-        }
-        return storage.subMap(from, to);
+        return new AtomicLong(Long.parseLong(lastTable) + 1);
     }
 }
