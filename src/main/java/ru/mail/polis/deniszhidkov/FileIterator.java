@@ -20,7 +20,7 @@ public class FileIterator implements Iterator<BaseEntry<String>> {
 
     @Override
     public boolean hasNext() {
-        return next != null && !reader.getIsRemoved();
+        return next != null;
     }
 
     @Override
@@ -31,9 +31,6 @@ public class FileIterator implements Iterator<BaseEntry<String>> {
     }
 
     private BaseEntry<String> getNextEntry() {
-        if (reader.getIsRemoved()) {
-            return null;
-        }
         BaseEntry<String> result;
         try {
             result = reader.readNextEntry();
