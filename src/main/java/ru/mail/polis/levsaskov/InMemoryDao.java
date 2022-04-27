@@ -89,7 +89,7 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     public void upsert(Entry<ByteBuffer> entry) {
         checkClose();
 
-        int entrySize = getEntryInMemorySize(entry);
+        int entrySize = StoragePart.getPersEntryByteSize(entry);
         if (memTableByteSize.addAndGet(entrySize) > flushThresholdBytes) {
             // Add() throws exception if queue is full, so upsert will not be done.
             flushQueue.add(memTable);
@@ -167,10 +167,5 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         }
 
         return cut;
-    }
-
-    private static int getEntryInMemorySize(Entry<ByteBuffer> entry) {
-        int valSize = entry.value() == null ? 0 : entry.value().capacity();
-        return entry.key().capacity() + valSize;
     }
 }

@@ -93,6 +93,19 @@ public class StoragePart {
         return new IndexedPeekIterator(new StoragePartIterator(from, to), storagePartN);
     }
 
+    /**
+     * Count byte size of entry, that we want to write in file.
+     *
+     * @param entry that we want to save
+     * @return count of bytes
+     */
+    public static int getPersEntryByteSize(Entry<ByteBuffer> entry) {
+        int keyLength = entry.key().array().length;
+        int valueLength = entry.value() == null ? 0 : entry.value().array().length;
+
+        return 2 * Integer.BYTES + keyLength + valueLength;
+    }
+
     private int getGreaterOrEqual(int inLast, ByteBuffer key) {
         if (key == null) {
             return 0;
@@ -162,19 +175,6 @@ public class StoragePart {
         }
 
         bufferToWrite.flip();
-    }
-
-    /**
-     * Count byte size of entry, that we want to write in file.
-     *
-     * @param entry that we want to save
-     * @return count of bytes
-     */
-    private static int getPersEntryByteSize(Entry<ByteBuffer> entry) {
-        int keyLength = entry.key().array().length;
-        int valueLength = entry.value() == null ? 0 : entry.value().array().length;
-
-        return 2 * Integer.BYTES + keyLength + valueLength;
     }
 
     private static MappedByteBuffer mapFile(Path filePath, int mapSize) throws IOException {
