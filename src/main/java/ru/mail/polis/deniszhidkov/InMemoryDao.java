@@ -169,7 +169,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         currentState.writer.writeDAO(currentState.inFlushing);
         currentState.readers.add(0,
                 new DaoReader(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage() - 1),
-                utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage() - 1))
+                        utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage() - 1))
         );
         DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
                 utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage())
@@ -281,9 +281,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         executor.shutdown();
         try {
             //noinspection StatementWithEmptyBody
-            while (!executor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS));
+            while (!executor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS)) ;
         } catch (InterruptedException e) {
-            throw new IllegalStateException(e);
+            Thread.currentThread().interrupt();
         }
         State currentState = this.state;
         utils.closeReaders(currentState.readers);
