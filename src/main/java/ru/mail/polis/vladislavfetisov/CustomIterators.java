@@ -24,9 +24,9 @@ public final class CustomIterators {
         };
     }
 
-    public static PeekingIterator<Entry<MemorySegment>> getMergedTwo
-            (Iterator<Entry<MemorySegment>> first,
-             Iterator<Entry<MemorySegment>> second) {
+    public static PeekingIterator<Entry<MemorySegment>> getMergedTwo(
+            Iterator<Entry<MemorySegment>> first,
+            Iterator<Entry<MemorySegment>> second) {
         return mergeTwo(new PeekingIterator<>(first), new PeekingIterator<>(second));
     }
 

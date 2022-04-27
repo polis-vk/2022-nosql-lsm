@@ -28,7 +28,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     private final Config config;
     private final AtomicLong nextTableNum;
     private final AtomicBoolean isCompact = new AtomicBoolean();
-    private volatile boolean isClosed = false;
+    private volatile boolean isClosed;
     private final ExecutorService service = Executors.newFixedThreadPool(THREADS);
 
     private volatile Storage storage;
@@ -70,8 +70,8 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return CustomIterators.skipTombstones(this, from, to, merged);
     }
 
-    public PeekingIterator<Entry<MemorySegment>> getMergedIterator
-            (MemorySegment from, MemorySegment to) {
+    public PeekingIterator<Entry<MemorySegment>> getMergedIterator(
+            MemorySegment from, MemorySegment to) {
 
         Storage fixedStorage = this.storage;
         List<SSTable> tables = fixedStorage.ssTables();
@@ -118,8 +118,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
                 if (fixed.isEmpty()) {
                     logger.info("Trying to compact empty ssTables");
                     return;
-                }
-                else if (fixed.get(0).isCompacted()) {
+                } else if (fixed.get(0).isCompacted()) {
                     logger.info("Trying to compact compacted table");
                     return;
                 }
@@ -151,7 +150,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         rwLock.readLock().lock();
         boolean oversize;
         Storage localStorage = this.storage;
-        if (localStorage.memory().isOversize().get() && localStorage.isFlushing()) {//if user's flush now running
+        if (localStorage.memory().isOversize().get() && localStorage.isFlushing()) { //if user's flush now running
             throw new IllegalStateException("So many upserts");
         }
         try {
@@ -306,7 +305,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     private Iterator<Entry<MemorySegment>> tablesFilteredFullRange(List<SSTable> fixed) {
         Iterator<Entry<MemorySegment>> discIterator = Utils.tablesRange(null, null, fixed);
-        final PeekingIterator<Entry<MemorySegment>> iterator = new PeekingIterator<>(discIterator);
+        PeekingIterator<Entry<MemorySegment>> iterator = new PeekingIterator<>(discIterator);
         return CustomIterators.skipTombstones(this, null, null, iterator);
     }
 

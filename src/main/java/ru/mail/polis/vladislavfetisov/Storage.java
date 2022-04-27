@@ -47,7 +47,6 @@ public record Storage(Memory memory, Memory readOnlyMemory, List<SSTable> ssTabl
 
         public static final Memory EMPTY_MEMORY = getNewMemory(-1);
 
-
         private Memory(ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> delegate, long sizeThreshold) {
             this.sizeLimit = sizeThreshold;
             this.delegate = delegate;
@@ -92,9 +91,9 @@ public record Storage(Memory memory, Memory readOnlyMemory, List<SSTable> ssTabl
             return subMap(from, to).values().iterator();
         }
 
-        public ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> subMap
-                (MemorySegment from,
-                 MemorySegment to) {
+        public ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> subMap(
+                MemorySegment from,
+                MemorySegment to) {
             if (from == null) {
                 return delegate.headMap(to);
             }
