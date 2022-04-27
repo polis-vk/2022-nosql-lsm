@@ -144,9 +144,7 @@ public final class StorageSystem implements AutoCloseable {
             // Excluding risk of unvalid storageSystem and setting to compact file:
             List<StoragePart> newStParts = new ArrayList<>();
             newStParts.add(StoragePart.load(getIndexFilePath(0), getMemFilePath(0), 0));
-            var oldStParts = storageParts;
             storageParts = newStParts;
-            closeParts(oldStParts);
         } finally {
             flushCompactLock.unlock();
         }
@@ -154,7 +152,6 @@ public final class StorageSystem implements AutoCloseable {
 
     @Override
     public void close() {
-        closeParts(storageParts);
         storageParts.clear();
     }
 
@@ -175,12 +172,6 @@ public final class StorageSystem implements AutoCloseable {
 
         Files.move(compactedInd, getIndexFilePath(location, 0), StandardCopyOption.ATOMIC_MOVE);
         Files.move(compactedMem, getMemFilePath(location, 0), StandardCopyOption.ATOMIC_MOVE);
-    }
-
-    private static void closeParts(List<StoragePart> storageParts) {
-        for (StoragePart storagePart : storageParts) {
-            storagePart.close();
-        }
     }
 
     private Path getMemFilePath(int num) {

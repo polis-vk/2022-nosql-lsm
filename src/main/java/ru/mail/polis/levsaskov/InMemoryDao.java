@@ -15,23 +15,19 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
+    private final long flushThresholdBytes;
+    private final StorageSystem storageSystem;
     private volatile ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>> memTable = new ConcurrentSkipListMap<>();
+    private final AtomicLong memTableByteSize = new AtomicLong();
     // Poison pill is empty map
     private final BlockingQueue<ConcurrentNavigableMap<ByteBuffer, Entry<ByteBuffer>>> flushQueue =
             new ArrayBlockingQueue<>(1);
     // True is signal to start compact, False is poison pill.
     private final BlockingQueue<Boolean> compactionQueue = new LinkedBlockingQueue<>();
+    private final Thread compactThread;
+    private final Thread flushThread;
+    private final FlushExecutor flushExecutor;
     private volatile boolean isClosed;
-    private final AtomicLong memTableByteSize = new AtomicLong();
-    private long flushThresholdBytes;
-    private final StorageSystem storageSystem;
-    private Thread compactThread;
-    private Thread flushThread;
-    private FlushExecutor flushExecutor;
-
-    public InMemoryDao() {
-        storageSystem = null;
-    }
 
     public InMemoryDao(Config config) throws IOException {
         flushThresholdBytes = config.flushThresholdBytes();

@@ -4,12 +4,9 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -18,13 +15,13 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
-public class StoragePart implements AutoCloseable {
+public class StoragePart {
     public static final int LEN_FOR_NULL = -1;
     private static final int DEFAULT_ALLOC_SIZE = 2048;
     private static final int IND_BUFF_SIZE = 10;
     private final int storagePartN;
-    private MappedByteBuffer indexBB;
-    private MappedByteBuffer memoryBB;
+    private final MappedByteBuffer indexBB;
+    private final MappedByteBuffer memoryBB;
     private int entrysC;
 
     private StoragePart(MappedByteBuffer indexBB, MappedByteBuffer memoryBB, int storagePartN) {
@@ -94,14 +91,6 @@ public class StoragePart implements AutoCloseable {
 
     public IndexedPeekIterator get(ByteBuffer from, ByteBuffer to) {
         return new IndexedPeekIterator(new StoragePartIterator(from, to), storagePartN);
-    }
-
-    @Override
-    public void close() {
-        unmap(indexBB);
-        indexBB = null;
-        unmap(memoryBB);
-        memoryBB = null;
     }
 
     private int getGreaterOrEqual(int inLast, ByteBuffer key) {
@@ -198,19 +187,6 @@ public class StoragePart implements AutoCloseable {
         }
 
         return mappedFile;
-    }
-
-    private static void unmap(MappedByteBuffer buffer) {
-        try {
-            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
-            Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
-            unsafeField.setAccessible(true);
-            Object unsafe = unsafeField.get(null);
-            Method invokeCleaner = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
-            invokeCleaner.invoke(unsafe, buffer);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
     }
 
     private class StoragePartIterator implements Iterator<Entry<ByteBuffer>> {
