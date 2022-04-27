@@ -58,17 +58,17 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-        State state = this.state;
+        State currentState = this.state;
         Queue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
                 Comparator.comparing((PriorityPeekIterator o) ->
                         o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
         );
         // Если закроются readers заново вызовем get
         try {
-            addIterators(iteratorsQueue, state, from, to);
+            addIterators(iteratorsQueue, currentState, from, to);
         } catch (IllegalStateException e) {
             iteratorsQueue.clear();
-            addIterators(iteratorsQueue, state, from, to);
+            addIterators(iteratorsQueue, currentState, from, to);
         }
         return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new MergeIterator(iteratorsQueue);
     }
@@ -89,17 +89,17 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-        State state = this.state;
-        BaseEntry<String> value = state.inMemory.get(key);
+        State currentState = this.state;
+        BaseEntry<String> value = currentState.inMemory.get(key);
         if (value == null) {
-            value = state.inFlushing.get(key);
+            value = currentState.inFlushing.get(key);
             if (value != null) {
                 return value;
             }
             // Если закроются readers снова вызовем get
             try {
-                for (int i = 0; i < state.getSizeOfStorage(); i++) {
-                    value = state.readers.get(i).findByKey(key);
+                for (int i = 0; i < currentState.getSizeOfStorage(); i++) {
+                    value = currentState.readers.get(i).findByKey(key);
                     if (value != null) {
                         return value.value() == null ? null : value;
                     }
@@ -117,16 +117,16 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-        State state = this.state;
+        State currentState = this.state;
         long entrySize = DaoUtils.getEntrySize(entry);
         upsertLock.readLock().lock();
         try {
-            state.inMemory.put(entry.key(), entry);
-            state.storageMemoryUsage.addAndGet(entrySize);
+            currentState.inMemory.put(entry.key(), entry);
+            currentState.storageMemoryUsage.addAndGet(entrySize);
         } finally {
             upsertLock.readLock().unlock();
         }
-        if (state.storageMemoryUsage.get() >= flushThresholdBytes) {
+        if (currentState.storageMemoryUsage.get() >= flushThresholdBytes) {
             flushResult = executor.submit(() -> {
                 try {
                     backgroundFlush();
@@ -145,7 +145,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isFlushed()) {
             throw new IllegalStateException("Flush queue overflow");
         }
-
         flushResult = executor.submit(() -> {
             try {
                 backgroundFlush();
@@ -160,26 +159,24 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private void backgroundFlush() throws IOException {
-        State state = this.state;
-
+        State currentState = this.state;
         upsertLock.writeLock().lock();
         try {
-            this.state = state.beforeFlush();
+            this.state = currentState.beforeFlush();
         } finally {
             upsertLock.writeLock().unlock();
         }
-
-        state.writer.writeDAO(state.inFlushing);
-        state.readers.add(0, new DaoReader(utils.resolvePath(DATA_FILE_NAME, state.getSizeOfStorage() - 1),
-                utils.resolvePath(OFFSETS_FILE_NAME, state.getSizeOfStorage() - 1))
+        currentState.writer.writeDAO(currentState.inFlushing);
+        currentState.readers.add(0,
+                new DaoReader(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage() - 1),
+                utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage() - 1))
         );
-        DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, state.getSizeOfStorage()),
-                utils.resolvePath(OFFSETS_FILE_NAME, state.getSizeOfStorage())
+        DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
+                utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage())
         );
-
         upsertLock.writeLock().lock();
         try {
-            this.state = state.afterFlush(writer);
+            this.state = currentState.afterFlush(writer);
         } finally {
             upsertLock.writeLock().unlock();
         }
@@ -190,8 +187,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-        State state = this.state;
-        if (state.getSizeOfStorage() <= 1) {
+        State currentState = this.state;
+        if (currentState.getSizeOfStorage() <= 1) {
             return;
         }
         executor.submit(() -> {
@@ -204,20 +201,20 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     private synchronized void backgroundCompact() throws IOException {
-        State state = this.state;
+        State currentState = this.state;
         Queue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
                 Comparator.comparing((PriorityPeekIterator o) ->
                         o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
         );
         // Во время compact ничего сфлашиться не может, поэтому количество reader неизменно
-        addInStorageIteratorsByRange(iteratorsQueue, state, null, null, 0);
+        addInStorageIteratorsByRange(iteratorsQueue, currentState, null, null, 0);
         Iterator<BaseEntry<String>> allData = new MergeIterator(iteratorsQueue);
         int allDataSize = 0;
         while (allData.hasNext()) {
             allDataSize++;
             allData.next();
         }
-        addInStorageIteratorsByRange(iteratorsQueue, state, null, null, 0);
+        addInStorageIteratorsByRange(iteratorsQueue, currentState, null, null, 0);
         allData = new MergeIterator(iteratorsQueue);
         Path pathToTmpData = utils.resolvePath(DATA_FILE_NAME, -2);
         Path pathToTmpOffsets = utils.resolvePath(OFFSETS_FILE_NAME, -2);
@@ -227,18 +224,16 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
          *  До этого не будем учитывать tmp файлы при восстановлении. */
         Files.move(pathToTmpData, utils.resolvePath(DATA_FILE_NAME, -1), StandardCopyOption.ATOMIC_MOVE);
         Files.move(pathToTmpOffsets, utils.resolvePath(OFFSETS_FILE_NAME, -1), StandardCopyOption.ATOMIC_MOVE);
-
-        utils.closeReaders(state.readers);
+        utils.closeReaders(currentState.readers);
         finishCompact();
         CopyOnWriteArrayList<DaoReader> readers = utils.initDaoReaders();
         DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, readers.size()),
                 utils.resolvePath(OFFSETS_FILE_NAME, readers.size())
         );
-
         // Нужен readLock, чтобы не блокировать upsert
         upsertLock.readLock().lock();
         try {
-            this.state = state.afterCompact(readers, writer);
+            this.state = currentState.afterCompact(readers, writer);
         } finally {
             upsertLock.readLock().unlock();
         }
@@ -286,16 +281,16 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         executor.shutdown();
         try {
             //noinspection StatementWithEmptyBody
-            while (!executor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS)) ;
+            while (!executor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS));
         } catch (InterruptedException e) {
             throw new IllegalStateException(e);
         }
-        State state = this.state;
-        utils.closeReaders(state.readers);
-        state.readers.clear();
-        if (!state.inMemory.isEmpty()) {
-            state.writer.writeDAO(state.inMemory);
-            state.inMemory.clear();
+        State currentState = this.state;
+        utils.closeReaders(currentState.readers);
+        currentState.readers.clear();
+        if (!currentState.inMemory.isEmpty()) {
+            currentState.writer.writeDAO(currentState.inMemory);
+            currentState.inMemory.clear();
         }
     }
 
@@ -318,8 +313,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                                            ConcurrentNavigableMap<String, BaseEntry<String>> storage,
                                            String from,
                                            String to,
-                                           int priorityIndex
+                                           int index
     ) {
+        int priorityIndex = index;
         PriorityPeekIterator resIterator;
         if (from == null && to == null) {
             resIterator = new PriorityPeekIterator(storage.values().iterator(), priorityIndex);

@@ -4,7 +4,6 @@ import ru.mail.polis.BaseEntry;
 
 import java.util.Iterator;
 import java.util.Queue;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MergeIterator implements Iterator<BaseEntry<String>> {
 
