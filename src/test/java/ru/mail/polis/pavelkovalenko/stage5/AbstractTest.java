@@ -24,8 +24,6 @@ public class AbstractTest extends BaseTest {
         int nTasks = 5; // GET, UPSERT, FLUSH, COMPACT, CLOSE
         List<ParallelTask> tasks = List.of(
                 GET -> {
-                    assertSame(dao.all(), Collections.emptyList());
-
                     int randomPos = N_ENTRIES_FOR_AUTOFLUSH * N_ENTRIES_FOR_AUTOFLUSH;
                     Entry<String> randomEntry = entryAt(randomPos);
 
