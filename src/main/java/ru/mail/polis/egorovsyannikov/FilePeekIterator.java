@@ -2,7 +2,9 @@ package ru.mail.polis.egorovsyannikov;
 
 import ru.mail.polis.BaseEntry;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,16 +24,14 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
     private Iterator<BaseEntry<String>> delegate;
     private final int generation;
     private long fileSize;
+    private boolean isToBeDeleted = false;
+    private boolean isCompact = false;
+    public final static int BYTES_BEFORE_VALUES = 13;
 
-    public FilePeekIterator(Path path, String from, String to, int generation) {
+    public FilePeekIterator(Path path, int generation) {
         this.path = path;
         this.offsets = new ArrayList<>();
         this.generation = generation;
-        init(from, to);
-    }
-
-    public int getGeneration() {
-        return generation;
     }
 
     public FilePeekIterator(Iterator<BaseEntry<String>> delegate, int generation) {
@@ -39,16 +39,37 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
         this.generation = generation;
     }
 
-    private void init(String from, String to) {
+    public void setToBeDeleted(boolean toBeDeleted) {
+        isToBeDeleted = toBeDeleted;
+    }
+
+    public boolean isToBeDeleted() {
+        return isToBeDeleted;
+    }
+
+    public int getGeneration() {
+        return generation;
+    }
+
+    public Path getPath() {
+        return path;
+    }
+
+    public boolean isCompact() {
+        return isCompact;
+    }
+
+    public void setBoundaries(String from, String to) {
         try (DataInputStream reader = new DataInputStream(new BufferedInputStream(Files.newInputStream(path)))) {
+            isCompact = reader.readBoolean();
             numberOfEntries = reader.readInt();
             endIndex = reader.readLong();
-            startIndex = Integer.BYTES + Long.BYTES;
+            startIndex = BYTES_BEFORE_VALUES;
             if (endIndex == startIndex) {
                 numberOfEntries = 0;
             }
 
-            reader.skipNBytes(endIndex - Integer.BYTES - Long.BYTES);
+            reader.skipNBytes(endIndex - BYTES_BEFORE_VALUES);
 
             for (int i = 0; i < numberOfEntries; i++) {
                 offsets.add(reader.readLong());
@@ -100,7 +121,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
         int binarySearchIndexResult;
         long result;
 
-        if(!offsets.isEmpty()) {
+        if (!offsets.isEmpty()) {
             binarySearchIndexResult = fileBinarySearch(numberOfEntries - 1, key);
             currentFilePosition = offsets.get(binarySearchIndexResult);
             if (peek().key().compareTo(key) < 0) {
@@ -109,7 +130,7 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
                 result = offsets.get(binarySearchIndexResult);
             }
         } else {
-            result = 12;
+            result = BYTES_BEFORE_VALUES;
         }
 
         current = null;
