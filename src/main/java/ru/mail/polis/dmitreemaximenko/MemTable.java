@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MemTable implements Table {
     private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
@@ -17,26 +18,37 @@ public class MemTable implements Table {
             new ConcurrentSkipListMap<>(COMPARATOR);
     private final long tableSpace;
     private long spaceLeft;
+    private static int SUCCESS = 0;
+    private static int FLUSH_REQUEST = -1;
+    private static int TABLE_READ_ONLY = -2;
+    private AtomicBoolean flushRequested = new AtomicBoolean(false);
 
     public MemTable(long tableSpace) {
         this.tableSpace = tableSpace;
         this.spaceLeft = tableSpace;
     }
 
-    public boolean put(MemorySegment key, Entry<MemorySegment> entry) {
+    public int put(MemorySegment key, Entry<MemorySegment> entry) {
         // #fixMe data race with space
         long possibleSpaceLeft = spaceLeft;
-        if (data.containsKey(key)) {
+        if (data.containsKey(key) && data.get(key).value() != null) {
             possibleSpaceLeft += data.get(key).value().byteSize();
         }
 
-        if (spaceLeft < entry.value().byteSize()) {
+        if (entry.value() == null) {
+            data.put(key, entry);
+            return SUCCESS;
+        } else if (spaceLeft >= entry.value().byteSize()) {
             data.put(key, entry);
             spaceLeft = possibleSpaceLeft - entry.value().byteSize();
-            return true;
+            return SUCCESS;
         }
 
-        return false;
+        if (flushRequested.compareAndSet(false, true)) {
+            return FLUSH_REQUEST;
+        }
+
+        return TABLE_READ_ONLY;
     }
 
     public boolean isEmpty() {

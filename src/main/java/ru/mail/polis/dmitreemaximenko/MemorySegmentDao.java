@@ -27,8 +27,11 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private static final int FLUSHING_QUEUE_SIZE = 2;
     private static final String TMP_COMPACT_FILE = "compact_log_tmp";
     private static final String TMP_FLUSH_FILE = "flush_log_tmp";
-    private static final String TMP_SUFFIX = "tmp";
+    private static final String COMPACTING_FILE = "compacting_tmp";
     private static final long DEFAULT_TABLE_SPACE = 0124 * 1024 * 128;
+    private static int SUCCESS = 0;
+    private static int FLUSH_REQUEST = -1;
+    private static int TABLE_READ_ONLY = -2;
     private static final int LOG_INDEX_START = 0;
     private volatile boolean flushFinish = false;
     private int logIndexNextFileName;
@@ -40,6 +43,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private volatile MemTable flushingTable;
     private final ReadWriteLock DBTablesLock = new ReentrantReadWriteLock();
     private final ReadWriteLock logDirectoryLock = new ReentrantReadWriteLock();
+    private final ReadWriteLock flushLock = new ReentrantReadWriteLock();
     private final Config config;
     private final ResourceScope scope = ResourceScope.globalScope();
 
@@ -51,8 +55,17 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         this.config = config;
         this.compactor = Executors.newSingleThreadExecutor();
 
+        if (Files.exists(getCompactTmpFile())) {
+            finishCompacting();
+        }
+
         flusher = new Thread(() -> {
-            while (!flushFinish) {
+            while (true) {
+                flushLock.readLock().lock();
+                if (flushFinish) {
+                    break;
+                }
+                flushLock.readLock().unlock();
                 try {
                     try {
                         MemTable tableToFlush = flushingTables.take();
@@ -77,7 +90,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
 
                             DBTablesLock.writeLock().lock();
-                            ssTables.add(new SSTable(getLogName(newLogIndex), scope));
+                            ssTables.add(0, new SSTable(getLogName(newLogIndex), scope));
                             DBTablesLock.writeLock().unlock();
                         }
 
@@ -113,8 +126,8 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                 }
             }
         });
-        flusher.start();
 
+        flusher.start();
         activeMemTable = createMemoryTable();
         if (config == null) {
             ssTables = null;
@@ -123,11 +136,9 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             logIndexNextFileName = logPaths.size();
             ssTables = new ArrayList<>(logPaths.size());
 
-            DBTablesLock.writeLock().lock();
             for (Path logPath : logPaths) {
-                ssTables.add(new SSTable(logPath, scope));
+                ssTables.add(0, new SSTable(logPath, scope));
             }
-            DBTablesLock.writeLock().unlock();
         }
     }
 
@@ -141,13 +152,13 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         }
 
         if (to == null) {
-            return new BorderedIterator(fromValue, null, getAvailableTables());
+            return new BorderedMergeIterator(fromValue, null, getAvailableTables());
         }
-        return new BorderedIterator(fromValue, to, getAvailableTables());
+        return new BorderedMergeIterator(fromValue, to, getAvailableTables());
 
     }
 
-    // should get them in correct order
+    // should get them in correct order. Less is more recent
     private List<Table> getAvailableTables() {
         List<Table> result = new LinkedList<>();
         DBTablesLock.readLock().lock();
@@ -186,22 +197,15 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         return result;
     }
 
-    private void removeLogFilesExceptFirst() throws IOException {
-        int logIndex = LOG_INDEX_START + 1;
-        logDirectoryLock.writeLock().lock();
-        try {
-            while (true) {
-                Path filename = config.basePath().resolve(LOG_NAME + logIndex);
-                if (Files.exists(filename)) {
-                    logIndex++;
-                    Files.delete(filename);
-                } else {
-                    break;
-                }
-            }
-        } finally {
-            logDirectoryLock.writeLock().unlock();
+    private void removeLogFilesWithoutLocking() throws IOException {
+        for (int logIndex = logIndexNextFileName - 1; logIndex > 0; logIndex--) {
+            Path filename = config.basePath().resolve(LOG_NAME + logIndex);
+            Files.delete(filename);
         }
+    }
+
+    private Path getLogNameWithoutLocking() {
+        return config.basePath().resolve(LOG_NAME + logIndexNextFileName);
     }
 
     private Path getLogName() {
@@ -209,6 +213,10 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         Path result = config.basePath().resolve(LOG_NAME + logIndexNextFileName);
         logDirectoryLock.readLock().unlock();
         return result;
+    }
+
+    private Path getLogNameWithoutLocking(int logNumber) {
+        return config.basePath().resolve(LOG_NAME + logNumber);
     }
 
     private Path getLogName(int logNumber) {
@@ -220,12 +228,14 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     }
 
     private Path getCompactTmpFile() {
-        return config.basePath().resolve(LOG_NAME + TMP_COMPACT_FILE);
+        return config.basePath().resolve(TMP_COMPACT_FILE);
     }
 
     private Path getFlushTmpFile() {
-        return config.basePath().resolve(LOG_NAME + TMP_FLUSH_FILE);
+        return config.basePath().resolve(TMP_FLUSH_FILE);
     }
+
+    private Path getCompactingInProcessFile() {return config.basePath().resolve(COMPACTING_FILE);}
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) throws IOException {
@@ -242,18 +252,33 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public void upsert(Entry<MemorySegment> entry) {
-        while (!activeMemTable.put(entry.key(), entry)) {
-            DBTablesLock.readLock().lock();
+        while (true) {
+            int insertResult = activeMemTable.put(entry.key(), entry);
+            if (insertResult == SUCCESS) {
+                break;
+            }
+            if (insertResult == TABLE_READ_ONLY) {
+                // #fixMe polling
+                continue;
+            }
+
+            assert insertResult == FLUSH_REQUEST;
+            DBTablesLock.writeLock().lock();
             try {
                 if (flushingTables.size() < FLUSHING_QUEUE_SIZE) {
-                    flush();
+                    flushWithoutLocking();
                 } else {
                     throw new OutOfMemoryError();
                 }
             } finally {
-                DBTablesLock.readLock().unlock();
+                DBTablesLock.writeLock().unlock();
             }
         }
+    }
+
+    public void flushWithoutLocking() {
+        flushingTables.add(activeMemTable);
+        activeMemTable = createMemoryTable();
     }
 
     @Override
@@ -261,11 +286,18 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         DBTablesLock.writeLock().lock();
 
         try {
-            flushingTables.add(activeMemTable);
-            activeMemTable = createMemoryTable();
+            flushWithoutLocking();
         } finally {
             DBTablesLock.writeLock().unlock();
         }
+    }
+
+    private void finishCompacting() throws IOException {
+        List<Path> logPaths = getLogPaths();
+        logIndexNextFileName = logPaths.size();
+        removeLogFilesWithoutLocking();
+        Files.move(getCompactTmpFile(), getFirstLogFileName(), StandardCopyOption.ATOMIC_MOVE);
+        logIndexNextFileName = 1;
     }
 
     // values_amount index1 index2 ... indexN k1_size v1_size k1 v1 ....
@@ -274,8 +306,11 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (!scope.isAlive()) {
             return;
         }
-        flush();
+        flushLock.writeLock().lock();
         flushFinish = true;
+        flush();
+        flushLock.writeLock().unlock();
+
         try {
             flusher.join();
         } catch (InterruptedException e) {
@@ -366,26 +401,28 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                 ssTablesToCompact.addAll(ssTables);
                 DBTablesLock.readLock().unlock();
 
+                Files.deleteIfExists(getCompactingInProcessFile());
                 writeValuesToFile(() -> {
                     try {
-                        return new BorderedIterator(ssTablesToCompact);
+                        return new BorderedMergeIterator(ssTablesToCompact);
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
                     return Collections.emptyIterator();
-                }, getCompactTmpFile());
+                }, getCompactingInProcessFile());
 
                 logDirectoryLock.writeLock().lock();
                 try {
-                    Files.move(getCompactTmpFile(), getFirstLogFileName(), StandardCopyOption.ATOMIC_MOVE,
-                            StandardCopyOption.REPLACE_EXISTING);
-                    removeLogFilesExceptFirst();
+                    Files.move(getCompactingInProcessFile(), getCompactTmpFile(), StandardCopyOption.ATOMIC_MOVE);
+                    removeLogFilesWithoutLocking();
+                    Files.move(getCompactTmpFile(), getFirstLogFileName(), StandardCopyOption.ATOMIC_MOVE);
                     logIndexNextFileName = 1;
 
                     // fixing flushed during compaction files
                     int logNumber = ssTablesToCompact.size();
-                    while (Files.exists(getLogName(logNumber))) {
-                        Files.move(getLogName(logNumber), getLogName(logIndexNextFileName));
+                    // can use getLogNameWithoutLocking() because already hold logDirectoryLock.writeLock() lock
+                    while (Files.exists(getLogNameWithoutLocking(logNumber))) {
+                        Files.move(getLogNameWithoutLocking(logNumber), getLogNameWithoutLocking(logIndexNextFileName));
                         logIndexNextFileName++;
                     }
                 } finally {

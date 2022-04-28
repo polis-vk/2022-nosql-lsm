@@ -1,8 +1,6 @@
 package ru.mail.polis.dmitreemaximenko;
 
-import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
-import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Entry;
 
 import java.io.IOException;
@@ -13,11 +11,11 @@ import java.util.NavigableMap;
 import java.util.NoSuchElementException;
 import java.util.TreeMap;
 
-public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
+public class BorderedMergeIterator implements Iterator<Entry<MemorySegment>> {
     private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
     private final NavigableMap<MemorySegment, Source> sources;
 
-    public BorderedIterator(List<Table> tables) throws IOException {
+    public BorderedMergeIterator(List<Table> tables) throws IOException {
         this(null, null, tables);
     }
 
@@ -37,7 +35,7 @@ public class BorderedIterator implements Iterator<Entry<MemorySegment>> {
         }
     }
 
-    public BorderedIterator(MemorySegment from, MemorySegment to, List<Table> tables) throws IOException {
+    public BorderedMergeIterator(MemorySegment from, MemorySegment to, List<Table> tables) throws IOException {
         sources = new TreeMap<>(COMPARATOR);
         int sourceId = 0;
 
