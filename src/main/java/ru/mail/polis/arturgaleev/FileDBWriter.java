@@ -57,7 +57,7 @@ public class FileDBWriter implements Closeable {
         }
     }
 
-    private static long getEntryLength(Entry<MemorySegment> entry) {
+    static long getEntryLength(Entry<MemorySegment> entry) {
         return entry.key().byteSize()
                 + ((entry.value() == null) ? 0 : entry.value().byteSize()) + 2 * Long.BYTES;
     }

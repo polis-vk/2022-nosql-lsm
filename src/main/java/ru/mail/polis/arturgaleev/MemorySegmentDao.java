@@ -24,9 +24,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static java.util.concurrent.Executors.newFixedThreadPool;
+import static ru.mail.polis.arturgaleev.FileDBWriter.getEntryLength;
 
 public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>> {
-    private final AtomicReference<ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>>> dataBase;
+    private final AtomicReference<ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>>> memory;
     // queue which is waiting for flush
     private final BlockingQueue<ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>>> flushQueue;
     // sstable which is processing now. (I'd better use flushQueue.peek() which could wait like take())
@@ -53,7 +54,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         reader = new DBReader(config.basePath());
         newFileId = new AtomicLong(reader.getBiggestFileId() + 1);
 
-        dataBase = new AtomicReference<>(getNewSkipListMap());
+        memory = new AtomicReference<>(getNewSkipListMap());
         flushQueue = new LinkedBlockingQueue<>(1);
         currentlyFlushing = new LinkedBlockingQueue<>(1);
 
@@ -84,38 +85,33 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         return dataBaseIterator;
     }
 
+    private static void addIterator(ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> skipList,
+                                    int priority, List<PriorityPeekingIterator<Entry<MemorySegment>>> iterators,
+                                    MemorySegment from,
+                                    MemorySegment to) {
+        if (skipList != null) {
+            iterators.add(new PriorityPeekingIterator<>(
+                            priority,
+                            getSkipListMapIterator(from, to, skipList)
+                    )
+            );
+        }
+    }
+
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
         if (reader.hasNoReaders() && flushQueue.isEmpty() && currentlyFlushing.isEmpty()) {
             PriorityPeekingIterator<Entry<MemorySegment>> peekingIterator
-                    = new PriorityPeekingIterator<>(1, getSkipListMapIterator(from, to, dataBase.get()));
+                    = new PriorityPeekingIterator<>(1, getSkipListMapIterator(from, to, memory.get()));
             return new TombstoneRemoverIterator(peekingIterator);
         } else {
             List<PriorityPeekingIterator<Entry<MemorySegment>>> iterators = new LinkedList<>();
             if (!reader.hasNoReaders()) {
                 iterators.add(new PriorityPeekingIterator<>(0, reader.get(from, to)));
             }
-            ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> skipList = flushQueue.peek();
-            if (skipList != null) {
-                iterators.add(new PriorityPeekingIterator<>(
-                                1,
-                                getSkipListMapIterator(from, to, skipList)
-                        )
-                );
-            }
-            skipList = currentlyFlushing.peek();
-            if (skipList != null) {
-                iterators.add(new PriorityPeekingIterator<>(
-                                2,
-                                getSkipListMapIterator(from, to, skipList)
-                        )
-                );
-            }
-            iterators.add(new PriorityPeekingIterator<>(
-                            3,
-                            getSkipListMapIterator(from, to, dataBase.get())
-                    )
-            );
+            addIterator(flushQueue.peek(), 1, iterators, from, to);
+            addIterator(currentlyFlushing.peek(), 2, iterators, from, to);
+            addIterator(memory.get(), 3, iterators, from, to);
             return new MergeIterator<>(
                     iterators,
                     MemorySegmentComparator.INSTANCE
@@ -125,7 +121,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) {
-        Entry<MemorySegment> entry = dataBase.get().get(key);
+        Entry<MemorySegment> entry = memory.get().get(key);
         if (entry == null) {
             ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> queuePeek = flushQueue.peek();
             if (queuePeek != null) {
@@ -145,25 +141,20 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public void upsert(Entry<MemorySegment> entry) {
-        long entrySize = getEntrySize(entry);
-        for (long size = currentByteSize.addAndGet(entrySize); size >= autoFlushSize; ) {
-            synchronized (dataBase) {
+        long entrySize = getEntryLength(entry);
+        long size = currentByteSize.addAndGet(entrySize);
+        if (size >= autoFlushSize) {
+            synchronized (memory) {
                 if ((size = currentByteSize.get()) >= autoFlushSize) {
-                    if (!flushQueue.offer(dataBase.get())) {
+                    if (!flushQueue.offer(memory.get())) {
                         throw new BufferOverflowException();
                     }
-                    dataBase.set(getNewSkipListMap());
-                    // Здесь может произойти несвоевременное изменение размера буфера, но данные не потеряются
+                    memory.set(getNewSkipListMap());
                     currentByteSize.set(entrySize);
                 }
             }
         }
-        dataBase.get().put(entry.key(), entry);
-    }
-
-    // key.bytes + value.bytes
-    private long getEntrySize(Entry<MemorySegment> entry) {
-        return entry.key().byteSize() + ((entry.value() == null) ? 0 : entry.value().byteSize());
+        memory.get().put(entry.key(), entry);
     }
 
     // informing that before next flush, we need to start compacting
@@ -178,11 +169,11 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             throw new BufferOverflowException();
         }
         ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> newSkipListMap = getNewSkipListMap();
-        synchronized (dataBase) {
-            if (!flushQueue.offer(dataBase.get())) {
+        synchronized (memory) {
+            if (!flushQueue.offer(memory.get())) {
                 throw new BufferOverflowException();
             }
-            dataBase.set(newSkipListMap);
+            memory.set(newSkipListMap);
             currentByteSize.set(0);
         }
     }
@@ -211,33 +202,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         return config.basePath().resolve(newFileId.getAndIncrement() + ".txt");
     }
 
-    private static class TombstoneRemoverIterator implements Iterator<Entry<MemorySegment>> {
-
-        private final PriorityPeekingIterator<Entry<MemorySegment>> peekingIterator;
-
-        public TombstoneRemoverIterator(PriorityPeekingIterator<Entry<MemorySegment>> peekingIterator) {
-            this.peekingIterator = peekingIterator;
-        }
-
-        @Override
-        public boolean hasNext() {
-            deleteNullEntries();
-            return peekingIterator.hasNext();
-        }
-
-        @Override
-        public Entry<MemorySegment> next() {
-            deleteNullEntries();
-            return peekingIterator.next();
-        }
-
-        void deleteNullEntries() {
-            while (peekingIterator.hasNext() && peekingIterator.peek().value() == null) {
-                peekingIterator.next();
-            }
-        }
-    }
-
     private class CompactWorker implements Runnable {
         @Override
         public void run() {
@@ -258,6 +222,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                // Logg
                 throw new RuntimeException(e);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
