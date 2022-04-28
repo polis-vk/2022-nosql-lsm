@@ -50,7 +50,7 @@ public class ConcurrentTests extends BaseTest {
             try {
                 dao.upsert(entries.get(value));
                 dao.flush();
-                assertSame(dao.all(), entries.get(value));
+                assertContains(dao.all(), entries.get(value));
             } catch (Exception ignored) {
                 // Если возникнет переполнение очереди, то ничего страшного
             }
