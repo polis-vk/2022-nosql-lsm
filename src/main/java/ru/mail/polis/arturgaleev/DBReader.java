@@ -12,42 +12,31 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.stream.Stream;
+import java.util.TreeSet;
 
 public class DBReader implements AutoCloseable {
     private static final String DB_FILES_EXTENSION = ".txt";
-    private final Path dbDirectoryPath;
-    private List<FileDBReader> fileReaders;
 
-    private static List<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
-        List<FileDBReader> fileDBReaderList = new ArrayList<>();
-        try (Stream<Path> files = Files.list(dbDirectoryPath)) {
-            List<Path> paths = files
-                    .filter(path -> path.toString().endsWith(DB_FILES_EXTENSION))
-                    .toList();
-            for (Path path : paths) {
-                FileDBReader fileDBReader = new FileDBReader(path);
-                if (fileDBReader.checkIfFileCorrupted()) {
-                    throw new FileSystemException("File with path: " + path + " is corrupted");
-                }
-                fileDBReaderList.add(fileDBReader);
-            }
-        }
-        fileDBReaderList.sort(Comparator.comparing(FileDBReader::getFileID));
-        return fileDBReaderList;
-    }
+    private final TreeSet<FileDBReader> fileReaders;
 
     public DBReader(Path dbDirectoryPath) throws IOException {
-        this.dbDirectoryPath = dbDirectoryPath;
         fileReaders = getFileDBReaders(dbDirectoryPath);
     }
 
-    public void updateReadersList() throws IOException {
-        fileReaders = getFileDBReaders(dbDirectoryPath);
-    }
+    private static TreeSet<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
+        TreeSet<FileDBReader> fileDBReadersSet = new TreeSet<>(Comparator.comparing(FileDBReader::getFileID));
+        List<Path> paths = Files.list(dbDirectoryPath)
+                .filter(path -> path.getFileName().toString().endsWith(DB_FILES_EXTENSION))
+                .toList();
+        for (Path path : paths) {
+            FileDBReader fileDBReader = new FileDBReader(path);
+            if (fileDBReader.checkIfFileCorrupted()) {
+                throw new FileSystemException("File with path: " + path + " is corrupted");
+            }
+            fileDBReadersSet.add(fileDBReader);
+        }
 
-    public long getReadersCount() {
-        return fileReaders.size();
+        return fileDBReadersSet;
     }
 
     public boolean hasNoReaders() {
@@ -58,13 +47,7 @@ public class DBReader implements AutoCloseable {
         if (fileReaders.isEmpty()) {
             return -1;
         }
-        long max = fileReaders.get(0).getFileID();
-        for (FileDBReader reader : fileReaders) {
-            if (reader.getFileID() > max) {
-                max = reader.getFileID();
-            }
-        }
-        return max;
+        return fileReaders.last().getFileID();
     }
 
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) {
@@ -82,17 +65,19 @@ public class DBReader implements AutoCloseable {
     }
 
     public Entry<MemorySegment> get(MemorySegment key) {
-        for (int i = fileReaders.size() - 1; i >= 0; i--) {
-            Entry<MemorySegment> entryByKey = fileReaders.get(i).getEntryByKey(key);
+        for (FileDBReader fileDBReader : fileReaders.descendingSet()) {
+            Entry<MemorySegment> entryByKey = fileDBReader.getEntryByKey(key);
             if (entryByKey != null) {
-                if (entryByKey.value() == null) {
-                    return null;
-                } else {
-                    return entryByKey;
-                }
+                return entryByKey.value() == null ? null : entryByKey;
             }
         }
         return null;
+    }
+
+    public void clear() throws IOException {
+        for (FileDBReader fileDBReader : fileReaders) {
+            fileDBReader.deleteFile();
+        }
     }
 
     @Override

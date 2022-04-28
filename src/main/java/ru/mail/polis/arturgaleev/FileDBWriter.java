@@ -56,7 +56,7 @@ public class FileDBWriter implements Closeable {
         }
     }
 
-    private static long getEntryLength(Entry<MemorySegment> entry) {
+    public static long getEntryLength(Entry<MemorySegment> entry) {
         return entry.key().byteSize()
                 + ((entry.value() == null) ? 0 : entry.value().byteSize()) + 2 * Long.BYTES;
     }
@@ -119,24 +119,31 @@ public class FileDBWriter implements Closeable {
         page.asSlice(Long.BYTES + Long.BYTES * i, sha256.length).copyFrom(MemorySegment.ofArray(sha256));
     }
 
-    public void writeIterable(
+    /**
+     * @param iterableCollection which we are going to write
+     * @return if had something been written
+     */
+    public boolean writeIterable(
             Iterable<Entry<MemorySegment>> iterableCollection
     ) throws IOException {
         Iterator<Entry<MemorySegment>> iterator = iterableCollection.iterator();
 
         if (!iterator.hasNext()) {
-            return;
+            return false;
         }
         IteratorData iteratorData = getIteratorData(iterator);
 
         iterator = iterableCollection.iterator();
         writeIteratorWithTempFile(iterator, iteratorData);
+        return true;
     }
 
     private void writeIteratorWithTempFile(Iterator<Entry<MemorySegment>> iterator,
                                            IteratorData iteratorData) throws IOException {
         byte[] sha256 = iteratorData.sha256();
-        Path tmpPath = path.getParent().resolve(FILE_TMP);
+        String fileName = path.getFileName().toString();
+        long fileId = Long.parseLong(fileName.substring(0, fileName.length() - 4));
+        Path tmpPath = path.getParent().resolve("tmp" + fileId + ".txt");
 
         MemorySegment page = createTmpMemorySegmentPage(
                 iteratorData.dataArraySize() + sha256.length + Long.BYTES,
