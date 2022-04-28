@@ -127,13 +127,22 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             upsertLock.readLock().unlock();
         }
         if (currentState.storageMemoryUsage.get() >= flushThresholdBytes) {
-            flushResult = executor.submit(() -> {
-                try {
-                    backgroundFlush();
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            });
+            if (isNotFlushed()) {
+                throw new IllegalStateException("Flush queue overflow");
+            }
+
+            upsertLock.writeLock().lock();
+            try {
+                this.state = currentState.beforeFlush();
+            } finally {
+                upsertLock.writeLock().unlock();
+            }
+
+            try {
+                backgroundFlush();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
     }
 
@@ -142,9 +151,19 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-        if (isFlushed()) {
+        if (isNotFlushed()) {
             throw new IllegalStateException("Flush queue overflow");
         }
+
+        State currentState = this.state;
+
+        upsertLock.writeLock().lock();
+        try {
+            this.state = currentState.beforeFlush();
+        } finally {
+            upsertLock.writeLock().unlock();
+        }
+
         flushResult = executor.submit(() -> {
             try {
                 backgroundFlush();
@@ -154,22 +173,17 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         });
     }
 
-    private synchronized boolean isFlushed() {
+    private synchronized boolean isNotFlushed() {
         return flushResult != null && !flushResult.isDone();
     }
 
     private void backgroundFlush() throws IOException {
         State currentState = this.state;
-        upsertLock.writeLock().lock();
-        try {
-            this.state = currentState.beforeFlush();
-        } finally {
-            upsertLock.writeLock().unlock();
-        }
+
         currentState.writer.writeDAO(currentState.inFlushing);
         currentState.readers.add(0,
-                new DaoReader(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage() - 1),
-                        utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage() - 1))
+                new DaoReader(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
+                        utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage()))
         );
         DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
                 utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage())

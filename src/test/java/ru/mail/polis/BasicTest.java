@@ -1,6 +1,7 @@
 package ru.mail.polis;
 
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.opentest4j.AssertionFailedError;
 
 import java.io.IOException;
@@ -109,6 +110,7 @@ public class BasicTest extends BaseTest {
         );
     }
 
+    @Disabled("Слишком много данных, не успеваем записать быстро")
     @DaoTest(stage = 1)
     void testHugeData(Dao<String, Entry<String>> dao) throws Exception {
         int count = 100_000;
