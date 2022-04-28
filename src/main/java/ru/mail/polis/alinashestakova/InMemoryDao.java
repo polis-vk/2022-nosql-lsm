@@ -163,12 +163,12 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             return;
         }
 
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
             this.state.memory.put(entry.key(), entry);
             this.state.memorySize.addAndGet(entrySize);
         } finally {
-                lock.writeLock().unlock();
+                lock.readLock().unlock();
             }
     }
 
