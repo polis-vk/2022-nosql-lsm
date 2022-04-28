@@ -13,6 +13,7 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 
 public class DBReader implements AutoCloseable {
     private static final String DB_FILES_EXTENSION = ".txt";
@@ -25,15 +26,16 @@ public class DBReader implements AutoCloseable {
 
     private static TreeSet<FileDBReader> getFileDBReaders(Path dbDirectoryPath) throws IOException {
         TreeSet<FileDBReader> fileDBReadersSet = new TreeSet<>(Comparator.comparing(FileDBReader::getFileID));
-        List<Path> paths = Files.list(dbDirectoryPath)
+        try (Stream<Path> paths = Files.list(dbDirectoryPath)
                 .filter(path -> path.getFileName().toString().endsWith(DB_FILES_EXTENSION))
-                .toList();
-        for (Path path : paths) {
-            FileDBReader fileDBReader = new FileDBReader(path);
-            if (fileDBReader.checkIfFileCorrupted()) {
-                throw new FileSystemException("File with path: " + path + " is corrupted");
+        ) {
+            for (Path path : paths.toList()) {
+                FileDBReader fileDBReader = new FileDBReader(path);
+                if (fileDBReader.checkIfFileCorrupted()) {
+                    throw new FileSystemException("File with path: " + path + " is corrupted");
+                }
+                fileDBReadersSet.add(fileDBReader);
             }
-            fileDBReadersSet.add(fileDBReader);
         }
 
         return fileDBReadersSet;

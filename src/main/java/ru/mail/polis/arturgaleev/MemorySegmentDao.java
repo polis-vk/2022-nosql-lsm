@@ -50,10 +50,10 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             return new TombstoneRemoverIterator(new PriorityPeekingIterator<>(1, dataBaseIterator));
         } else {
             Iterator<Entry<MemorySegment>> flushingIterator;
-            if (currentState.flushing != null) {
-                flushingIterator = currentState.flushing.get(from, to);
-            } else {
+            if (currentState.flushing == null) {
                 flushingIterator = Collections.emptyIterator();
+            } else {
+                flushingIterator = currentState.flushing.get(from, to);
             }
 
             return new MergeIterator<>(
@@ -73,11 +73,11 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
         Entry<MemorySegment> entry = currentState.memory.get(key);
         if (entry == null) {
-            if (currentState.flushing != null) {
+            if (!(currentState.flushing == null)) {
                 entry = currentState.flushing.get(key);
             }
         }
-        if (entry != null) {
+        if (!(entry == null)) {
             return entry.value() == null ? null : entry;
         }
         // TODO storage may be closed
@@ -93,14 +93,13 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         } finally {
             memoryLock.readLock().unlock();
         }
-        if (byteSize > config.flushThresholdBytes()) {
-            if (state.memory.byteSize.compareAndSet(byteSize, 0)) {
-                try {
-                    flush();
-                } catch (IOException e) {
-                    // To many flushes
-                    throw new UncheckedIOException(e);
-                }
+        if (byteSize > config.flushThresholdBytes()
+                && state.memory.byteSize.compareAndSet(byteSize, 0)) {
+            try {
+                flush();
+            } catch (IOException e) {
+                // To many flushes
+                throw new UncheckedIOException(e);
             }
         }
     }
@@ -172,26 +171,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             memoryLock.writeLock().unlock();
         }
 
-        flushFuture = flushExecutor.submit(() -> {
-            try {
-                Path filePath = getNewFileName();
-                try (FileDBWriter writer = new FileDBWriter(filePath)) {
-                    writer.writeIterable(state.flushing.values());
-                    memoryLock.writeLock().lock();
-                    try {
-                        this.state = state.afterFlush(new DBReader(config.basePath()));
-                    } finally {
-                        memoryLock.writeLock().unlock();
-                    }
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            } finally {
-                flushFuture = null;
-            }
-        });
+        flushFuture = flushExecutor.submit(this::bgFlush);
     }
 
     @Override
@@ -212,7 +192,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                 future.get();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                System.err.println("Thread close was interrupted");
+                // Logger...
                 throw new RuntimeException(e);
             } catch (ExecutionException e) {
                 throw new RuntimeException(e);
@@ -222,5 +202,26 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     private Path getNewFileName() {
         return config.basePath().resolve(newFileId.getAndIncrement() + ".txt");
+    }
+
+    private void bgFlush() {
+        try {
+            Path filePath = getNewFileName();
+            try (FileDBWriter writer = new FileDBWriter(filePath)) {
+                writer.writeIterable(state.flushing.values());
+                memoryLock.writeLock().lock();
+                try {
+                    this.state = state.afterFlush(new DBReader(config.basePath()));
+                } finally {
+                    memoryLock.writeLock().unlock();
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            flushFuture = null;
+        }
     }
 }
