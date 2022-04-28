@@ -13,32 +13,38 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-
+import java.util.concurrent.atomic.AtomicLong;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
-    ConcurrentNavigableMap<String, BaseEntry<String>> stringConcurrentSkipListMap =
-            new ConcurrentSkipListMap<>(String::compareTo);
 
+    private ConcurrentNavigableMap<String, BaseEntry<String>> stringConcurrentSkipListMap =
+            new ConcurrentSkipListMap<>(String::compareTo);
+    private ConcurrentNavigableMap<String, BaseEntry<String>> stringConcurrentSkipListMapPointer =
+            stringConcurrentSkipListMap;
     private static final String FILE_NAME = "cache";
     private static final String COMPACT_FILE_NAME = "compact";
     private static final int YOUNGEST_GENERATION = 0;
     private static final int FILLER_FOR_OFFSETS_OFFSET = 0;
     private final Deque<FilePeekIterator> listOfFiles = new ArrayDeque<>();
     private final Path directoryPath;
+    private final long flushThresholdBytes;
     private final ExecutorService compactExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService flushExecutor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean isDoneCompacting = new AtomicBoolean(true);
+    private final AtomicBoolean isDoneFlushing = new AtomicBoolean(true);
+    private final AtomicLong mapSize = new AtomicLong(0);
     private final Path basePath;
 
     public InMemoryDao(Config config) throws IOException {
         directoryPath = config.basePath();
+        flushThresholdBytes = config.flushThresholdBytes();
         basePath = config.basePath();
         getFiles();
     }
 
     @Override
     public BaseEntry<String> get(String key) {
-
-        BaseEntry<String> resultFromMap = stringConcurrentSkipListMap.get(key);
+        BaseEntry<String> resultFromMap = stringConcurrentSkipListMapPointer.get(key);
 
         if (resultFromMap != null) {
             return resultFromMap.value() == null ? null : resultFromMap;
@@ -53,30 +59,36 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
 
         return null;
-
     }
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) {
-        FilePeekIterator stringConcurrentSkipListMapIterator;
+        FilePeekIterator stringMapIterator;
         if (from == null && to == null) {
-            stringConcurrentSkipListMapIterator
-                    = new FilePeekIterator(getIterator(stringConcurrentSkipListMap), YOUNGEST_GENERATION);
+            stringMapIterator = new FilePeekIterator(
+                    getIterator(stringConcurrentSkipListMapPointer),
+                    YOUNGEST_GENERATION
+            );
         } else if (from == null) {
-            stringConcurrentSkipListMapIterator
-                    = new FilePeekIterator(getIterator(stringConcurrentSkipListMap.headMap(to)), YOUNGEST_GENERATION);
+            stringMapIterator = new FilePeekIterator(
+                    getIterator(stringConcurrentSkipListMapPointer.headMap(to)),
+                    YOUNGEST_GENERATION
+            );
         } else if (to == null) {
-            stringConcurrentSkipListMapIterator
-                    = new FilePeekIterator(
-                    getIterator(stringConcurrentSkipListMap.tailMap(from, true)), YOUNGEST_GENERATION);
+            stringMapIterator = new FilePeekIterator(
+                    getIterator(stringConcurrentSkipListMapPointer.tailMap(from, true)),
+                    YOUNGEST_GENERATION
+            );
         } else {
-            stringConcurrentSkipListMapIterator
-                    = new FilePeekIterator(getIterator(stringConcurrentSkipListMap.subMap(from, to)), YOUNGEST_GENERATION);
+            stringMapIterator = new FilePeekIterator(
+                    getIterator(stringConcurrentSkipListMapPointer.subMap(from, to)),
+                    YOUNGEST_GENERATION
+            );
         }
 
         Deque<FilePeekIterator> listOfIterators = getFromMemory(from, to);
-        if (stringConcurrentSkipListMapIterator.hasNext()) {
-            listOfIterators.addFirst(stringConcurrentSkipListMapIterator);
+        if (stringMapIterator.hasNext()) {
+            listOfIterators.addFirst(stringMapIterator);
         }
 
         return listOfIterators.isEmpty() ? Collections.emptyIterator() : new MergeIterator(listOfIterators);
@@ -95,6 +107,29 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void upsert(BaseEntry<String> entry) {
+        if (mapSize.addAndGet(entrySize(entry)) > flushThresholdBytes) {
+            if (!isDoneFlushing.get()) {
+                throw new IllegalStateException("Previous table is still flushing");
+            }
+            stringConcurrentSkipListMap = new ConcurrentSkipListMap<>(String::compareTo);
+            mapSize.set(0);
+            flushExecutor.execute(() -> {
+                try {
+                    isDoneFlushing.set(false);
+                    save(
+                            directoryPath.resolve(listOfFiles.size() + FILE_NAME),
+                            stringConcurrentSkipListMapPointer,
+                            false
+                    );
+                    getFiles();
+                    stringConcurrentSkipListMapPointer = stringConcurrentSkipListMap;
+                    isDoneFlushing.set(true);
+                } catch (IOException e) {
+                    isDoneFlushing.set(true);
+                    throw new RuntimeException();
+                }
+            });
+        }
         stringConcurrentSkipListMap.put(entry.key(), entry);
     }
 
@@ -223,8 +258,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 = new ConcurrentSkipListMap<>();
         Deque<FilePeekIterator> listOfMemoryIterators = getFromMemory(null, null);
         Iterator<BaseEntry<String>> iterator =
-                listOfMemoryIterators.isEmpty() ?
-                        Collections.emptyIterator() : new MergeIterator(listOfMemoryIterators);
+                listOfMemoryIterators.isEmpty() ? Collections.emptyIterator() : new MergeIterator(listOfMemoryIterators);
 
         while (iterator.hasNext()) {
             BaseEntry<String> entry = iterator.next();
@@ -244,11 +278,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void close() throws IOException {
-        while (!isDoneCompacting.get()) {
+        while (!isDoneCompacting.get() || !isDoneFlushing.get()) {
             //block
         }
 
         compactExecutor.shutdownNow();
+        flushExecutor.shutdownNow();
 
         for (FilePeekIterator filePeekIterator : listOfFiles) {
             if (filePeekIterator.isToBeDeleted()) {
@@ -271,6 +306,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private void writeLength(RandomAccessFile writer, int length) throws IOException {
         writer.writeInt(length);
         writer.skipBytes(length);
+    }
+
+    private long entrySize(BaseEntry<String> entry) {
+        long keySize = entry.key().length() * 2L;
+        return entry.value() == null ? keySize : keySize + entry.value().length() * 2L;
     }
 
     private void getFiles() {

@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 
 public class FilePeekIterator implements Iterator<BaseEntry<String>> {
@@ -19,14 +20,14 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
     private long endIndex;
     private long startIndex;
     private long currentFilePosition;
-    private ArrayList<Long> offsets;
+    private List<Long> offsets;
     private int numberOfEntries;
     private Iterator<BaseEntry<String>> delegate;
     private final int generation;
     private long fileSize;
-    private boolean isToBeDeleted = false;
-    private boolean isCompact = false;
-    public final static int BYTES_BEFORE_VALUES = 13;
+    private boolean isToBeDeleted;
+    private boolean isCompact;
+    public final int BYTES_BEFORE_VALUES = 13;
 
     public FilePeekIterator(Path path, int generation) {
         this.path = path;
