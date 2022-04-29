@@ -98,8 +98,6 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (isClosed.get()) {
             throw new RuntimeException("Unable to upsert: close operation performed.");
         }
-        int entryValueLength = entry.isTombstone() ? 0 : entry.value().length;
-        int delta = 2 * entry.key().length + entryValueLength;
         State currentState;
         lock.writeLock().lock();
         try {
@@ -107,7 +105,9 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         } finally {
             lock.writeLock().unlock();
         }
-        if (currentState.getSize() + delta >= maxThresholdBytes) {
+        int entryValueLength = entry.isTombstone() ? 0 : entry.value().length;
+        int delta = 2 * entry.key().length + entryValueLength;
+        if (currentState.getSize().get() + delta >= maxThresholdBytes) {
             if (isBackgroundFlushing.get()) {
                 throw new IllegalStateException("Unable to flush: all maps are full.");
             }
@@ -122,12 +122,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         } else {
             currentState.updateSize(delta);
         }
-        lock.readLock().lock();
-        try {
-            this.state.pairs.put(entry.key(), entry);
-        } finally {
-            lock.readLock().unlock();
-        }
+        this.state.pairs.put(entry.key(), entry);
     }
 
     @Override
@@ -157,7 +152,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     @Override
-    public void compact() throws IOException {
+    public synchronized void compact() throws IOException {
         if (isClosed.get()) {
             throw new RuntimeException("Unable to compact: close operation performed.");
         }
@@ -246,8 +241,8 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             pairsSize = new AtomicInteger(0);
         }
 
-        private int getSize() {
-            return pairsSize.get();
+        private AtomicInteger getSize() {
+            return pairsSize;
         }
 
         private void updateSize(int delta) {
