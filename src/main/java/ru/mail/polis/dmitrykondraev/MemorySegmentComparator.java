@@ -12,7 +12,7 @@ import java.util.Comparator;
  */
 public final class MemorySegmentComparator implements Comparator<MemorySegment> {
     /**
-     * For any <code>MemorySegment x</code>: <code>compare(MINIMAL, x) <= 0</code> is true.
+     * For any {@code MemorySegment x}: {@code compare(MINIMAL, x) <= 0} is true.
      */
     public static final MemorySegment MINIMAL = MemorySegment.ofArray(new byte[]{});
     public static final MemorySegmentComparator INSTANCE = new MemorySegmentComparator();

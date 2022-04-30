@@ -18,20 +18,24 @@ public final class SSTable implements Closeable {
     public static final long TOMBSTONE_TAG = -1;
     private static final String SSTABLE_FILE_NAME = "sstable.data";
     private static final String INDEX_FILE_NAME = "sstable.index";
+    
+    private final long createdTimeMs;
 
     private final MemorySegment indexMemorySegment;
     private final MemorySegment tableMemorySegment;
 
-    private SSTable(MemorySegment indexMemorySegment, MemorySegment tableMemorySegment) {
+    private SSTable(MemorySegment indexMemorySegment, MemorySegment tableMemorySegment, long createdAt) {
         this.indexMemorySegment = indexMemorySegment;
         this.tableMemorySegment = tableMemorySegment;
+        this.createdTimeMs = createdAt;
     }
 
     public static SSTable createInstance(
             Path path,
             Iterator<TimestampEntry> data,
             long sizeBytes,
-            int count
+            int count,
+            long createdAt
     ) throws IOException {
         final Path sstableFile = path.resolve(SSTABLE_FILE_NAME);
         Files.createFile(sstableFile);
@@ -59,10 +63,10 @@ public final class SSTable implements Closeable {
 
         flush(data, mappedSsTable, mappedIndex);
 
-        return new SSTable(mappedIndex.asReadOnly(), mappedSsTable.asReadOnly());
+        return new SSTable(mappedIndex.asReadOnly(), mappedSsTable.asReadOnly(), createdAt);
     }
 
-    public static SSTable upInstance(Path path) throws IOException {
+    public static SSTable upInstance(Path path, long createdAt) throws IOException {
         final Path sstableFile = path.resolve(SSTABLE_FILE_NAME);
         final Path indexFile = path.resolve(INDEX_FILE_NAME);
         if (Files.notExists(path) || Files.notExists(indexFile)) {
@@ -85,7 +89,7 @@ public final class SSTable implements Closeable {
                 ResourceScope.newSharedScope()
         );
 
-        return new SSTable(mappedIndex, mappedSsTable);
+        return new SSTable(mappedIndex, mappedSsTable, createdAt);
     }
 
     private static void flush(Iterator<TimestampEntry> data, MemorySegment sstable, MemorySegment index) {
@@ -128,6 +132,10 @@ public final class SSTable implements Closeable {
         final long toPosition = toIndex > max ? size : MemoryAccess.getLongAtIndex(indexMemorySegment, toIndex);
 
         return new MappedIterator(tableMemorySegment.asSlice(fromPosition, toPosition - fromPosition));
+    }
+    
+    public long getCreatedTime() {
+        return createdTimeMs;
     }
 
     private int findIndexOfKey(MemorySegment key) {
