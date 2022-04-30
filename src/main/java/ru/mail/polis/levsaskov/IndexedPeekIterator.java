@@ -1,16 +1,16 @@
 package ru.mail.polis.levsaskov;
 
-import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Entry;
 
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 
-public class PeekIterator implements Iterator<BaseEntry<ByteBuffer>> {
+public class IndexedPeekIterator implements Iterator<Entry<ByteBuffer>> {
     private final int storagePartN;
-    private final Iterator<BaseEntry<ByteBuffer>> delegate;
-    private BaseEntry<ByteBuffer> current;
+    private final Iterator<Entry<ByteBuffer>> delegate;
+    private Entry<ByteBuffer> current;
 
-    public PeekIterator(Iterator<BaseEntry<ByteBuffer>> delegate, int storagePartN) {
+    public IndexedPeekIterator(Iterator<Entry<ByteBuffer>> delegate, int storagePartN) {
         this.storagePartN = storagePartN;
         this.delegate = delegate;
     }
@@ -19,7 +19,7 @@ public class PeekIterator implements Iterator<BaseEntry<ByteBuffer>> {
         return storagePartN;
     }
 
-    public BaseEntry<ByteBuffer> peek() {
+    public Entry<ByteBuffer> peek() {
         if (current == null && delegate.hasNext()) {
             current = delegate.next();
         }
@@ -32,8 +32,8 @@ public class PeekIterator implements Iterator<BaseEntry<ByteBuffer>> {
     }
 
     @Override
-    public BaseEntry<ByteBuffer> next() {
-        BaseEntry<ByteBuffer> peek = peek();
+    public Entry<ByteBuffer> next() {
+        Entry<ByteBuffer> peek = peek();
         current = null;
         return peek;
     }
