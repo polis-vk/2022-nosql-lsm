@@ -31,7 +31,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private static final String DATA_FILE_NAME = "storage";
     private static final String DAO_CLOSED_EXCEPTION_TEXT = "DAO has been closed"; // Требование CodeClimate
     private static final String OFFSETS_FILE_NAME = "offsets";
-    private final AtomicBoolean isClosed = new AtomicBoolean(true);
+    private final AtomicBoolean isClosed = new AtomicBoolean(false);
     private final DaoUtils utils;
     private final ExecutorService executor;
     private final ReadWriteLock upsertLock = new ReentrantReadWriteLock();
@@ -50,7 +50,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         );
         this.state = State.newState(readers, writer);
         this.executor = Executors.newSingleThreadExecutor(r -> new Thread(r, "DaoBackgroundThread"));
-        this.isClosed.compareAndSet(true, false);
     }
 
     @Override
@@ -68,7 +67,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             addIterators(iteratorsQueue, currentState, from, to);
         } catch (IllegalStateException e) {
             iteratorsQueue.clear();
-            addIterators(iteratorsQueue, currentState, from, to);
+            addIterators(iteratorsQueue, currentState, from, to); // FIXME it won't work
         }
         return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new MergeIterator(iteratorsQueue);
     }
@@ -105,7 +104,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     }
                 }
             } catch (IllegalStateException e) {
-                get(key);
+                get(key); // FIXME recursion
             }
             value = new BaseEntry<>(null, null);
         }
@@ -119,30 +118,33 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         State currentState = this.state;
         long entrySize = DaoUtils.getEntrySize(entry);
+        long currentStorageSize;
         upsertLock.readLock().lock();
         try {
             currentState.inMemory.put(entry.key(), entry);
-            currentState.storageMemoryUsage.addAndGet(entrySize);
+            currentStorageSize = currentState.storageMemoryUsage.addAndGet(entrySize);
         } finally {
             upsertLock.readLock().unlock();
         }
-        if (currentState.storageMemoryUsage.get() >= flushThresholdBytes) {
+        if (currentStorageSize >= flushThresholdBytes) {
             if (isNotFlushed()) {
                 throw new IllegalStateException("Flush queue overflow");
             }
 
-            upsertLock.writeLock().lock();
+            upsertLock.writeLock().lock(); // FIXME race
             try {
                 this.state = currentState.beforeFlush();
             } finally {
                 upsertLock.writeLock().unlock();
             }
 
-            try {
-                backgroundFlush();
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
+            flushResult = executor.submit(() -> {
+                try {
+                    backgroundFlush();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
         }
     }
 
@@ -151,7 +153,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-        if (isNotFlushed()) {
+        if (isNotFlushed()) { // FIXME race
             throw new IllegalStateException("Flush queue overflow");
         }
 
@@ -205,7 +207,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (currentState.getSizeOfStorage() <= 1) {
             return;
         }
-        executor.submit(() -> {
+        executor.submit(() -> { // FIXME unnecessary compact tasks
             try {
                 backgroundCompact();
             } catch (IOException e) {
@@ -245,7 +247,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 utils.resolvePath(OFFSETS_FILE_NAME, readers.size())
         );
         // Нужен readLock, чтобы не блокировать upsert
-        upsertLock.readLock().lock();
+        upsertLock.readLock().lock(); // FIXME readLock?
         try {
             this.state = currentState.afterCompact(readers, writer);
         } finally {
@@ -253,7 +255,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
     }
 
-    private void finishCompact() throws IOException {
+    private void finishCompact() throws IOException { // FIXME refactoring
         Path pathToCompactedDataFile = utils.resolvePath(DATA_FILE_NAME, -1);
         Path pathToCompactedOffsetsFile = utils.resolvePath(OFFSETS_FILE_NAME, -1);
         boolean isDataCompacted = Files.exists(pathToCompactedDataFile);
@@ -288,21 +290,21 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public synchronized void close() throws IOException {
-        if (isClosed.get()) {
+        if (isClosed.getAndSet(true)) {
             return;
         }
-        isClosed.set(true);
         executor.shutdown();
         try {
             //noinspection StatementWithEmptyBody
             while (!executor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS)) ;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return;
         }
         State currentState = this.state;
         utils.closeReaders(currentState.readers);
         currentState.readers.clear();
-        if (!currentState.inMemory.isEmpty()) {
+        if (!currentState.inMemory.isEmpty()) { // FIXME parallel upsert
             currentState.writer.writeDAO(currentState.inMemory);
             currentState.inMemory.clear();
         }
@@ -377,6 +379,11 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
         State afterFlush(DaoWriter writer) {
             return new State(inMemory, new ConcurrentSkipListMap<>(), readers, writer);
+        }
+
+        State beforeCompact() {
+            // TODO implement me
+            return null;
         }
 
         State afterCompact(CopyOnWriteArrayList<DaoReader> readers, DaoWriter writer) {
