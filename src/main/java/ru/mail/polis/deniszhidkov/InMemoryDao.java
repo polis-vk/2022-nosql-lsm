@@ -26,6 +26,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private static final String DATA_FILE_NAME = "storage";
@@ -38,6 +41,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final long flushThresholdBytes;
     private volatile State state;
     private final Queue<Runnable> flushTasks = new ConcurrentLinkedQueue<>();
+    private static final Logger LOG = LoggerFactory.getLogger(InMemoryDao.class);
 
     public InMemoryDao(Config config) throws IOException {
         this.flushThresholdBytes = config.flushThresholdBytes();
@@ -145,7 +149,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 upsertLock.writeLock().unlock();
             }
 
-           executor.submit(flushTasks.peek());
+            executor.submit(flushTasks.peek());
         }
     }
 
@@ -211,7 +215,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         });
     }
 
-    private synchronized void backgroundCompact() throws IOException {
+    private void backgroundCompact() throws IOException {
         State currentState = this.state;
         if (currentState.getSizeOfStorage() <= 1) {
             return;
