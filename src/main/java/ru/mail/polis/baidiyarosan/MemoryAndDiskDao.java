@@ -35,6 +35,11 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     private static final Logger LOG = LoggerFactory.getLogger(MemoryAndDiskDao.class);
 
+    // must be lower than 1
+    private static final int ORDER_FIRST = -1;
+    // must be lower than 1
+    private static final int ORDER_SECOND = 0;
+
     private final ExecutorService executor = Executors.newSingleThreadExecutor(
             (r) -> new Thread(r, "MemoryAndDiskDao")
     );
@@ -78,12 +83,12 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         List<PeekIterator<BaseEntry<ByteBuffer>>> list = new LinkedList<>();
         Collection<BaseEntry<ByteBuffer>> temp = FileUtils.getInMemoryCollection(collection, from, to);
         if (!temp.isEmpty()) {
-            list.add(new PeekIterator<>(temp.iterator(), 0));
+            list.add(new PeekIterator<>(temp.iterator(), ORDER_FIRST));
         }
         if (onFlushCollection != null) {
             temp = FileUtils.getInMemoryCollection(onFlushCollection, from, to);
             if (!temp.isEmpty()) {
-                list.add(new PeekIterator<>(temp.iterator(), 0));
+                list.add(new PeekIterator<>(temp.iterator(), ORDER_SECOND));
             }
         }
         list.addAll(getFilesCollection(files, fileIndexes, from, to));
@@ -175,6 +180,9 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         try {
             lock.writeLock().lock();
             try {
+                if (collection.isEmpty()) {
+                    return;
+                }
                 onFlushCollection = collection;
                 createMemoryData();
                 memBytes.set(0);
