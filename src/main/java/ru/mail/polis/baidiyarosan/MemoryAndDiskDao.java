@@ -168,7 +168,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
 
     private synchronized void autoFlush() {
         if (onFlushCollection != null) {
-            throw new IllegalStateException("Can't flush more");
+            throw new IllegalStateException("Can't autoflush more");
         }
         executor.submit(this::executeFlush);
     }
@@ -179,19 +179,20 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         }
         try {
             lock.writeLock().lock();
-            NavigableMap<ByteBuffer, BaseEntry<ByteBuffer>> localCollection;
             try {
                 if (collection.isEmpty()) {
                     return;
                 }
+                if (onFlushCollection != null) {
+                    throw new IllegalStateException("Already flush");
+                }
                 onFlushCollection = collection;
-                localCollection = onFlushCollection;
                 createMemoryData();
                 memBytes.set(0);
             } finally {
                 lock.writeLock().unlock();
             }
-            FileUtils.flush(localCollection, path);
+            FileUtils.flush(onFlushCollection, path);
             lock.writeLock().lock();
             try {
                 onFlushCollection = null;
@@ -212,7 +213,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
         try {
             FileUtils.compact(new MergingIterator(getFilesCollection(files, fileIndexes, null, null)), path);
             FileUtils.clearOldFiles(count, path);
-            filesCount.set(1);
+        filesCount.set(1);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
