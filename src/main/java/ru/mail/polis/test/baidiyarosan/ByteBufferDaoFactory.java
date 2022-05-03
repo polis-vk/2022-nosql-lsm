@@ -32,7 +32,7 @@ public class ByteBufferDaoFactory implements DaoFactory.Factory<ByteBuffer, Base
             if (start == 0) {
                 bytes = data.array();
             } else {
-                bytes = Arrays.copyOfRange(data.array(), start, data.remaining());
+                bytes = Arrays.copyOfRange(data.array(), start, start + data.remaining());
             }
         } else {
             // concurrency is killing me if i don't make local copy
