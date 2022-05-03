@@ -8,14 +8,16 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class DaoUtils {
 
-    private static final String DATA_FILE_NAME = "storage";
+    public static final String DATA_FILE_NAME = "storage";
+    public static final String OFFSETS_FILE_NAME = "offsets";
     private static final String COMPACTED_QUALIFIER_NAME = "compacted_";
     private static final String FILE_EXTENSION = ".txt";
-    private static final String OFFSETS_FILE_NAME = "offsets";
     private static final String TMP_QUALIFIER_NAME = "tmp_";
     private static final int COMPACTED_QUALIFIER = -1;
     private static final int TMP_QUALIFIER = -2;
@@ -96,6 +98,59 @@ public class DaoUtils {
                 if (fileName.startsWith(DATA_FILE_NAME) || fileName.startsWith(OFFSETS_FILE_NAME)) {
                     Files.delete(file);
                 }
+            }
+        }
+    }
+
+    public void addAllIterators(Queue<PriorityPeekIterator> iteratorsQueue,
+                                ConcurrentNavigableMap<String, BaseEntry<String>> inMemory,
+                                ConcurrentNavigableMap<String, BaseEntry<String>> inFlushing,
+                                CopyOnWriteArrayList<DaoReader> readers,
+                                String from,
+                                String to
+    ) throws IOException {
+        int priorityIndex = 0;
+        priorityIndex = addInMemoryIteratorByRange(iteratorsQueue, inMemory, from, to, priorityIndex);
+        priorityIndex = addInMemoryIteratorByRange(iteratorsQueue, inFlushing, from, to, priorityIndex);
+        addInStorageIteratorsByRange(iteratorsQueue, readers, from, to, priorityIndex);
+    }
+
+    private int addInMemoryIteratorByRange(Queue<PriorityPeekIterator> iteratorsQueue,
+                                           ConcurrentNavigableMap<String, BaseEntry<String>> storage,
+                                           String from,
+                                           String to,
+                                           int index
+    ) {
+        int priorityIndex = index;
+        PriorityPeekIterator resIterator;
+        if (from == null && to == null) {
+            resIterator = new PriorityPeekIterator(storage.values().iterator(), priorityIndex);
+        } else if (from == null) {
+            resIterator = new PriorityPeekIterator(storage.headMap(to).values().iterator(), priorityIndex);
+        } else if (to == null) {
+            resIterator = new PriorityPeekIterator(storage.tailMap(from).values().iterator(), priorityIndex);
+        } else {
+            resIterator = new PriorityPeekIterator(storage.subMap(from, to).values().iterator(), priorityIndex);
+        }
+        if (resIterator.hasNext()) {
+            iteratorsQueue.add(resIterator);
+            return ++priorityIndex;
+        }
+        return priorityIndex;
+    }
+
+
+    public void addInStorageIteratorsByRange(Queue<PriorityPeekIterator> iteratorsQueue,
+                                              CopyOnWriteArrayList<DaoReader> readers,
+                                              String from,
+                                              String to,
+                                              int index
+    ) throws IOException {
+        int priorityIndex = index;
+        for (DaoReader reader : readers) {
+            FileIterator fileIterator = new FileIterator(from, to, reader);
+            if (fileIterator.hasNext()) {
+                iteratorsQueue.add(new PriorityPeekIterator(fileIterator, priorityIndex++));
             }
         }
     }

@@ -6,9 +6,6 @@ import ru.mail.polis.Dao;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -29,11 +26,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static ru.mail.polis.deniszhidkov.DaoUtils.DATA_FILE_NAME;
+import static ru.mail.polis.deniszhidkov.DaoUtils.OFFSETS_FILE_NAME;
+
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
-    private static final String DATA_FILE_NAME = "storage";
     private static final String DAO_CLOSED_EXCEPTION_TEXT = "DAO has been closed"; // Требование CodeClimate
-    private static final String OFFSETS_FILE_NAME = "offsets";
     private final AtomicBoolean isClosed = new AtomicBoolean(false);
     private final DaoUtils utils;
     private final ExecutorService executor;
@@ -46,7 +44,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     public InMemoryDao(Config config) throws IOException {
         this.flushThresholdBytes = config.flushThresholdBytes();
         this.utils = new DaoUtils(config.basePath());
-        finishCompact();
+        Compacter compacter = new Compacter(utils);
+        compacter.finishCompact();
         utils.validateDAOFiles();
         CopyOnWriteArrayList<DaoReader> readers = utils.initDaoReaders();
         DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, readers.size()),
@@ -68,23 +67,23 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         );
         // Если закроются readers заново вызовем get
         try {
-            addIterators(iteratorsQueue, currentState, from, to);
+            utils.addAllIterators(iteratorsQueue,
+                    currentState.inMemory,
+                    currentState.inFlushing,
+                    currentState.readers,
+                    from,
+                    to
+            );
         } catch (IllegalStateException e) {
             iteratorsQueue.clear();
-            addIterators(iteratorsQueue, currentState, from, to); // FIXME it won't work
+            utils.addAllIterators(iteratorsQueue,
+                    currentState.inMemory,
+                    currentState.inFlushing,
+                    currentState.readers,
+                    from,
+                    to); // FIXME it won't work
         }
         return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new MergeIterator(iteratorsQueue);
-    }
-
-    private void addIterators(Queue<PriorityPeekIterator> iteratorsQueue,
-                              State state,
-                              String from,
-                              String to
-    ) throws IOException {
-        int priorityIndex = 0;
-        priorityIndex = addInMemoryIteratorByRange(iteratorsQueue, state.inMemory, from, to, priorityIndex);
-        priorityIndex = addInMemoryIteratorByRange(iteratorsQueue, state.inFlushing, from, to, priorityIndex);
-        addInStorageIteratorsByRange(iteratorsQueue, state, from, to, priorityIndex);
     }
 
     @Override
@@ -184,20 +183,27 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private void backgroundFlush() throws IOException {
         State currentState = this.state;
 
-        currentState.writer.writeDAO(currentState.inFlushing);
-        currentState.readers.add(0,
-                new DaoReader(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
-                        utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage()))
-        );
-        DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
-                utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage())
-        );
-        upsertLock.writeLock().lock();
         try {
-            this.state = currentState.afterFlush(writer);
-            flushTasks.clear();
-        } finally {
-            upsertLock.writeLock().unlock();
+            currentState.writer.writeDAO(currentState.inFlushing);
+
+            currentState.readers.add(0,
+                    new DaoReader(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
+                            utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage()))
+            );
+            DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
+                    utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage())
+            );
+
+            upsertLock.writeLock().lock();
+            try {
+                this.state = currentState.afterFlush(writer);
+                flushTasks.clear();
+            } finally {
+                upsertLock.writeLock().unlock();
+            }
+        } catch (Exception e) {
+            LOG.error("Flush has failed: ", e);
+            utils.closeReaders(currentState.readers);
         }
     }
 
@@ -220,74 +226,19 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (currentState.getSizeOfStorage() <= 1) {
             return;
         }
-        Queue<PriorityPeekIterator> iteratorsQueue = new PriorityQueue<>(
-                Comparator.comparing((PriorityPeekIterator o) ->
-                        o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
-        );
-        // Во время compact ничего сфлашиться не может, поэтому количество reader неизменно
-        addInStorageIteratorsByRange(iteratorsQueue, currentState, null, null, 0);
-        Iterator<BaseEntry<String>> allData = new MergeIterator(iteratorsQueue);
-        int allDataSize = 0;
-        while (allData.hasNext()) {
-            allDataSize++;
-            allData.next();
-        }
-        addInStorageIteratorsByRange(iteratorsQueue, currentState, null, null, 0);
-        allData = new MergeIterator(iteratorsQueue);
-        Path pathToTmpData = utils.resolvePath(DATA_FILE_NAME, -2);
-        Path pathToTmpOffsets = utils.resolvePath(OFFSETS_FILE_NAME, -2);
-        DaoWriter tmpWriter = new DaoWriter(pathToTmpData, pathToTmpOffsets);
-        tmpWriter.writeDAOWithoutTombstones(allData, allDataSize);
-        /* Если есть хотя бы один compacted файл, значит все данные были записаны.
-         *  До этого не будем учитывать tmp файлы при восстановлении. */
-        Files.move(pathToTmpData, utils.resolvePath(DATA_FILE_NAME, -1), StandardCopyOption.ATOMIC_MOVE);
-        Files.move(pathToTmpOffsets, utils.resolvePath(OFFSETS_FILE_NAME, -1), StandardCopyOption.ATOMIC_MOVE);
-        utils.closeReaders(currentState.readers);
-        finishCompact();
+        Compacter compacter = new Compacter(utils);
+        compacter.writeData(currentState.readers);
+        compacter.finishCompact();
         CopyOnWriteArrayList<DaoReader> readers = utils.initDaoReaders();
         DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, readers.size()),
                 utils.resolvePath(OFFSETS_FILE_NAME, readers.size())
         );
-        // Нужен readLock, чтобы не блокировать upsert
         upsertLock.writeLock().lock();
         try {
             this.state = currentState.afterCompact(readers, writer);
         } finally {
             upsertLock.writeLock().unlock();
         }
-    }
-
-    private void finishCompact() throws IOException { // FIXME refactoring
-        Path pathToCompactedDataFile = utils.resolvePath(DATA_FILE_NAME, -1);
-        Path pathToCompactedOffsetsFile = utils.resolvePath(OFFSETS_FILE_NAME, -1);
-        boolean isDataCompacted = Files.exists(pathToCompactedDataFile);
-        boolean isOffsetsCompacted = Files.exists(pathToCompactedOffsetsFile);
-        /* Если нет ни одного compacted файла, значит либо данные уже compacted, либо упали, не записав всех данных. */
-        if (!isDataCompacted && !isOffsetsCompacted) {
-            return;
-        }
-        /* Если только offsets файл compacted, то в соответствии с последовательностью на строках <> значит,
-         * что мы упали между <>. */
-        if (!isDataCompacted) {
-            Files.move(pathToCompactedOffsetsFile,
-                    utils.resolvePath(OFFSETS_FILE_NAME, 0),
-                    StandardCopyOption.ATOMIC_MOVE
-            );
-            return;
-        }
-        Path pathToTmpOffsetsFile = utils.resolvePath(OFFSETS_FILE_NAME, -2);
-        /* Если data файл compacted и offsets файл не compacted, значит, что не успели перевести файл offsets из tmp в
-         * compacted. При этом запись полностью прошла в соответствии с последовательностью на строках <> */
-        if (Files.exists(pathToTmpOffsetsFile)) {
-            Files.move(pathToTmpOffsetsFile, pathToCompactedOffsetsFile, StandardCopyOption.ATOMIC_MOVE);
-        }
-        /* Код ниже выполнится и в том случае, если мы зайдём в данный метод из метода backgroundCompact(), поскольку
-         * в таком случае у нас оба файла будут compacted. */
-        utils.removeOldFiles();
-        Path pathToNewStorage = utils.resolvePath(DATA_FILE_NAME, 0);
-        Path pathToNewOffsets = utils.resolvePath(OFFSETS_FILE_NAME, 0);
-        Files.move(pathToCompactedDataFile, pathToNewStorage, StandardCopyOption.ATOMIC_MOVE);
-        Files.move(pathToCompactedOffsetsFile, pathToNewOffsets, StandardCopyOption.ATOMIC_MOVE);
     }
 
     @Override
@@ -297,8 +248,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
         executor.shutdown();
         try {
-            //noinspection StatementWithEmptyBody
-            while (!executor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS)) ;
+            if (!executor.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS)) {
+                throw new IllegalStateException("Close awaits too long");
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return;
@@ -315,45 +267,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         } finally {
             upsertLock.writeLock().unlock();
         }
-    }
-
-    private void addInStorageIteratorsByRange(Queue<PriorityPeekIterator> iteratorsQueue,
-                                              State state,
-                                              String from,
-                                              String to,
-                                              int index
-    ) throws IOException {
-        int priorityIndex = index;
-        for (int i = 0; i < state.getSizeOfStorage(); i++) {
-            FileIterator fileIterator = new FileIterator(from, to, state.readers.get(i));
-            if (fileIterator.hasNext()) {
-                iteratorsQueue.add(new PriorityPeekIterator(fileIterator, priorityIndex++));
-            }
-        }
-    }
-
-    private int addInMemoryIteratorByRange(Queue<PriorityPeekIterator> iteratorsQueue,
-                                           ConcurrentNavigableMap<String, BaseEntry<String>> storage,
-                                           String from,
-                                           String to,
-                                           int index
-    ) {
-        int priorityIndex = index;
-        PriorityPeekIterator resIterator;
-        if (from == null && to == null) {
-            resIterator = new PriorityPeekIterator(storage.values().iterator(), priorityIndex);
-        } else if (from == null) {
-            resIterator = new PriorityPeekIterator(storage.headMap(to).values().iterator(), priorityIndex);
-        } else if (to == null) {
-            resIterator = new PriorityPeekIterator(storage.tailMap(from).values().iterator(), priorityIndex);
-        } else {
-            resIterator = new PriorityPeekIterator(storage.subMap(from, to).values().iterator(), priorityIndex);
-        }
-        if (resIterator.hasNext()) {
-            iteratorsQueue.add(resIterator);
-            return ++priorityIndex;
-        }
-        return priorityIndex;
     }
 
     private static class State {
@@ -386,11 +299,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
         State afterFlush(DaoWriter writer) {
             return new State(inMemory, new ConcurrentSkipListMap<>(), readers, writer);
-        }
-
-        State beforeCompact() {
-            // TODO implement me
-            return null;
         }
 
         State afterCompact(CopyOnWriteArrayList<DaoReader> readers, DaoWriter writer) {
