@@ -139,7 +139,6 @@ public class DaoUtils {
         return priorityIndex;
     }
 
-
     public void addInStorageIteratorsByRange(Queue<PriorityPeekIterator> iteratorsQueue,
                                              CopyOnWriteArrayList<DaoReader> readers,
                                              String from,

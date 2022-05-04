@@ -1,5 +1,7 @@
 package ru.mail.polis.deniszhidkov;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
@@ -24,8 +26,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static ru.mail.polis.deniszhidkov.DaoUtils.DATA_FILE_NAME;
 import static ru.mail.polis.deniszhidkov.DaoUtils.OFFSETS_FILE_NAME;
@@ -83,9 +83,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             try {
                 compactTask.get();
             } catch (ExecutionException ex) {
-                throw new IllegalStateException("Compaction has failed");
+                throw new IllegalStateException("Compaction has failed", ex);
             } catch (InterruptedException exc) {
-                throw new IllegalStateException("Thread was interrupted while waiting compaction");
+                Thread.currentThread().interrupt();
+                return null;
             }
             currentState = this.state;
             utils.addAllIterators(iteratorsQueue,
@@ -117,7 +118,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             } catch (ExecutionException ex) {
                 throw new IllegalStateException("Compaction has failed");
             } catch (InterruptedException exc) {
-                throw new IllegalStateException("Thread was interrupted while waiting compaction");
+                Thread.currentThread().interrupt();
+                return null;
             }
             currentState = this.state;
             value = utils.findInStorageByKey(key, currentState.readers);
