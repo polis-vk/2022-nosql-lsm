@@ -1,5 +1,7 @@
 package ru.mail.polis.deniszhidkov;
 
+import ru.mail.polis.BaseEntry;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,8 +11,6 @@ import java.util.Iterator;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.CopyOnWriteArrayList;
-
-import ru.mail.polis.BaseEntry;
 
 import static ru.mail.polis.deniszhidkov.DaoUtils.DATA_FILE_NAME;
 import static ru.mail.polis.deniszhidkov.DaoUtils.OFFSETS_FILE_NAME;

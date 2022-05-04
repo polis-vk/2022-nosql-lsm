@@ -5,7 +5,6 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -38,7 +37,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     private final AtomicBoolean isClosed = new AtomicBoolean(false);
     private final DaoUtils utils;
     private final ExecutorService executor;
+    private final Queue<Runnable> compactTasks = new ConcurrentLinkedQueue<>();
     private final Queue<Runnable> flushTasks = new ConcurrentLinkedQueue<>();
+    private final ReadWriteLock flushLock = new ReentrantReadWriteLock();
     private final ReadWriteLock upsertLock = new ReentrantReadWriteLock();
     private final long flushThresholdBytes;
     private volatile State state;
@@ -132,7 +133,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-
         State currentState = this.state;
         long entrySize = DaoUtils.getEntrySize(entry);
         long currentStorageSize;
@@ -154,7 +154,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-
         State currentState = this.state;
 
         if (currentState.inMemory.isEmpty()) {
@@ -184,14 +183,18 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private void backgroundFlush() {
         State currentState = this.state;
-
         try {
-            currentState.writer.writeDAO(currentState.inFlushing);
-
-            currentState.readers.add(0,
-                    new DaoReader(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
-                            utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage()))
-            );
+            // Если есть compact в процессе дождёмся сначала, когда всё скомпактиться в один файл
+            flushLock.writeLock().lock();
+            try {
+                currentState.writer.writeDAO(currentState.inFlushing);
+                currentState.readers.add(0,
+                        new DaoReader(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
+                                utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage()))
+                );
+            } finally {
+                flushLock.writeLock().unlock();
+            }
             DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, currentState.getSizeOfStorage()),
                     utils.resolvePath(OFFSETS_FILE_NAME, currentState.getSizeOfStorage())
             );
@@ -218,32 +221,42 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-        compactTask = executor.submit(() -> { // FIXME unnecessary compact tasks
-            try {
-                backgroundCompact();
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-        });
+        if (!compactTasks.isEmpty()) {
+            return;
+        }
+        compactTasks.offer(this::backgroundCompact);
+
+        if (compactTasks.peek() != null) {
+            compactTask = executor.submit(compactTasks.peek());
+        }
     }
 
-    private void backgroundCompact() throws IOException {
+    private void backgroundCompact() {
         State currentState = this.state;
         if (currentState.getSizeOfStorage() <= 1) {
             return;
         }
         try {
             Compacter compacter = new Compacter(utils);
-            compacter.writeData(currentState.readers);
-            compacter.finishCompact();
+            CopyOnWriteArrayList<DaoReader> readers;
+            DaoWriter writer;
+            flushLock.writeLock().lock();
+            // Если есть flush в процессе дождёмся сначала, когда запишется новый файл
+            try {
+                compacter.writeData(currentState.readers);
+                compacter.finishCompact();
+                readers = utils.initDaoReaders();
+                writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, readers.size()),
+                        utils.resolvePath(OFFSETS_FILE_NAME, readers.size())
+                );
+            } finally {
+                flushLock.writeLock().unlock();
+            }
 
-            CopyOnWriteArrayList<DaoReader> readers = utils.initDaoReaders();
-            DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, readers.size()),
-                    utils.resolvePath(OFFSETS_FILE_NAME, readers.size())
-            );
             upsertLock.writeLock().lock();
             try {
                 this.state = currentState.afterCompact(readers, writer);
+                compactTasks.clear();
             } finally {
                 upsertLock.writeLock().unlock();
             }
