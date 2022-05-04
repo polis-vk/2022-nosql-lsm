@@ -26,7 +26,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-
 import static ru.mail.polis.deniszhidkov.DaoUtils.DATA_FILE_NAME;
 import static ru.mail.polis.deniszhidkov.DaoUtils.OFFSETS_FILE_NAME;
 
@@ -83,7 +82,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             try {
                 compactTask.get();
             } catch (ExecutionException ex) {
-                throw new IllegalStateException("Compaction has failed", ex);
+                throw new RuntimeException("Compaction has failed", ex);
             } catch (InterruptedException exc) {
                 Thread.currentThread().interrupt();
                 return null;
@@ -116,7 +115,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             try {
                 compactTask.get();
             } catch (ExecutionException ex) {
-                throw new IllegalStateException("Compaction has failed");
+                throw new RuntimeException("Compaction has failed", ex);
             } catch (InterruptedException exc) {
                 Thread.currentThread().interrupt();
                 return null;
