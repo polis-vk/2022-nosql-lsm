@@ -98,13 +98,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (isClosed.get()) {
             throw new RuntimeException("Unable to upsert: close operation performed.");
         }
-        State currentState;
-        lock.writeLock().lock();
-        try {
-            currentState = this.state;
-        } finally {
-            lock.writeLock().unlock();
-        }
+        State currentState = currentState();
         int entryValueLength = entry.isTombstone() ? 0 : entry.value().length;
         int delta = 2 * entry.key().length + entryValueLength;
         synchronized (object) {
@@ -145,6 +139,11 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         flush();
         isClosed.set(true);
         closeService();
+        State currentState = currentState();
+        currentState.fileOperations.clearFileIterators();
+    }
+
+    private State currentState() {
         State currentState;
         lock.writeLock().lock();
         try {
@@ -152,7 +151,7 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         } finally {
             lock.writeLock().unlock();
         }
-        currentState.fileOperations.clearFileIterators();
+        return currentState;
     }
 
     private void startFlushing() {
@@ -164,22 +163,16 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     private void performBackgroundFlush() {
-        State state;
-        lock.writeLock().lock();
-        try {
-            state = this.state;
-        } finally {
-            lock.writeLock().unlock();
-        }
+        State currentState = currentState();
         taskResults.add(service.submit(() -> {
             try {
                 lock.writeLock().lock();
                 try {
-                    this.state = state.beforeFlushState();
+                    this.state = currentState.beforeFlushState();
                 } finally {
                     lock.writeLock().unlock();
                 }
-                state.fileOperations.flush(state.pairs);
+                currentState.fileOperations.flush(currentState.pairs);
                 lock.writeLock().lock();
                 try {
                     this.state = this.state.afterFlushState();
@@ -195,22 +188,16 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
     }
 
     private void performCompact() {
-        State state;
-        lock.writeLock().lock();
-        try {
-            state = this.state;
-        } finally {
-            lock.writeLock().unlock();
-        }
+        State currentState = currentState();
         taskResults.add(service.submit(() -> {
             Iterator<BaseEntry<byte[]>> iterator;
             try {
-                iterator = MergeIterator.of(state.fileOperations.diskIterators(null, null),
+                iterator = MergeIterator.of(currentState.fileOperations.diskIterators(null, null),
                         EntryKeyComparator.INSTANCE);
                 if (!iterator.hasNext()) {
                     return;
                 }
-                state.fileOperations.compact(iterator, state.pairs.size() != 0);
+                currentState.fileOperations.compact(iterator, currentState.pairs.size() != 0);
             } catch (IOException e) {
                 logger.error("Compact operation was interrupted.", e);
             }
