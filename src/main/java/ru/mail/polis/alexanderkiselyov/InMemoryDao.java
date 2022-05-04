@@ -24,26 +24,26 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
-    private final FileOperations fileOperations;
     private final AtomicBoolean isClosed;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private volatile State state;
+    private State state;
     private final long maxThresholdBytes;
     private final ExecutorService service;
     private final List<Future<?>> taskResults;
     private final Logger logger;
     private final AtomicBoolean isBackgroundFlushing;
+    private final Object object;
 
     public InMemoryDao(Config config) throws IOException {
-        fileOperations = new FileOperations(config);
+        FileOperations fileOperations = new FileOperations(config);
         isClosed = new AtomicBoolean(false);
-        state = new State(new ConcurrentSkipListMap<>(Arrays::compare),
-                new ConcurrentSkipListMap<>(Arrays::compare), fileOperations);
+        state = State.emptyState(fileOperations);
         maxThresholdBytes = config.flushThresholdBytes();
         service = Executors.newSingleThreadExecutor(r -> new Thread(r, "BackgroundFlushAndCompact"));
         taskResults = new CopyOnWriteArrayList<>();
         logger = LoggerFactory.getLogger(InMemoryDao.class);
         isBackgroundFlushing = new AtomicBoolean(false);
+        object = new Object();
     }
 
     @Override
@@ -107,22 +107,14 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         }
         int entryValueLength = entry.isTombstone() ? 0 : entry.value().length;
         int delta = 2 * entry.key().length + entryValueLength;
-        if (currentState.getSize().get() + delta >= maxThresholdBytes) {
-            if (isBackgroundFlushing.get()) {
-                throw new IllegalStateException("Unable to flush: all maps are full.");
+        synchronized (object) {
+            if (currentState.getSize().get() + delta >= maxThresholdBytes) {
+                startFlushing();
+            } else {
+                currentState.updateSize(delta);
             }
-            lock.writeLock().lock();
-            try {
-                this.state = new State(new ConcurrentSkipListMap<>(Arrays::compare),
-                        currentState.pairs, fileOperations);
-            } finally {
-                lock.writeLock().unlock();
-            }
-            performBackgroundFlush(this.state);
-        } else {
-            currentState.updateSize(delta);
         }
-        this.state.pairs.put(entry.key(), entry);
+        currentState.pairs.put(entry.key(), entry);
     }
 
     @Override
@@ -130,40 +122,19 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (isClosed.get()) {
             throw new RuntimeException("Unable to flush: close operation performed.");
         }
-        State currentState;
-        lock.writeLock().lock();
-        try {
-            currentState = new State(new ConcurrentSkipListMap<>(Arrays::compare), this.state.pairs, fileOperations);
-        } finally {
-            lock.writeLock().unlock();
-        }
-        if (currentState.flushingPairs.size() == 0) {
+        State currentState = this.state;
+        if (currentState.pairs.isEmpty()) {
             return;
         }
-        currentState.fileOperations.flush(currentState.flushingPairs);
-        currentState.flushingPairs.clear();
-        lock.writeLock().lock();
-        try {
-            this.state = new State(new ConcurrentSkipListMap<>(Arrays::compare),
-                    new ConcurrentSkipListMap<>(Arrays::compare), fileOperations);
-        } finally {
-            lock.writeLock().unlock();
-        }
+        startFlushing();
     }
 
     @Override
-    public synchronized void compact() throws IOException {
+    public void compact() throws IOException {
         if (isClosed.get()) {
             throw new RuntimeException("Unable to compact: close operation performed.");
         }
-        State currentState;
-        lock.writeLock().lock();
-        try {
-            currentState = this.state;
-        } finally {
-            lock.writeLock().unlock();
-        }
-        performCompact(currentState);
+        performCompact();
     }
 
     @Override
@@ -171,6 +142,9 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         if (isClosed.get()) {
             throw new RuntimeException("Unable to close one more time: close operation already performed.");
         }
+        flush();
+        isClosed.set(true);
+        closeService();
         State currentState;
         lock.writeLock().lock();
         try {
@@ -178,26 +152,56 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
         } finally {
             lock.writeLock().unlock();
         }
-        closeService();
-        flush();
         currentState.fileOperations.clearFileIterators();
-        isClosed.set(true);
     }
 
-    private void performBackgroundFlush(State state) {
+    private void startFlushing() {
+        if (isBackgroundFlushing.get()) {
+            throw new IllegalStateException("Unable to flush: all maps are full.");
+        }
+        isBackgroundFlushing.set(true);
+        performBackgroundFlush();
+    }
+
+    private void performBackgroundFlush() {
+        State state;
+        lock.writeLock().lock();
+        try {
+            state = this.state;
+        } finally {
+            lock.writeLock().unlock();
+        }
         taskResults.add(service.submit(() -> {
             try {
-                isBackgroundFlushing.set(true);
-                state.fileOperations.flush(state.flushingPairs);
-                state.flushingPairs.clear();
-                isBackgroundFlushing.set(false);
+                lock.writeLock().lock();
+                try {
+                    this.state = state.beforeFlushState();
+                } finally {
+                    lock.writeLock().unlock();
+                }
+                state.fileOperations.flush(state.pairs);
+                lock.writeLock().lock();
+                try {
+                    this.state = this.state.afterFlushState();
+                } finally {
+                    lock.writeLock().unlock();
+                }
             } catch (IOException e) {
                 logger.error("Flush operation was interrupted.", e);
+            } finally {
+                isBackgroundFlushing.set(false);
             }
         }));
     }
 
-    public void performCompact(State state) {
+    private void performCompact() {
+        State state;
+        lock.writeLock().lock();
+        try {
+            state = this.state;
+        } finally {
+            lock.writeLock().unlock();
+        }
         taskResults.add(service.submit(() -> {
             Iterator<BaseEntry<byte[]>> iterator;
             try {
@@ -239,6 +243,19 @@ public class InMemoryDao implements Dao<byte[], BaseEntry<byte[]>> {
             this.fileOperations = fileOperations;
             this.flushingPairs = flushingPairs;
             pairsSize = new AtomicInteger(0);
+        }
+
+        private static State emptyState(FileOperations fileOperations) {
+            return new State(new ConcurrentSkipListMap<>(Arrays::compare),
+                    new ConcurrentSkipListMap<>(Arrays::compare), fileOperations);
+        }
+
+        private State beforeFlushState() {
+            return new State(new ConcurrentSkipListMap<>(Arrays::compare), pairs, fileOperations);
+        }
+
+        private State afterFlushState() {
+            return new State(pairs, new ConcurrentSkipListMap<>(Arrays::compare), fileOperations);
         }
 
         private AtomicInteger getSize() {
