@@ -15,8 +15,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -31,15 +33,16 @@ import static ru.mail.polis.deniszhidkov.DaoUtils.OFFSETS_FILE_NAME;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
+    private static final Logger LOG = LoggerFactory.getLogger(InMemoryDao.class);
     private static final String DAO_CLOSED_EXCEPTION_TEXT = "DAO has been closed"; // Требование CodeClimate
     private final AtomicBoolean isClosed = new AtomicBoolean(false);
     private final DaoUtils utils;
     private final ExecutorService executor;
+    private final Queue<Runnable> flushTasks = new ConcurrentLinkedQueue<>();
     private final ReadWriteLock upsertLock = new ReentrantReadWriteLock();
     private final long flushThresholdBytes;
     private volatile State state;
-    private final Queue<Runnable> flushTasks = new ConcurrentLinkedQueue<>();
-    private static final Logger LOG = LoggerFactory.getLogger(InMemoryDao.class);
+    private Future<?> compactTask;
 
     public InMemoryDao(Config config) throws IOException {
         this.flushThresholdBytes = config.flushThresholdBytes();
@@ -65,7 +68,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                 Comparator.comparing((PriorityPeekIterator o) ->
                         o.peek().key()).thenComparingInt(PriorityPeekIterator::getPriorityIndex)
         );
-        // Если закроются readers заново вызовем get
+        // Если закроются readers заново вызовем добавление итераторов, дождавшись завершения compact
         try {
             utils.addAllIterators(iteratorsQueue,
                     currentState.inMemory,
@@ -76,12 +79,20 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             );
         } catch (IllegalStateException e) {
             iteratorsQueue.clear();
+            try {
+                compactTask.get();
+            } catch (ExecutionException ex) {
+                throw new IllegalStateException("Compaction has failed");
+            } catch (InterruptedException exc) {
+                throw new IllegalStateException("Thread was interrupted while waiting compaction");
+            }
+            currentState = this.state;
             utils.addAllIterators(iteratorsQueue,
                     currentState.inMemory,
                     currentState.inFlushing,
                     currentState.readers,
                     from,
-                    to); // FIXME it won't work
+                    to);
         }
         return iteratorsQueue.isEmpty() ? Collections.emptyIterator() : new MergeIterator(iteratorsQueue);
     }
@@ -92,24 +103,26 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
         State currentState = this.state;
-        BaseEntry<String> value = currentState.inMemory.get(key);
-        if (value == null) {
-            value = currentState.inFlushing.get(key);
-            if (value != null) {
-                return value;
-            }
-            // Если закроются readers снова вызовем get
+        BaseEntry<String> value = utils.findInMemoryByKey(key, state.inMemory, state.inFlushing);
+        if (value != null) {
+            return value.value() == null ? null : value;
+        }
+        // Если закроются readers снова вызовем поиск по всем readers, дождавшись завершения compact
+        try {
+            value = utils.findInStorageByKey(key, currentState.readers);
+        } catch (IllegalStateException e) {
             try {
-                for (int i = 0; i < currentState.getSizeOfStorage(); i++) {
-                    value = currentState.readers.get(i).findByKey(key);
-                    if (value != null) {
-                        return value.value() == null ? null : value;
-                    }
-                }
-            } catch (IllegalStateException e) {
-                get(key); // FIXME recursion
+                compactTask.get();
+            } catch (ExecutionException ex) {
+                throw new IllegalStateException("Compaction has failed");
+            } catch (InterruptedException exc) {
+                throw new IllegalStateException("Thread was interrupted while waiting compaction");
             }
-            value = new BaseEntry<>(null, null);
+            currentState = this.state;
+            value = utils.findInStorageByKey(key, currentState.readers);
+        }
+        if (value == null) {
+            return null;
         }
         return value.value() == null ? null : value;
     }
@@ -119,6 +132,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
+
         State currentState = this.state;
         long entrySize = DaoUtils.getEntrySize(entry);
         long currentStorageSize;
@@ -129,26 +143,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         } finally {
             upsertLock.readLock().unlock();
         }
+
         if (currentStorageSize >= flushThresholdBytes) {
-            if (!flushTasks.isEmpty()) {
-                throw new IllegalStateException("Flush queue overflow");
-            }
-            flushTasks.offer(() -> {
-                try {
-                    backgroundFlush();
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            });
-
-            upsertLock.writeLock().lock();
-            try {
-                this.state = currentState.beforeFlush();
-            } finally {
-                upsertLock.writeLock().unlock();
-            }
-
-            executor.submit(flushTasks.peek());
+            prepareAndStartFlush(currentState);
         }
     }
 
@@ -157,18 +154,21 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-        if (!flushTasks.isEmpty()) { // FIXME race
-            throw new IllegalStateException("Flush queue overflow");
-        }
-        flushTasks.offer(() -> {
-            try {
-                backgroundFlush();
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-        });
 
         State currentState = this.state;
+
+        if (currentState.inMemory.isEmpty()) {
+            return;
+        }
+
+        prepareAndStartFlush(currentState);
+    }
+
+    private void prepareAndStartFlush(State currentState) throws UncheckedIOException {
+        if (!flushTasks.isEmpty()) {
+            throw new IllegalStateException("Flush queue overflow");
+        }
+        flushTasks.offer(this::backgroundFlush);
 
         upsertLock.writeLock().lock();
         try {
@@ -177,10 +177,12 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             upsertLock.writeLock().unlock();
         }
 
-        executor.submit(flushTasks.peek());
+        if (flushTasks.peek() != null) {
+            executor.submit(flushTasks.peek());
+        }
     }
 
-    private void backgroundFlush() throws IOException {
+    private void backgroundFlush() {
         State currentState = this.state;
 
         try {
@@ -197,22 +199,26 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             upsertLock.writeLock().lock();
             try {
                 this.state = currentState.afterFlush(writer);
-                flushTasks.clear();
+                flushTasks.poll();
             } finally {
                 upsertLock.writeLock().unlock();
             }
         } catch (Exception e) {
             LOG.error("Flush has failed: ", e);
-            utils.closeReaders(currentState.readers);
+            try {
+                utils.closeReaders(currentState.readers);
+            } catch (IOException ex) {
+                LOG.error("Can't close storage: ", ex);
+            }
         }
     }
 
     @Override
-    public void compact() throws IOException {
+    public synchronized void compact() throws IOException {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
-        executor.submit(() -> { // FIXME unnecessary compact tasks
+        compactTask = executor.submit(() -> { // FIXME unnecessary compact tasks
             try {
                 backgroundCompact();
             } catch (IOException e) {
@@ -226,18 +232,29 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         if (currentState.getSizeOfStorage() <= 1) {
             return;
         }
-        Compacter compacter = new Compacter(utils);
-        compacter.writeData(currentState.readers);
-        compacter.finishCompact();
-        CopyOnWriteArrayList<DaoReader> readers = utils.initDaoReaders();
-        DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, readers.size()),
-                utils.resolvePath(OFFSETS_FILE_NAME, readers.size())
-        );
-        upsertLock.writeLock().lock();
         try {
-            this.state = currentState.afterCompact(readers, writer);
-        } finally {
-            upsertLock.writeLock().unlock();
+            Compacter compacter = new Compacter(utils);
+            compacter.writeData(currentState.readers);
+            compacter.finishCompact();
+
+            CopyOnWriteArrayList<DaoReader> readers = utils.initDaoReaders();
+            DaoWriter writer = new DaoWriter(utils.resolvePath(DATA_FILE_NAME, readers.size()),
+                    utils.resolvePath(OFFSETS_FILE_NAME, readers.size())
+            );
+            upsertLock.writeLock().lock();
+            try {
+                this.state = currentState.afterCompact(readers, writer);
+            } finally {
+                upsertLock.writeLock().unlock();
+            }
+
+        } catch (Exception e) {
+            LOG.error("Compact has failed: ", e);
+            try {
+                utils.closeReaders(currentState.readers);
+            } catch (IOException ex) {
+                LOG.error("Can't close storage: ", ex);
+            }
         }
     }
 

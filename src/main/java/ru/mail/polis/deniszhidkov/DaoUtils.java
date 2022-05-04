@@ -141,10 +141,10 @@ public class DaoUtils {
 
 
     public void addInStorageIteratorsByRange(Queue<PriorityPeekIterator> iteratorsQueue,
-                                              CopyOnWriteArrayList<DaoReader> readers,
-                                              String from,
-                                              String to,
-                                              int index
+                                             CopyOnWriteArrayList<DaoReader> readers,
+                                             String from,
+                                             String to,
+                                             int index
     ) throws IOException {
         int priorityIndex = index;
         for (DaoReader reader : readers) {
@@ -153,5 +153,29 @@ public class DaoUtils {
                 iteratorsQueue.add(new PriorityPeekIterator(fileIterator, priorityIndex++));
             }
         }
+    }
+
+    public BaseEntry<String> findInMemoryByKey(String key,
+                                               ConcurrentNavigableMap<String, BaseEntry<String>> inMemory,
+                                               ConcurrentNavigableMap<String, BaseEntry<String>> inFlushing) {
+        BaseEntry<String> value = inMemory.get(key);
+        if (value != null) {
+            return value;
+        }
+        value = inFlushing.get(key);
+        return value;
+    }
+
+    public BaseEntry<String> findInStorageByKey(String key,
+                                                CopyOnWriteArrayList<DaoReader> readers
+    ) throws IOException {
+        BaseEntry<String> value;
+        for (DaoReader reader : readers) {
+            value = reader.findByKey(key);
+            if (value != null) {
+                return value.value() == null ? null : value;
+            }
+        }
+        return null;
     }
 }
