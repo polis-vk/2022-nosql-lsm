@@ -29,7 +29,7 @@ public final class Comparator {
     public static int iteratorsCompare(PeekIterator o1, PeekIterator o2) {
         int compare = Comparator.compare(o1.peek().key(), o2.peek().key());
         if (compare == 0) {
-            return o1.getPriority() > o2.getPriority() ? -1 : 1;
+            return o1.getIndex() > o2.getIndex() ? 1 : -1;
         }
         return compare;
     }
