@@ -128,7 +128,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public void upsert(BaseEntry<String> entry) throws UncheckedIOException {
+    public void upsert(BaseEntry<String> entry) {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
@@ -150,7 +150,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public synchronized void flush() throws IOException, UncheckedIOException {
+    public synchronized void flush() {
         if (isClosed.get()) {
             throw new IllegalStateException(DAO_CLOSED_EXCEPTION_TEXT);
         }
@@ -164,7 +164,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         prepareAndStartFlush(currentState);
     }
 
-    private void prepareAndStartFlush(State currentState) throws UncheckedIOException {
+    private void prepareAndStartFlush(State currentState) {
         if (!flushTasks.isEmpty()) {
             throw new IllegalStateException("Flush queue overflow");
         }
@@ -199,7 +199,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             upsertLock.writeLock().lock();
             try {
                 this.state = currentState.afterFlush(writer);
-                flushTasks.poll();
+                flushTasks.clear();
             } finally {
                 upsertLock.writeLock().unlock();
             }
@@ -288,7 +288,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private static class State {
 
-        private final AtomicLong storageMemoryUsage = new AtomicLong(0);
+        private final AtomicLong storageMemoryUsage;
         private final ConcurrentNavigableMap<String, BaseEntry<String>> inMemory;
         private final ConcurrentNavigableMap<String, BaseEntry<String>> inFlushing;
         private final CopyOnWriteArrayList<DaoReader> readers;
@@ -297,8 +297,10 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         State(ConcurrentNavigableMap<String, BaseEntry<String>> inMemory,
               ConcurrentNavigableMap<String, BaseEntry<String>> inFlushing,
               CopyOnWriteArrayList<DaoReader> readers,
-              DaoWriter writer
+              DaoWriter writer,
+              long memoryUsage
         ) {
+            this.storageMemoryUsage = new AtomicLong(memoryUsage);
             this.inMemory = inMemory;
             this.inFlushing = inFlushing;
             this.readers = readers;
@@ -306,20 +308,19 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
 
         static State newState(CopyOnWriteArrayList<DaoReader> readers, DaoWriter writer) {
-            return new State(new ConcurrentSkipListMap<>(), new ConcurrentSkipListMap<>(), readers, writer);
+            return new State(new ConcurrentSkipListMap<>(), new ConcurrentSkipListMap<>(), readers, writer, 0);
         }
 
         State beforeFlush() {
-            storageMemoryUsage.set(0);
-            return new State(new ConcurrentSkipListMap<>(), inMemory, readers, writer);
+            return new State(new ConcurrentSkipListMap<>(), inMemory, readers, writer, 0);
         }
 
         State afterFlush(DaoWriter writer) {
-            return new State(inMemory, new ConcurrentSkipListMap<>(), readers, writer);
+            return new State(inMemory, new ConcurrentSkipListMap<>(), readers, writer, this.storageMemoryUsage.get());
         }
 
         State afterCompact(CopyOnWriteArrayList<DaoReader> readers, DaoWriter writer) {
-            return new State(inMemory, inFlushing, readers, writer);
+            return new State(inMemory, inFlushing, readers, writer, this.storageMemoryUsage.get());
         }
 
         int getSizeOfStorage() {
