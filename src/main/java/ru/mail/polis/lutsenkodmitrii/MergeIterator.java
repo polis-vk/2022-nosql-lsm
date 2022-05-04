@@ -41,7 +41,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         int priority = 1;
         for (Map.Entry<Path, FileInputStream> filesMapEntry : filesMapEntries) {
             filesMapEntry.getValue().getChannel().position(0);
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(filesMapEntry.getValue(), UTF_8));
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(filesMapEntry.getValue(), UTF_8), 65536);
             BaseEntry<String> firstEntry = isFromNull
                     ? DaoUtils.readEntry(bufferedReader)
                     : DaoUtils.ceilKey(filesMapEntry.getKey(), bufferedReader, from);
