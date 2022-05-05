@@ -8,18 +8,18 @@ import java.util.Iterator;
 
 public class MergeIterator implements Iterator<BaseEntry<String>> {
 
-    private Deque<FilePeekIterator> dequeOfIterators;
-    private FilePeekIterator currentIterator;
+    private Deque<BasePeekIterator> dequeOfIterators;
+    private BasePeekIterator currentIterator;
     private BaseEntry<String> current;
 
-    public MergeIterator(Deque<FilePeekIterator> dequeOfIterators) {
+    public MergeIterator(Deque<BasePeekIterator> dequeOfIterators) {
         this.dequeOfIterators = dequeOfIterators;
         currentIterator = dequeOfIterators.poll();
         peek();
     }
 
     public BaseEntry<String> getNext() {
-        Deque<FilePeekIterator> dequeOfIteratorsSecond = new ArrayDeque<>();
+        Deque<BasePeekIterator> dequeOfIteratorsSecond = new ArrayDeque<>();
         while (!dequeOfIterators.isEmpty()) {
             if (!currentIterator.hasNext()) {
                 currentIterator = dequeOfIterators.poll();
@@ -27,24 +27,18 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
                     break;
                 }
             }
-            FilePeekIterator tempIterator = dequeOfIterators.poll();
+            BasePeekIterator tempIterator = dequeOfIterators.poll();
             if (currentIterator.peek().key().compareTo(tempIterator.peek().key()) > 0) {
-                if (currentIterator.hasNext()) {
-                    dequeOfIteratorsSecond.addFirst(currentIterator);
-                }
+                addIfHasNext(dequeOfIteratorsSecond, currentIterator);
                 currentIterator = tempIterator;
             } else if (currentIterator.peek().key().compareTo(tempIterator.peek().key()) == 0) {
                 if (currentIterator.getGeneration() > tempIterator.getGeneration()) {
                     currentIterator.next();
-                    if (currentIterator.hasNext()) {
-                        dequeOfIteratorsSecond.addFirst(currentIterator);
-                    }
+                    addIfHasNext(dequeOfIteratorsSecond, currentIterator);
                     currentIterator = tempIterator;
                 } else {
                     tempIterator.next();
-                    if (tempIterator.hasNext()) {
-                        dequeOfIteratorsSecond.addFirst(tempIterator);
-                    }
+                    addIfHasNext(dequeOfIteratorsSecond, tempIterator);
                 }
             } else {
                 dequeOfIteratorsSecond.addFirst(tempIterator);
@@ -52,6 +46,12 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
         }
         dequeOfIterators = dequeOfIteratorsSecond;
         return currentIterator.hasNext() ? currentIterator.next() : null;
+    }
+
+    private void addIfHasNext(Deque<BasePeekIterator> dequeOfIteratorsSecond, BasePeekIterator iterator) {
+        if (iterator.hasNext()) {
+            dequeOfIteratorsSecond.addFirst(iterator);
+        }
     }
 
     public void peek() {

@@ -9,47 +9,25 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 
-public class FilePeekIterator implements Iterator<BaseEntry<String>> {
+public class FilePeekIterator extends BasePeekIterator {
 
-    private BaseEntry<String> current;
-    private Path path;
+    private final Path path;
     private long endIndex;
     private long startIndex;
     private long currentFilePosition;
-    private List<Long> offsets;
+    private final List<Long> offsets;
     private int numberOfEntries;
-    private Iterator<BaseEntry<String>> delegate;
-    private final int generation;
     private long fileSize;
-    private boolean isToBeDeleted;
     private boolean isCompact;
-    public final int BYTES_BEFORE_VALUES = 13;
+    public static final int BYTESBEFOREVALUES = 13;
 
     public FilePeekIterator(Path path, int generation) {
         this.path = path;
         this.offsets = new ArrayList<>();
         this.generation = generation;
-    }
-
-    public FilePeekIterator(Iterator<BaseEntry<String>> delegate, int generation) {
-        this.delegate = delegate;
-        this.generation = generation;
-    }
-
-    public void setToBeDeleted(boolean toBeDeleted) {
-        isToBeDeleted = toBeDeleted;
-    }
-
-    public boolean isToBeDeleted() {
-        return isToBeDeleted;
-    }
-
-    public int getGeneration() {
-        return generation;
     }
 
     public Path getPath() {
@@ -65,12 +43,12 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
             isCompact = reader.readBoolean();
             numberOfEntries = reader.readInt();
             endIndex = reader.readLong();
-            startIndex = BYTES_BEFORE_VALUES;
+            startIndex = BYTESBEFOREVALUES;
             if (endIndex == startIndex) {
                 numberOfEntries = 0;
             }
 
-            reader.skipNBytes(endIndex - BYTES_BEFORE_VALUES);
+            reader.skipNBytes(endIndex - BYTESBEFOREVALUES);
 
             for (int i = 0; i < numberOfEntries; i++) {
                 offsets.add(reader.readLong());
@@ -93,20 +71,13 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
 
     @Override
     public boolean hasNext() {
-        if (delegate == null) {
-            return current != null || currentFilePosition < endIndex;
-        } else {
-            return current != null || delegate.hasNext();
-        }
+        return current != null || currentFilePosition < endIndex;
     }
 
+    @Override
     public BaseEntry<String> peek() {
         if (current == null) {
-            if (delegate == null) {
-                current = readNext();
-            } else {
-                current = delegate.next();
-            }
+            current = readNext();
         }
         return current;
     }
@@ -122,7 +93,9 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
         int binarySearchIndexResult;
         long result;
 
-        if (!offsets.isEmpty()) {
+        if (offsets.isEmpty()) {
+            result = BYTESBEFOREVALUES;
+        } else {
             binarySearchIndexResult = fileBinarySearch(numberOfEntries - 1, key);
             currentFilePosition = offsets.get(binarySearchIndexResult);
             if (peek().key().compareTo(key) < 0) {
@@ -130,15 +103,14 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
             } else {
                 result = offsets.get(binarySearchIndexResult);
             }
-        } else {
-            result = BYTES_BEFORE_VALUES;
         }
 
         current = null;
         return result;
     }
 
-    private int fileBinarySearch(int high, String targetKey) {
+    private int fileBinarySearch(int upperBound, String targetKey) {
+        int high = upperBound;
         int low = 0;
         int mid = 0;
         currentFilePosition = startIndex;
@@ -174,22 +146,12 @@ public class FilePeekIterator implements Iterator<BaseEntry<String>> {
     }
 
     public BaseEntry<String> findValueByKey(String key) {
-        if (delegate == null) {
-            BaseEntry<String> result = null;
-            fileBinarySearch(numberOfEntries - 1, key);
-            if (peek().key().equals(key)) {
-                result = next();
-            }
-            return result;
-        } else {
-            while (delegate.hasNext()) {
-                BaseEntry<String> result = delegate.next();
-                if (result.key().equals(key)) {
-                    return result;
-                }
-            }
-            return null;
+        BaseEntry<String> result = null;
+        fileBinarySearch(numberOfEntries - 1, key);
+        if (peek().key().equals(key)) {
+            result = next();
         }
+        return result;
     }
 
     private String readValue(DataInputStream reader) throws IOException {

@@ -8,32 +8,33 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.ConcurrentNavigableMap;
-import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     private ConcurrentNavigableMap<String, BaseEntry<String>> stringConcurrentSkipListMap =
             new ConcurrentSkipListMap<>(String::compareTo);
+    /*
+    Используется для доступа на чтение данных, которые записываются при flush
+     */
     private ConcurrentNavigableMap<String, BaseEntry<String>> stringConcurrentSkipListMapPointer =
             stringConcurrentSkipListMap;
     private static final String FILE_NAME = "cache";
     private static final String COMPACT_FILE_NAME = "compact";
-    private static final int YOUNGEST_GENERATION = 0;
     private static final int FILLER_FOR_OFFSETS_OFFSET = 0;
     private final Deque<FilePeekIterator> listOfFiles = new ArrayDeque<>();
     private final Path directoryPath;
     private final long flushThresholdBytes;
     private final ExecutorService compactExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService flushExecutor = Executors.newSingleThreadExecutor();
-    private final AtomicBoolean isDoneCompacting = new AtomicBoolean(true);
     private final AtomicBoolean isDoneFlushing = new AtomicBoolean(true);
     private final AtomicLong mapSize = new AtomicLong(0);
     private final Path basePath;
+    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
     public InMemoryDao(Config config) throws IOException {
         directoryPath = config.basePath();
@@ -63,30 +64,26 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) {
-        FilePeekIterator stringMapIterator;
+        PeekIterator stringMapIterator;
         if (from == null && to == null) {
-            stringMapIterator = new FilePeekIterator(
-                    getIterator(stringConcurrentSkipListMapPointer),
-                    YOUNGEST_GENERATION
+            stringMapIterator = new PeekIterator(
+                    getIterator(stringConcurrentSkipListMapPointer)
             );
         } else if (from == null) {
-            stringMapIterator = new FilePeekIterator(
-                    getIterator(stringConcurrentSkipListMapPointer.headMap(to)),
-                    YOUNGEST_GENERATION
+            stringMapIterator = new PeekIterator(
+                    getIterator(stringConcurrentSkipListMapPointer.headMap(to))
             );
         } else if (to == null) {
-            stringMapIterator = new FilePeekIterator(
-                    getIterator(stringConcurrentSkipListMapPointer.tailMap(from, true)),
-                    YOUNGEST_GENERATION
+            stringMapIterator = new PeekIterator(
+                    getIterator(stringConcurrentSkipListMapPointer.tailMap(from, true))
             );
         } else {
-            stringMapIterator = new FilePeekIterator(
-                    getIterator(stringConcurrentSkipListMapPointer.subMap(from, to)),
-                    YOUNGEST_GENERATION
+            stringMapIterator = new PeekIterator(
+                    getIterator(stringConcurrentSkipListMapPointer.subMap(from, to))
             );
         }
 
-        Deque<FilePeekIterator> listOfIterators = getFromMemory(from, to);
+        Deque<BasePeekIterator> listOfIterators = getFromFiles(from, to);
         if (stringMapIterator.hasNext()) {
             listOfIterators.addFirst(stringMapIterator);
         }
@@ -94,8 +91,8 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         return listOfIterators.isEmpty() ? Collections.emptyIterator() : new MergeIterator(listOfIterators);
     }
 
-    public Deque<FilePeekIterator> getFromMemory(String from, String to) {
-        Deque<FilePeekIterator> listOfIterators = new ArrayDeque<>();
+    public Deque<BasePeekIterator> getFromFiles(String from, String to) {
+        Deque<BasePeekIterator> listOfIterators = new ArrayDeque<>();
         for (FilePeekIterator filePeekIterator : listOfFiles) {
             filePeekIterator.setBoundaries(from, to);
             if (filePeekIterator.hasNext()) {
@@ -126,7 +123,6 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                     isDoneFlushing.set(true);
                 } catch (IOException e) {
                     isDoneFlushing.set(true);
-                    throw new RuntimeException();
                 }
             });
         }
@@ -168,17 +164,18 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             int lastOffset;
             for (BaseEntry<String> entry : map.values()) {
                 offsets.add(firstWriter.size());
-                if (entry.value() != null) {
+                if (entry.value() == null) {
+                    firstWriter.writeBoolean(false);
+                    lastOffset = firstWriter.size();
+                    writeValue(firstWriter, entry.key(), 0);
+
+                } else {
                     firstWriter.writeBoolean(true);
                     lastOffset = firstWriter.size();
                     writeValue(firstWriter, entry.key(), 0);
                     lengths.add(firstWriter.size() - lastOffset - Integer.BYTES);
                     lastOffset = firstWriter.size();
                     writeValue(firstWriter, entry.value(), 0);
-                } else {
-                    firstWriter.writeBoolean(false);
-                    lastOffset = firstWriter.size();
-                    writeValue(firstWriter, entry.key(), 0);
                 }
                 lengths.add(firstWriter.size() - lastOffset - Integer.BYTES);
             }
@@ -191,60 +188,75 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
                          = new DataOutputStream(
                     new BufferedOutputStream(
                             Files.newOutputStream(path)))) {
-                writer.writeBoolean(isCompact);
-                writer.writeInt(map.size());
-                writer.writeLong(keyValueSize);
-                for (BaseEntry<String> entry : map.values()) {
-                    if (entry.value() != null) {
-                        writer.writeBoolean(true);
-                        writeValue(writer, entry.key(), lengths.pop());
-                        writeValue(writer, entry.value(), lengths.pop());
-                    } else {
-                        writer.writeBoolean(false);
-                        writeValue(writer, entry.key(), lengths.pop());
-                    }
-                }
-
-                for (long offset : offsets) {
-                    writer.writeLong(offset);
-                }
-
-                writer.writeLong(writer.size() + Long.BYTES);
+                writeWithBufferedWriter(writer, isCompact, map, keyValueSize, offsets, lengths);
             }
         } else {
             try (RandomAccessFile secondWriter
                          = new RandomAccessFile(path.toString(), "rw")) {
-                secondWriter.skipBytes(5);
-                secondWriter.writeLong(keyValueSize);
-                for (BaseEntry<String> entry : map.values()) {
-                    secondWriter.skipBytes(1);
-                    if (entry.value() != null) {
-                        writeLength(secondWriter, lengths.pop());
-                        writeLength(secondWriter, lengths.pop());
-                    } else {
-                        writeLength(secondWriter, lengths.pop());
-                    }
-                }
-
-                for (long offset : offsets) {
-                    secondWriter.writeLong(offset);
-                }
-
-                secondWriter.writeLong(secondWriter.length() + Long.BYTES);
+                writeWithRandomAccess(secondWriter, map, keyValueSize, offsets, lengths);
             }
         }
     }
 
+    private void writeWithBufferedWriter(
+            DataOutputStream writer,
+            boolean isCompact,
+            ConcurrentNavigableMap<String, BaseEntry<String>> map,
+            long keyValueSize,
+            Deque<Integer> offsets,
+            Deque<Integer> lengths) throws IOException {
+        writer.writeBoolean(isCompact);
+        writer.writeInt(map.size());
+        writer.writeLong(keyValueSize);
+        for (BaseEntry<String> entry : map.values()) {
+            if (entry.value() == null) {
+                writer.writeBoolean(false);
+                writeValue(writer, entry.key(), lengths.pop());
+            } else {
+                writer.writeBoolean(true);
+                writeValue(writer, entry.key(), lengths.pop());
+                writeValue(writer, entry.value(), lengths.pop());
+            }
+        }
+
+        for (long offset : offsets) {
+            writer.writeLong(offset);
+        }
+
+        writer.writeLong(writer.size() + Long.BYTES);
+    }
+
+    private void writeWithRandomAccess(
+            RandomAccessFile writer,
+            ConcurrentNavigableMap<String, BaseEntry<String>> map,
+            long keyValueSize,
+            Deque<Integer> offsets,
+            Deque<Integer> lengths) throws IOException {
+        writer.skipBytes(5);
+        writer.writeLong(keyValueSize);
+        for (BaseEntry<String> entry : map.values()) {
+            writer.skipBytes(1);
+            if (entry.value() == null) {
+                writeLength(writer, lengths.pop());
+            } else {
+                writeLength(writer, lengths.pop());
+                writeLength(writer, lengths.pop());
+            }
+        }
+
+        for (long offset : offsets) {
+            writer.writeLong(offset);
+        }
+
+        writer.writeLong(writer.length() + Long.BYTES);
+    }
+
     @Override
     public void compact() throws IOException {
-        isDoneCompacting.set(false);
         compactExecutor.execute(() -> {
             try {
                 runCompact();
-                isDoneCompacting.set(true);
-            } catch (IOException e) {
-                isDoneCompacting.set(true);
-                throw new RuntimeException();
+            } catch (IOException ignored) {
             }
         });
     }
@@ -256,9 +268,9 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
         ConcurrentNavigableMap<String, BaseEntry<String>> memoryMap
                 = new ConcurrentSkipListMap<>();
-        Deque<FilePeekIterator> listOfMemoryIterators = getFromMemory(null, null);
+        Deque<BasePeekIterator> listMemoryIterators = getFromFiles(null, null);
         Iterator<BaseEntry<String>> iterator =
-                listOfMemoryIterators.isEmpty() ? Collections.emptyIterator() : new MergeIterator(listOfMemoryIterators);
+                listMemoryIterators.isEmpty() ? Collections.emptyIterator() : new MergeIterator(listMemoryIterators);
 
         while (iterator.hasNext()) {
             BaseEntry<String> entry = iterator.next();
@@ -266,7 +278,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
         }
 
         for (FilePeekIterator file : listOfFiles) {
-            file.setToBeDeleted(!file.isCompact());
+            Files.delete(file.getPath());
         }
 
         save(
@@ -278,24 +290,21 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void close() throws IOException {
-        while (!isDoneCompacting.get() || !isDoneFlushing.get()) {
-            //block
-        }
 
-        compactExecutor.shutdownNow();
-        flushExecutor.shutdownNow();
-
-        for (FilePeekIterator filePeekIterator : listOfFiles) {
-            if (filePeekIterator.isToBeDeleted()) {
-                Files.delete(filePeekIterator.getPath());
-            }
+        try {
+            compactExecutor.shutdown();
+            flushExecutor.shutdown();
+            compactExecutor.awaitTermination(Integer.MAX_VALUE, TimeUnit.MILLISECONDS);
+            flushExecutor.awaitTermination(Integer.MAX_VALUE, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
 
         if (stringConcurrentSkipListMap.isEmpty()) {
             return;
+        } else {
+            flush();
         }
-
-        flush();
     }
 
     private void writeValue(DataOutputStream writer, String value, int size) throws IOException {
