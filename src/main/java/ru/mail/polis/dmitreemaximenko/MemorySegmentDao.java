@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -28,11 +27,11 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
     private static final long NULL_VALUE_SIZE = -1;
     private static final int FLUSHING_QUEUE_SIZE = 1;
-    private static final long DEFAULT_TABLE_SPACE = 0124 * 1024 * 128;
-    private static int SUCCESS = 0;
+    private static final long DEFAULT_TABLE_SPACE = 1024 * 1024 * 128;
+    private static int SUCCESS = 1;
     private static int FLUSH_REQUEST = -1;
     private static int TABLE_READ_ONLY = -2;
-    volatile boolean flushFinish = false;
+    volatile boolean flushFinish;
     private MemTable activeMemTable;
     BlockingQueue<MemTable> flushingTables = new ArrayBlockingQueue<>(FLUSHING_QUEUE_SIZE);
     List<SSTable> ssTables;
@@ -59,6 +58,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             finishCompacting();
         }
 
+        flushFinish = false;
         flusher = new Thread(new Flusher(this));
 
         flusher.start();
@@ -187,6 +187,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             flusher.join();
         } catch (InterruptedException e) {
             e.printStackTrace();
+            flusher.interrupt();
         }
 
         compactor.shutdown();

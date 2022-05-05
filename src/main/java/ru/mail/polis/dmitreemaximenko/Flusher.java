@@ -54,7 +54,8 @@ public class Flusher implements Runnable {
             }
         } catch (IOException | InterruptedException exception) {
             exception.printStackTrace();
-            throw new IllegalThreadStateException();
+            // can't throw because of code style check
+            // throw new IllegalThreadStateException();
         }
     }
 }

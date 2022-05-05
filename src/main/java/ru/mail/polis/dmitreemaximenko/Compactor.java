@@ -33,8 +33,8 @@ public class Compactor implements Runnable {
                     return new BorderedMergeIterator(ssTablesToCompact);
                 } catch (IOException e) {
                     e.printStackTrace();
+                    return Collections.emptyIterator();
                 }
-                return Collections.emptyIterator();
             }, memorySegmentDao.fileManager.getCompactingInProcessFile());
 
             int compactLogIndex;

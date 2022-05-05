@@ -17,10 +17,10 @@ public class MemTable implements Table {
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
             new ConcurrentSkipListMap<>(COMPARATOR);
     private long spaceLeft;
-    private static final int SUCCESS = 0;
+    private static final int SUCCESS = 1;
     private static final int FLUSH_REQUEST = -1;
     private static final int TABLE_READ_ONLY = -2;
-    private AtomicBoolean flushRequested = new AtomicBoolean(false);
+    private final AtomicBoolean flushRequested = new AtomicBoolean(false);
 
     public MemTable(long tableSpace) {
         this.spaceLeft = tableSpace;
