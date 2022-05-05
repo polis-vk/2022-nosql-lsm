@@ -184,7 +184,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
                     return;
                 }
                 if (onFlushCollection != null) {
-                    throw new IllegalStateException("Already flush");
+                    return; // already flushing
                 }
                 onFlushCollection = collection;
                 createMemoryData();
