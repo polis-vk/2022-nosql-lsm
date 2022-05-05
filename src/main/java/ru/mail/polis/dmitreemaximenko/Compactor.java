@@ -1,10 +1,14 @@
 package ru.mail.polis.dmitreemaximenko;
 
+import jdk.incubator.foreign.MemorySegment;
+import ru.mail.polis.Entry;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 
 public class Compactor implements Runnable {
@@ -29,12 +33,7 @@ public class Compactor implements Runnable {
 
             Files.deleteIfExists(memorySegmentDao.fileManager.getCompactingInProcessFile());
             memorySegmentDao.writeValuesToFile(() -> {
-                try {
-                    return new BorderedMergeIterator(ssTablesToCompact);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    return Collections.emptyIterator();
-                }
+                return createMergeIterator(ssTablesToCompact);
             }, memorySegmentDao.fileManager.getCompactingInProcessFile());
 
             int compactLogIndex;
@@ -61,6 +60,15 @@ public class Compactor implements Runnable {
             }
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private Iterator<Entry<MemorySegment>> createMergeIterator(List<Table> ssTablesToCompact) {
+        try {
+            return new BorderedMergeIterator(ssTablesToCompact);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return Collections.emptyIterator();
         }
     }
 }

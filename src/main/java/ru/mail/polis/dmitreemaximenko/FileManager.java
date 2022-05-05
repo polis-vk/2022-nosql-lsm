@@ -108,7 +108,7 @@ public class FileManager {
     // 3) then 2 3 4 5
     // #fix Me implement this
     public void removeLogFilesWithoutLockingWithFixingFurtherLogs(int size) throws IOException {
-        assert  size >= 0;
+        assert size >= 0;
         for (int logIndex = logFilesAmount - 1; logIndex > 0; logIndex--) {
             Path filename = config.basePath().resolve(LOG_NAME + logIndex);
             Files.delete(filename);
