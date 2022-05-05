@@ -17,14 +17,14 @@ import java.util.Iterator;
 public class SSTable implements Table {
     private static final long NULL_VALUE_SIZE = -1;
     private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
-    private MemorySegment SsTableFile;
+    private MemorySegment ssTableFile;
 
     public SSTable(Path logPath, ResourceScope scope) {
         try {
             long size = Files.size(logPath);
-            SsTableFile = MemorySegment.mapFile(logPath, 0, size, FileChannel.MapMode.READ_ONLY, scope);
+            ssTableFile = MemorySegment.mapFile(logPath, 0, size, FileChannel.MapMode.READ_ONLY, scope);
         } catch (IOException ioException) {
-            SsTableFile = null;
+            ssTableFile = null;
         }
     }
 
@@ -35,7 +35,7 @@ public class SSTable implements Table {
 
     @Override
     public Iterator<Entry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
-        return new FileEntryIterator(from, to, SsTableFile);
+        return new FileEntryIterator(from, to, ssTableFile);
     }
 
     @Override

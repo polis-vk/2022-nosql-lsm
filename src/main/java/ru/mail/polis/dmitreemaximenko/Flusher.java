@@ -23,9 +23,9 @@ public class Flusher implements Runnable {
                 try {
                     MemTable tableToFlush = memorySegmentDao.flushingTables.take();
 
-                    memorySegmentDao.DbTablesLock.writeLock().lock();
+                    memorySegmentDao.dbTablesLock.writeLock().lock();
                     memorySegmentDao.flushingTable = tableToFlush;
-                    memorySegmentDao.DbTablesLock.writeLock().unlock();
+                    memorySegmentDao.dbTablesLock.writeLock().unlock();
 
                     if (!memorySegmentDao.flushingTable.isEmpty()) {
                         memorySegmentDao.writeValuesToFile(memorySegmentDao.flushingTable,
@@ -33,11 +33,11 @@ public class Flusher implements Runnable {
 
                         int newLogIndex = memorySegmentDao.fileManager
                                 .addLog(memorySegmentDao.fileManager.getFlushTmpFile());
-                        memorySegmentDao.DbTablesLock.writeLock().lock();
+                        memorySegmentDao.dbTablesLock.writeLock().lock();
                         memorySegmentDao.ssTables.add(0,
                                 new SSTable(memorySegmentDao.fileManager.getLogName(newLogIndex),
                                         memorySegmentDao.scope));
-                        memorySegmentDao.DbTablesLock.writeLock().unlock();
+                        memorySegmentDao.dbTablesLock.writeLock().unlock();
                     }
 
                 } catch (InterruptedException e) {
@@ -58,10 +58,10 @@ public class Flusher implements Runnable {
         while (!memorySegmentDao.flushingTables.isEmpty()) {
             MemTable tableToFlush = memorySegmentDao.flushingTables.poll();
 
-            memorySegmentDao.DbTablesLock.writeLock().lock();
+            memorySegmentDao.dbTablesLock.writeLock().lock();
             memorySegmentDao.flushingTable = tableToFlush;
             Path filename = memorySegmentDao.fileManager.getNextLogName();
-            memorySegmentDao.DbTablesLock.writeLock().unlock();
+            memorySegmentDao.dbTablesLock.writeLock().unlock();
 
             if (!memorySegmentDao.flushingTable.isEmpty()) {
                 try {

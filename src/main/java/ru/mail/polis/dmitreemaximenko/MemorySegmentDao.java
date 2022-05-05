@@ -10,8 +10,12 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.*;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -34,7 +38,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     List<SSTable> ssTables;
     private Thread flusher;
     private ExecutorService compactor;
-    final ReadWriteLock DbTablesLock = new ReentrantReadWriteLock();
+    final ReadWriteLock dbTablesLock = new ReentrantReadWriteLock();
     private final Config config;
     final ResourceScope scope = ResourceScope.globalScope();
     final FileManager fileManager;
@@ -90,7 +94,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     // should get them in correct order. Less is more recent
     private List<Table> getAvailableTables() {
         List<Table> result = new LinkedList<>();
-        DbTablesLock.readLock().lock();
+        dbTablesLock.readLock().lock();
         try {
             result.add(activeMemTable);
             result.addAll(flushingTables);
@@ -99,7 +103,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             }
             result.addAll(ssTables);
         } finally {
-            DbTablesLock.readLock().unlock();
+            dbTablesLock.readLock().unlock();
         }
 
         return result;
@@ -131,7 +135,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             }
 
             assert insertResult == FLUSH_REQUEST;
-            DbTablesLock.writeLock().lock();
+            dbTablesLock.writeLock().lock();
             try {
                 if (flushingTables.size() < FLUSHING_QUEUE_SIZE) {
                     flushWithoutLocking();
@@ -139,7 +143,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                     throw new OutOfMemoryError();
                 }
             } finally {
-                DbTablesLock.writeLock().unlock();
+                dbTablesLock.writeLock().unlock();
             }
         }
     }
@@ -151,7 +155,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public void flush() {
-        DbTablesLock.writeLock().lock();
+        dbTablesLock.writeLock().lock();
 
         try {
             if (flushingTables.size() < FLUSHING_QUEUE_SIZE) {
@@ -160,7 +164,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                 throw new OutOfMemoryError();
             }
         } finally {
-            DbTablesLock.writeLock().unlock();
+            dbTablesLock.writeLock().unlock();
         }
     }
 
@@ -257,50 +261,6 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
 
     @Override
     public void compact() throws IOException {
-        compactor.execute(() -> {
-            try {
-                List<Table> ssTablesToCompact = new ArrayList<>(ssTables.size());
-
-                DbTablesLock.readLock().lock();
-                if (ssTables.size() <= 1) {
-                    DbTablesLock.readLock().unlock();
-                    return;
-                }
-                ssTablesToCompact.addAll(ssTables);
-                DbTablesLock.readLock().unlock();
-
-                Files.deleteIfExists(fileManager.getCompactingInProcessFile());
-                writeValuesToFile(() -> {
-                    try {
-                        return new BorderedMergeIterator(ssTablesToCompact);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                    return Collections.emptyIterator();
-                }, fileManager.getCompactingInProcessFile());
-
-                int compactLogIndex;
-                fileManager.lock();
-                try {
-                    Files.move(fileManager.getCompactingInProcessFile(), fileManager.getCompactTmpFile(),
-                            StandardCopyOption.ATOMIC_MOVE);
-                    fileManager.removeLogFilesWithoutLockingWithFixingFurtherLogs(ssTablesToCompact.size());
-                    compactLogIndex = fileManager.addLogWithoutLocking(fileManager.getCompactTmpFile());
-                } finally {
-                    fileManager.unlock();
-                }
-
-                DbTablesLock.writeLock().lock();
-                try {
-                    ssTables.clear();
-                    ssTables.add(new SSTable(fileManager.getLogName(compactLogIndex), scope));
-                } finally {
-                    DbTablesLock.writeLock().unlock();
-                }
-            } catch (IOException e)
-            {
-                e.printStackTrace();
-            }
-        });
+        compactor.execute(new Compactor(this));
     }
 }

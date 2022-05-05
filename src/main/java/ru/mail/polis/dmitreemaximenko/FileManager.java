@@ -42,10 +42,6 @@ public class FileManager {
         return config.basePath().resolve(LOG_NAME + logNumber);
     }
 
-    public Path getFirstLogFileName() {
-        return config.basePath().resolve(LOG_NAME + LOG_INDEX_START);
-    }
-
     public Path getCompactTmpFile() {
         return config.basePath().resolve(TMP_COMPACT_FILE);
     }
@@ -54,7 +50,9 @@ public class FileManager {
         return config.basePath().resolve(TMP_FLUSH_FILE);
     }
 
-    public Path getCompactingInProcessFile() {return config.basePath().resolve(COMPACTING_FILE);}
+    public Path getCompactingInProcessFile() {
+        return config.basePath().resolve(COMPACTING_FILE);
+    }
 
 
     public Path getNextLogNameWithoutLocking() {
