@@ -120,12 +120,9 @@ public class FileManager {
 
     public int addLogWithoutLocking(Path newLogFile) throws IOException {
         int newLogIndex = log_files_amount;
-        try {
-            Files.move(newLogFile, getNextLogName(), StandardCopyOption.ATOMIC_MOVE);
-            log_files_amount++;
-        } finally {
-            logDirectoryLock.writeLock().unlock();
-        }
+
+        Files.move(newLogFile, getNextLogName(), StandardCopyOption.ATOMIC_MOVE);
+        log_files_amount++;
 
         return newLogIndex;
     }
