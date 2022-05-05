@@ -18,7 +18,7 @@ public class FileManager {
     private static final String LOG_NAME = "log";
     private static final int LOG_INDEX_START = 0;
 
-    private int log_files_amount = 0;
+    private int logFilesAmount = 0;
     private final ReadWriteLock logDirectoryLock = new ReentrantReadWriteLock();
     private final Config config;
 
@@ -35,7 +35,7 @@ public class FileManager {
             }
         }
 
-        log_files_amount = logIndex;
+        logFilesAmount = logIndex;
     }
 
     public Path getLogName(int logNumber) {
@@ -58,7 +58,7 @@ public class FileManager {
 
 
     public Path getNextLogNameWithoutLocking() {
-        return config.basePath().resolve(LOG_NAME + log_files_amount);
+        return config.basePath().resolve(LOG_NAME + logFilesAmount);
     }
 
     public Path getNextLogName() {
@@ -71,10 +71,10 @@ public class FileManager {
     public int addLog(Path newLogFile) throws IOException {
         logDirectoryLock.writeLock().lock();
 
-        int newLogIndex = log_files_amount;
+        int newLogIndex = logFilesAmount;
         try {
             Files.move(newLogFile, getNextLogNameWithoutLocking(), StandardCopyOption.ATOMIC_MOVE);
-            log_files_amount++;
+            logFilesAmount++;
         } finally {
             logDirectoryLock.writeLock().unlock();
         }
@@ -86,7 +86,7 @@ public class FileManager {
         List<Path> result = new LinkedList<>();
         logDirectoryLock.readLock().lock();
         try {
-            for (int i = 0; i < log_files_amount; i++) {
+            for (int i = 0; i < logFilesAmount; i++) {
                 Path filename = getLogName(i);
                 result.add(filename);
             }
@@ -111,18 +111,18 @@ public class FileManager {
     // 3) then 2 3 4 5
     // #fixMe implement this
     public void removeLogFilesWithoutLockingWithFixingFurtherLogs(int size) throws IOException {
-        for (int logIndex = log_files_amount - 1; logIndex > 0; logIndex--) {
+        for (int logIndex = logFilesAmount - 1; logIndex > 0; logIndex--) {
             Path filename = config.basePath().resolve(LOG_NAME + logIndex);
             Files.delete(filename);
         }
-        log_files_amount = 0;
+        logFilesAmount = 0;
     }
 
     public int addLogWithoutLocking(Path newLogFile) throws IOException {
-        int newLogIndex = log_files_amount;
+        int newLogIndex = logFilesAmount;
 
         Files.move(newLogFile, getNextLogName(), StandardCopyOption.ATOMIC_MOVE);
-        log_files_amount++;
+        logFilesAmount++;
 
         return newLogIndex;
     }
