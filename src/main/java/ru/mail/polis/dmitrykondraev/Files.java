@@ -5,7 +5,7 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Path;
 
 // package-private
-class Files {
+final class Files {
     private Files() {
         //not meant to instantiate
     }

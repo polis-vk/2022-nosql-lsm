@@ -15,13 +15,11 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.PriorityQueue;
 import java.util.Spliterator;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static ru.mail.polis.dmitrykondraev.Files.filenameOf;
@@ -95,15 +93,15 @@ public final class ConcurrentFilesBackedDao implements Dao<MemorySegment, Memory
             iterators.add(new PeekIterator<>(table.previous.get(from, to)));
         }
         tableSpliterator.forEachRemaining(t -> iterators.add(new PeekIterator<>(t.get(from, to))));
-        return withoutTombStones(new PeekIterator<>(merged(iterators)));
+        return withoutTombStones(new PeekIterator<>(MergedIterator.of(iterators)));
     }
 
-    private Iterator<MemorySegmentEntry> allStored(Spliterator<SortedStringTable> tableSpliterator) {
+    private static Iterator<MemorySegmentEntry> allStored(Spliterator<SortedStringTable> tableSpliterator) {
         List<PeekIterator<MemorySegmentEntry>> iterators =
                 new ArrayList<>((int) tableSpliterator.getExactSizeIfKnown());
         tableSpliterator.forEachRemaining(t ->
                 iterators.add(new PeekIterator<>(t.get(MemorySegmentComparator.MINIMAL, null))));
-        return withoutTombStones(new PeekIterator<>(merged(iterators)));
+        return withoutTombStones(new PeekIterator<>(MergedIterator.of(iterators)));
     }
 
     @Override
@@ -145,10 +143,10 @@ public final class ConcurrentFilesBackedDao implements Dao<MemorySegment, Memory
         if (previous.isEmpty()) {
             return;
         }
-        Path tablePath = sortedStringTablePath(sortedStringTables.size());
+        Path tablePath = Files.createDirectory(sortedStringTablePath(sortedStringTables.size()));
         sortedStringTables.add(
                 0,
-                SortedStringTable.written(Files.createDirectory(tablePath), previous.values(), scope));
+                SortedStringTable.written(tablePath, previous.values(), scope));
         memoryTable.getAndUpdate(MemoryTable::dropPrevious);
     }
 
@@ -180,7 +178,7 @@ public final class ConcurrentFilesBackedDao implements Dao<MemorySegment, Memory
         backgroundExecutor.service.shutdown();
         boolean interrupted = false;
         try {
-            backgroundExecutor.service.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+            interrupted = !backgroundExecutor.service.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
         } catch (InterruptedException e) {
             interrupted = true;
         } finally {
@@ -206,64 +204,11 @@ public final class ConcurrentFilesBackedDao implements Dao<MemorySegment, Memory
         if (index < 0) {
             throw new IllegalArgumentException("Negative index");
         }
-        // 10^10 -  > Integer.MAX_VALUE
+        // 10^10 > Integer.MAX_VALUE
         String value = String.valueOf(index);
         char[] zeros = new char[10 - value.length()];
         Arrays.fill(zeros, '0');
         return basePath.resolve(TABLE_PREFIX + new String(zeros) + value);
-    }
-
-    /**
-     * Yields entries from multiple iterators of {@link MemorySegmentEntry}. Entries with same keys are merged,
-     * leaving one entry from iterator with minimal index.
-     *
-     * @param iterators which entries are strict ordered by key: key of subsequent entry is strictly greater than
-     *                  key of current entry (using {@link MemorySegmentComparator})
-     * @return iterator which entries are <em>also</em> strict ordered by key.
-     */
-    private static Iterator<MemorySegmentEntry> merged(List<PeekIterator<MemorySegmentEntry>> iterators) {
-        Comparator<Integer> indexComparator = Comparator
-                .comparing((Integer i) -> iterators.get(i).peek().key(), MemorySegmentComparator.INSTANCE)
-                .thenComparing(Function.identity());
-        final PriorityQueue<Integer> indexes = new PriorityQueue<>(iterators.size(), indexComparator);
-        for (int i = 0; i < iterators.size(); i++) {
-            if (iterators.get(i).hasNext()) {
-                indexes.add(i);
-            }
-        }
-        return new Iterator<>() {
-            @Override
-            public boolean hasNext() {
-                return !indexes.isEmpty();
-            }
-
-            @Override
-            public MemorySegmentEntry next() {
-                Integer index = indexes.remove();
-                PeekIterator<MemorySegmentEntry> iterator = iterators.get(index);
-                MemorySegmentEntry entry = iterator.next();
-                skipEntriesWithSameKey(entry);
-                if (iterator.hasNext()) {
-                    indexes.offer(index);
-                }
-                return entry;
-            }
-
-            private void skipEntriesWithSameKey(MemorySegmentEntry entry) {
-                while (!indexes.isEmpty()) {
-                    Integer nextIndex = indexes.peek();
-                    PeekIterator<MemorySegmentEntry> nextIterator = iterators.get(nextIndex);
-                    if (MemorySegmentComparator.INSTANCE.compare(nextIterator.peek().key(), entry.key()) != 0) {
-                        break;
-                    }
-                    indexes.remove();
-                    nextIterator.next();
-                    if (nextIterator.hasNext()) {
-                        indexes.offer(nextIndex);
-                    }
-                }
-            }
-        };
     }
 
     private static Iterator<MemorySegmentEntry> withoutTombStones(PeekIterator<MemorySegmentEntry> iterator) {
