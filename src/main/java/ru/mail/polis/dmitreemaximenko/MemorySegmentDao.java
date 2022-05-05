@@ -34,7 +34,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private static int TABLE_READ_ONLY = -2;
     volatile boolean flushFinish = false;
     private MemTable activeMemTable;
-    BlockingQueue<MemTable> flushingTables = new ArrayBlockingQueue<MemTable>(FLUSHING_QUEUE_SIZE);
+    BlockingQueue<MemTable> flushingTables = new ArrayBlockingQueue<>(FLUSHING_QUEUE_SIZE);
     List<SSTable> ssTables;
     private Thread flusher;
     private ExecutorService compactor;
@@ -130,7 +130,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                 break;
             }
             if (insertResult == TABLE_READ_ONLY) {
-                // #fixMe polling
+                // #fix Me polling
                 continue;
             }
 

@@ -16,20 +16,18 @@ public class MemTable implements Table {
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
             new ConcurrentSkipListMap<>(COMPARATOR);
-    private final long tableSpace;
     private long spaceLeft;
-    private static int SUCCESS = 0;
-    private static int FLUSH_REQUEST = -1;
-    private static int TABLE_READ_ONLY = -2;
+    private static final int SUCCESS = 0;
+    private static final int FLUSH_REQUEST = -1;
+    private static final int TABLE_READ_ONLY = -2;
     private AtomicBoolean flushRequested = new AtomicBoolean(false);
 
     public MemTable(long tableSpace) {
-        this.tableSpace = tableSpace;
         this.spaceLeft = tableSpace;
     }
 
     public int put(MemorySegment key, Entry<MemorySegment> entry) {
-        // #fixMe data race with space
+        // #fix Me data race with space
         long possibleSpaceLeft = spaceLeft;
         if (data.containsKey(key) && data.get(key).value() != null) {
             possibleSpaceLeft += data.get(key).value().byteSize();

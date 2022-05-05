@@ -18,7 +18,7 @@ public class FileManager {
     private static final String LOG_NAME = "log";
     private static final int LOG_INDEX_START = 0;
 
-    private int logFilesAmount = 0;
+    private int logFilesAmount;
     private final ReadWriteLock logDirectoryLock = new ReentrantReadWriteLock();
     private final Config config;
 
@@ -53,7 +53,6 @@ public class FileManager {
     public Path getCompactingInProcessFile() {
         return config.basePath().resolve(COMPACTING_FILE);
     }
-
 
     public Path getNextLogNameWithoutLocking() {
         return config.basePath().resolve(LOG_NAME + logFilesAmount);
@@ -107,7 +106,7 @@ public class FileManager {
     // 1) we get 2 3 2 3 4 5
     // 2) then 2 3 4 5 4 5
     // 3) then 2 3 4 5
-    // #fixMe implement this
+    // #fix Me implement this
     public void removeLogFilesWithoutLockingWithFixingFurtherLogs(int size) throws IOException {
         for (int logIndex = logFilesAmount - 1; logIndex > 0; logIndex--) {
             Path filename = config.basePath().resolve(LOG_NAME + logIndex);

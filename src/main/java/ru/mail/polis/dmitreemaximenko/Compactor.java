@@ -43,7 +43,8 @@ public class Compactor implements Runnable {
                 Files.move(memorySegmentDao.fileManager.getCompactingInProcessFile(),
                         memorySegmentDao.fileManager.getCompactTmpFile(),
                         StandardCopyOption.ATOMIC_MOVE);
-                memorySegmentDao.fileManager.removeLogFilesWithoutLockingWithFixingFurtherLogs(ssTablesToCompact.size());
+                memorySegmentDao.fileManager
+                        .removeLogFilesWithoutLockingWithFixingFurtherLogs(ssTablesToCompact.size());
                 compactLogIndex = memorySegmentDao.fileManager
                         .addLogWithoutLocking(memorySegmentDao.fileManager.getCompactTmpFile());
             } finally {
@@ -58,8 +59,7 @@ public class Compactor implements Runnable {
             } finally {
                 memorySegmentDao.dbTablesLock.writeLock().unlock();
             }
-        } catch (IOException e)
-        {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
