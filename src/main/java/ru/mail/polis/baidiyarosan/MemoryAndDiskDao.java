@@ -117,14 +117,14 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     @Override
-    public synchronized void flush() throws IOException {
+    public void flush() throws IOException {
         validate();
 
         if (collection.isEmpty()) {
             return;
         }
         if (onFlushCollection != null) {
-            throw new IllegalStateException("Can't flush more");
+            return; // already flushing
         }
 
         executeFlush();
@@ -141,7 +141,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     @Override
-    public synchronized void close() throws IOException {
+    public void close() throws IOException {
         if (closed.getAndSet(true)) {
             return;
         }
