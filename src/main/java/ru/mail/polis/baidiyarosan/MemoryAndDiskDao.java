@@ -131,13 +131,13 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
     }
 
     @Override
-    public synchronized void compact() throws IOException {
+    public void compact() throws IOException {
         validate();
         if (!(filesCount.get() > 1 || (filesCount.get() == 1 && !FileUtils.isCompacted(path, 1)))) {
             //don't need compaction
             return;
         }
-        executeCompact();
+        executor.submit(this::executeCompact);
     }
 
     @Override
@@ -215,6 +215,7 @@ public class MemoryAndDiskDao implements Dao<ByteBuffer, BaseEntry<ByteBuffer>> 
             FileUtils.clearOldFiles(count, path);
         filesCount.set(1);
         } catch (IOException e) {
+            LOG.error("Error while flushing", e);
             throw new UncheckedIOException(e);
         }
     }
