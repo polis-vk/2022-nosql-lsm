@@ -45,7 +45,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public BaseEntry<String> get(String key) {
-        BaseEntry<String> resultFromMap = stringConcurrentSkipListMapPointer.get(key);
+        BaseEntry<String> resultFromMap = stringConcurrentSkipListMap.get(key);
 
         if (resultFromMap != null) {
             return resultFromMap.value() == null ? null : resultFromMap;
@@ -104,29 +104,39 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void upsert(BaseEntry<String> entry) {
-        if (mapSize.addAndGet(entrySize(entry)) > flushThresholdBytes) {
-            if (!isDoneFlushing.get()) {
-                throw new IllegalStateException("Previous table is still flushing");
-            }
-            stringConcurrentSkipListMap = new ConcurrentSkipListMap<>(String::compareTo);
-            mapSize.set(0);
-            flushExecutor.execute(() -> {
-                try {
-                    isDoneFlushing.set(false);
-                    save(
-                            directoryPath.resolve(listOfFiles.size() + FILE_NAME),
-                            stringConcurrentSkipListMapPointer,
-                            false
-                    );
-                    getFiles();
-                    stringConcurrentSkipListMapPointer = stringConcurrentSkipListMap;
-                    isDoneFlushing.set(true);
-                } catch (IOException e) {
-                    isDoneFlushing.set(true);
+        readWriteLock.writeLock().lock();
+        try {
+            if (mapSize.addAndGet(entrySize(entry)) > flushThresholdBytes) {
+                if (!isDoneFlushing.get()) {
+                    throw new IllegalStateException("Previous table is still flushing");
                 }
-            });
+                stringConcurrentSkipListMap = new ConcurrentSkipListMap<>(String::compareTo);
+                mapSize.set(0);
+                flushExecutor.execute(() -> {
+                    try {
+                        isDoneFlushing.set(false);
+                        ConcurrentNavigableMap<String, BaseEntry<String>> stringConcurrentSkipListMapPointerCopy =
+                                new ConcurrentSkipListMap<>(String::compareTo);
+                        for (BaseEntry<String> entry1 : stringConcurrentSkipListMapPointer.values()) {
+                            stringConcurrentSkipListMapPointerCopy.put(entry1.key(), entry1);
+                        }
+                        stringConcurrentSkipListMapPointer = stringConcurrentSkipListMap;
+                        save(
+                                directoryPath.resolve(listOfFiles.size() + FILE_NAME),
+                                stringConcurrentSkipListMapPointerCopy,
+                                false
+                        );
+                        getFiles();
+                        isDoneFlushing.set(true);
+                    } catch (IOException e) {
+                        isDoneFlushing.set(true);
+                    }
+                });
+            }
+            stringConcurrentSkipListMap.put(entry.key(), entry);
+        } finally {
+            readWriteLock.writeLock().unlock();
         }
-        stringConcurrentSkipListMap.put(entry.key(), entry);
     }
 
     private Iterator<BaseEntry<String>> getIterator(ConcurrentNavigableMap<String, BaseEntry<String>> map) {
@@ -300,9 +310,7 @@ public class InMemoryDao implements Dao<String, BaseEntry<String>> {
             e.printStackTrace();
         }
 
-        if (stringConcurrentSkipListMap.isEmpty()) {
-            return;
-        } else {
+        if (!stringConcurrentSkipListMap.isEmpty()) {
             flush();
         }
     }
