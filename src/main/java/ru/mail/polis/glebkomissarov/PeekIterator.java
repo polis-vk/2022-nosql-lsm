@@ -7,13 +7,13 @@ import java.util.Iterator;
 
 public class PeekIterator implements Iterator<BaseEntry<MemorySegment>> {
 
-    private final long priority;
+    private final long index;
 
     private BaseEntry<MemorySegment> current;
     private final Iterator<BaseEntry<MemorySegment>> iterator;
 
-    public PeekIterator(Iterator<BaseEntry<MemorySegment>> iterator, long priority) {
-        this.priority = priority;
+    public PeekIterator(Iterator<BaseEntry<MemorySegment>> iterator, long index) {
+        this.index = index;
         this.iterator = iterator;
     }
 
@@ -36,7 +36,7 @@ public class PeekIterator implements Iterator<BaseEntry<MemorySegment>> {
         return current;
     }
 
-    public long getPriority() {
-        return priority;
+    public long getIndex() {
+        return index;
     }
 }
