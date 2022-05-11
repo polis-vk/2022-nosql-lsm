@@ -6,13 +6,18 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
 
 class Utils {
     private static final String STORAGE_FILE_NAME = "storage";
-    private static final String INDEXES_FILE_NAME = "indexes";
+    private static final String TMP_PREFIX = "tmp";
+    private static final String COMPACTED_STORAGE_PREFIX = "compact";
+
+    static final int TMP_FILE_NUMBER = -1;
+    static final int COMPACTED_FILE_NUMBER = -2;
     private final Path basePath;
 
     Utils(Config config) {
@@ -25,11 +30,15 @@ class Utils {
     }
 
     public Path getStoragePath(int number) {
-        return basePath.resolve(STORAGE_FILE_NAME + number);
-    }
+        if (number == TMP_FILE_NUMBER) {
+            return basePath.resolve(TMP_PREFIX + STORAGE_FILE_NAME);
+        }
 
-    public Path getIndexesPath(int number) {
-        return basePath.resolve(INDEXES_FILE_NAME + number);
+        if (number == COMPACTED_FILE_NUMBER) {
+            return basePath.resolve(COMPACTED_STORAGE_PREFIX + STORAGE_FILE_NAME);
+        }
+
+        return basePath.resolve(STORAGE_FILE_NAME + number);
     }
 
     public int compareMemorySegment(MemorySegment first, MemorySegment second) {
@@ -56,16 +65,34 @@ class Utils {
         return compareMemorySegment(first.key(), second.key());
     }
 
-    public void createFiles(int number) throws IOException {
-        Files.createFile(getIndexesPath(number));
+    public void createStorageFile(int number) throws IOException {
         Files.createFile(getStoragePath(number));
     }
 
-    public int countStorageFiles(Path dirPath) throws IOException {
-        try (Stream<Path> stream = Files.list(dirPath)) {
+    public int countStorageFiles() throws IOException {
+        try (Stream<Path> stream = Files.list(basePath)) {
             return (int) stream
-                    .filter(path -> path.getFileName().toString().startsWith(STORAGE_FILE_NAME))
+                    .filter(this::isStorageFile)
                     .count();
+        }
+    }
+
+    private boolean isStorageFile(Path path) {
+        return path.getFileName().toString().startsWith(STORAGE_FILE_NAME);
+    }
+
+    public void deleteStorageFiles() throws IOException {
+        try (Stream<Path> stream = Files.list(basePath)) {
+            stream.filter(this::isStorageFile)
+                    .forEach(this::deletePath);
+        }
+    }
+
+    private void deletePath(Path path) {
+        try {
+            Files.delete(path);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

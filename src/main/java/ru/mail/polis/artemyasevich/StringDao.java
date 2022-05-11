@@ -56,19 +56,37 @@ public class StringDao implements Dao<String, BaseEntry<String>> {
     }
 
     @Override
-    public void flush() throws IOException {
-        if (storage != null) {
-            storage.savaData(dataMap);
+    public void compact() throws IOException {
+        if (storage == null) {
+            return;
         }
+        Iterator<BaseEntry<String>> mergeIterator = get(null, null);
+        if (!mergeIterator.hasNext()) {
+            return;
+        }
+        storage.compact(mergeIterator);
+        dataMap.clear();
+    }
+
+    @Override
+    public void flush() throws IOException {
+        if (storage == null || dataMap.isEmpty()) {
+            return;
+        }
+        storage.flush(dataMap.values().iterator());
         dataMap.clear();
     }
 
     @Override
     public void close() throws IOException {
-        flush();
-        if (storage != null) {
-            storage.close();
+        if (storage == null) {
+            return;
         }
+        if (!dataMap.isEmpty()) {
+            storage.flush(dataMap.values().iterator());
+            dataMap.clear();
+        }
+        storage.closeFiles();
     }
 
     private Iterator<BaseEntry<String>> getDataMapIterator(String from, String to) {
