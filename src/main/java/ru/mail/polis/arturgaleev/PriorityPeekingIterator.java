@@ -1,18 +1,18 @@
-package ru.mail.polis.test.arturgaleev;
+package ru.mail.polis.arturgaleev;
 
 import java.util.Iterator;
 
 public class PriorityPeekingIterator<E> implements Iterator<E> {
-    private final int priority;
+    private final long priority;
     private final Iterator<E> delegate;
     private E current;
 
-    public PriorityPeekingIterator(int priority, Iterator<E> delegate) {
+    public PriorityPeekingIterator(long priority, Iterator<E> delegate) {
         this.priority = priority;
         this.delegate = delegate;
     }
 
-    public int getPriority() {
+    public long getPriority() {
         return priority;
     }
 
