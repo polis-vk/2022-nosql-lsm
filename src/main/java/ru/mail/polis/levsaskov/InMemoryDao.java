@@ -28,6 +28,7 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     private final Thread flushThread;
     private final FlushExecutor flushExecutor;
     private volatile boolean isClosed;
+    private final Object monitor = new Object();
 
     public InMemoryDao() {
         storageSystem = null;
@@ -90,12 +91,16 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
         checkClose();
 
         int entrySize = StoragePart.getPersEntryByteSize(entry);
-        if (memTableByteSize.addAndGet(entrySize) > flushThresholdBytes) {
-            // Add() throws exception if queue is full, so upsert will not be done.
-            flushQueue.add(memTable);
-            // Create new in memory memTable if queue of flushing not full (exception wasn't thrown)
-            memTable = new ConcurrentSkipListMap<>();
-            memTableByteSize.set(entrySize);
+        if (memTableByteSize.get() + entrySize > flushThresholdBytes) {
+            synchronized (monitor) {
+                if (memTableByteSize.addAndGet(entrySize) > flushThresholdBytes) {
+                    // Add() throws exception if queue is full, so upsert will not be done.
+                    flushQueue.add(memTable);
+                    // Create new in memory memTable if queue of flushing not full (exception wasn't thrown)
+                    memTable = new ConcurrentSkipListMap<>();
+                    memTableByteSize.set(entrySize);
+                }
+            }
         }
 
         memTable.put(entry.key(), entry);
@@ -105,10 +110,19 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     public void flush() throws IOException {
         checkClose();
 
+        if (flushThread.isInterrupted()) {
+            close();
+            throw new RuntimeException("Flush thread was interrupted");
+        }
+
         if (!memTable.isEmpty()) {
             // Empty mem table is poison bill.
-            // Throws exception if flush queue is full
-            flushQueue.add(memTable);
+            // flush is blocking (done for overwrite test, before was add with exception)
+            try {
+                flushQueue.put(memTable);
+            } catch (InterruptedException e) {
+                throw new RuntimeException("Flush queue was interrupted");
+            }
             memTable = new ConcurrentSkipListMap<>();
             memTableByteSize.set(0);
         }
@@ -117,6 +131,12 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
     @Override
     public void compact() throws IOException {
         checkClose();
+
+        if (compactThread.isInterrupted()) {
+            close();
+            throw new RuntimeException("Compact thread was interrupted");
+        }
+
         compactionQueue.add(true);
     }
 
