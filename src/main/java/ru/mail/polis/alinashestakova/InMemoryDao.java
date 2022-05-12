@@ -237,8 +237,6 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             return;
         }
 
-        State tmpState = getStateUnderWriteLock();
-
         executorService.shutdown();
         try {
             if (!executorService.awaitTermination(10, TimeUnit.DAYS)) {
@@ -248,6 +246,8 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             Thread.currentThread().interrupt();
             return;
         }
+
+        State tmpState = getStateUnderWriteLock();
 
         isClosed.set(true);
         tmpState.storage.close();
