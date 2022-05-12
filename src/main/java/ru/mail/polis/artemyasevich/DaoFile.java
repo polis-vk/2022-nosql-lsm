@@ -10,13 +10,23 @@ public class DaoFile {
     private final RandomAccessFile reader;
     private final long size;
     private final int entries;
+    private final boolean isCompacted;
+    private final Path pathToFile;
+    private final Path pathToMeta;
     private int maxEntrySize;
 
-    public DaoFile(Path pathToFile, Path pathToMeta) throws IOException {
+    public DaoFile(Path pathToFile, Path pathToMeta, boolean isCompacted) throws IOException {
+        this.pathToFile = pathToFile;
+        this.pathToMeta = pathToMeta;
         this.reader = new RandomAccessFile(pathToFile.toFile(), "r");
         this.offsets = processMetaAndGetOffsets(pathToMeta);
         this.size = offsets[offsets.length - 1];
         this.entries = offsets.length - 1;
+        this.isCompacted = isCompacted;
+    }
+
+    public boolean isCompacted() {
+        return isCompacted;
     }
 
     public FileChannel getChannel() {
@@ -76,4 +86,13 @@ public class DaoFile {
         }
         return fileOffsets;
     }
+
+    public Path pathToFile() {
+        return pathToFile;
+    }
+
+    public Path pathToMeta() {
+        return pathToMeta;
+    }
+
 }
