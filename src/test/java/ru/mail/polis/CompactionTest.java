@@ -16,7 +16,6 @@
 
 package ru.mail.polis;
 
-import org.junit.jupiter.api.Disabled;
 import ru.mail.polis.test.DaoFactory;
 
 import java.io.IOException;
@@ -65,7 +64,6 @@ class CompactionTest extends BaseTest {
         assertSame(dao.all(), entry);
     }
 
-    @Disabled
     @DaoTest(stage = 4)
     void overwrite(Dao<String, Entry<String>> dao) throws IOException {
         // Reference value
@@ -105,7 +103,6 @@ class CompactionTest extends BaseTest {
         assertTrue(smallSize * (overwrites + 1) > bigSize);
     }
 
-    @Disabled
     @DaoTest(stage = 4)
     void multiple(Dao<String, Entry<String>> dao) throws IOException {
         // Reference value
