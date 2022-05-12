@@ -121,7 +121,9 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             try {
                 flushQueue.put(memTable);
             } catch (InterruptedException e) {
-                throw new RuntimeException("Flush queue was interrupted");
+                // Can't throw exception and interrupt this thread, so
+                // TODO: Need logger (will be done in next course)
+                Thread.currentThread().interrupt();
             }
             memTable = new ConcurrentSkipListMap<>();
             memTableByteSize.set(0);
@@ -154,6 +156,8 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
             compactThread.join();
             flushThread.join();
         } catch (InterruptedException e) {
+            // Can't throw exception and interrupt this thread, so
+            // TODO: Need logger (will be done in next course)
             Thread.currentThread().interrupt();
         }
 
