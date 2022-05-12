@@ -16,7 +16,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -186,7 +185,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             flushOperation(tmpState.flushingMemory, tmpState.storage);
             tmpStorage = Storage.load(config);
         } catch (IOException e) {
-            throw new RuntimeException("Error during autoFlush");
+            throw new RuntimeException("Error during autoFlush", e);
         }
 
         lock.writeLock().lock();
@@ -263,7 +262,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
                     Storage.moveFile(config, tmp, 0);
                 }
             } catch (IOException e) {
-                throw new RuntimeException("Error during compaction");
+                throw new RuntimeException("Error during compaction", e);
             }
         });
     }
@@ -285,9 +284,10 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         executorService.shutdown();
         try {
             //noinspection StatementWithEmptyBody
-            while(!executorService.awaitTermination(10, TimeUnit.DAYS));
+            while (!executorService.awaitTermination(10, TimeUnit.DAYS)) ;
         } catch (InterruptedException e) {
-            throw new IllegalArgumentException(e);
+            Thread.currentThread().interrupt();
+            return;
         }
 
         isClosed.set(true);
@@ -302,22 +302,5 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
 
     private static ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> createMemoryStorage() {
         return new ConcurrentSkipListMap<>(MemorySegmentComparator.INSTANCE);
-    }
-
-    private static class State {
-
-        private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory;
-        private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> flushingMemory;
-        private final AtomicLong memorySize = new AtomicLong();
-        private final Storage storage;
-
-        private State(ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory,
-                     ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> flushingMemory,
-                      Storage storage) {
-            this.memory = memory;
-            this.flushingMemory = flushingMemory;
-            this.memorySize.getAndSet(memory.size());
-            this.storage = storage;
-        }
     }
 }
