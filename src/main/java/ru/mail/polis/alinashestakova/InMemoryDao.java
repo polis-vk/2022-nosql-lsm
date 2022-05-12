@@ -44,13 +44,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             throw new IllegalStateException("Dao is closed. You can't get entries range");
         }
 
-        State tmpState;
-        lock.readLock().lock();
-        try {
-            tmpState = this.state;
-        } finally {
-            lock.readLock().unlock();
-        }
+        State tmpState = getStateUnderReadLock();
 
         MemorySegment keyFrom = from;
         if (keyFrom == null) {
@@ -109,13 +103,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             throw new IllegalStateException("Dao is closed. You can't get entry");
         }
 
-        State tmpState;
-        lock.readLock().lock();
-        try {
-            tmpState = this.state;
-        } finally {
-            lock.readLock().unlock();
-        }
+        State tmpState = getStateUnderReadLock();
 
         Iterator<BaseEntry<MemorySegment>> iterator = getFromTmpState(key, null, tmpState);
         if (!iterator.hasNext()) {
@@ -134,13 +122,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             throw new IllegalStateException("Dao is closed. You can't upsert entry");
         }
 
-        State tmpState;
-        lock.writeLock().lock();
-        try {
-            tmpState = this.state;
-        } finally {
-            lock.writeLock().unlock();
-        }
+        State tmpState = getStateUnderWriteLock();
 
         long entrySize = Long.BYTES + entry.key().byteSize() + Long.BYTES
                 + (entry.value() == null ? 0 : entry.key().byteSize());
@@ -172,13 +154,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
     }
 
     private void autoFlush() {
-        State tmpState;
-        lock.writeLock().lock();
-        try {
-            tmpState = this.state;
-        } finally {
-            lock.writeLock().unlock();
-        }
+        State tmpState = getStateUnderWriteLock();
 
         Storage tmpStorage;
         try {
@@ -202,13 +178,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             throw new IllegalStateException("Dao is closed. You can't flush");
         }
 
-        State tmpState;
-        lock.writeLock().lock();
-        try {
-            tmpState = this.state;
-        } finally {
-            lock.writeLock().unlock();
-        }
+        State tmpState = getStateUnderWriteLock();
 
         flushOperation(tmpState.memory, tmpState.storage);
 
@@ -240,13 +210,7 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             throw new IllegalStateException("Dao is closed. You can't compact");
         }
 
-        State tmpState;
-        lock.writeLock().lock();
-        try {
-            tmpState = this.state;
-        } finally {
-            lock.writeLock().unlock();
-        }
+        State tmpState = getStateUnderWriteLock();
 
         executorService.execute(() -> {
             try {
@@ -273,18 +237,13 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
             return;
         }
 
-        State tmpState;
-        lock.writeLock().lock();
-        try {
-            tmpState = this.state;
-        } finally {
-            lock.writeLock().unlock();
-        }
+        State tmpState = getStateUnderWriteLock();
 
         executorService.shutdown();
         try {
-            //noinspection StatementWithEmptyBody
-            while (!executorService.awaitTermination(10, TimeUnit.DAYS)) ;
+            if (!executorService.awaitTermination(10, TimeUnit.DAYS)) {
+                throw new RuntimeException("Error during termination");
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return;
@@ -298,6 +257,30 @@ public class InMemoryDao implements Dao<MemorySegment, BaseEntry<MemorySegment>>
         if (tmp != null) {
             Storage.moveFile(config, tmp, Storage.getFilesCount(config) - 1);
         }
+    }
+
+    private State getStateUnderReadLock() {
+        State tmpState;
+        lock.readLock().lock();
+        try {
+            tmpState = this.state;
+        } finally {
+            lock.readLock().unlock();
+        }
+
+        return tmpState;
+    }
+
+    private State getStateUnderWriteLock() {
+        State tmpState;
+        lock.writeLock().lock();
+        try {
+            tmpState = this.state;
+        } finally {
+            lock.writeLock().unlock();
+        }
+
+        return tmpState;
     }
 
     private static ConcurrentSkipListMap<MemorySegment, BaseEntry<MemorySegment>> createMemoryStorage() {

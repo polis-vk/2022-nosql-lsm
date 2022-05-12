@@ -1,10 +1,10 @@
 package ru.mail.polis.alinashestakova;
 
-import java.util.concurrent.ConcurrentNavigableMap;
-import java.util.concurrent.atomic.AtomicLong;
-
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.BaseEntry;
+
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 class State {
 
