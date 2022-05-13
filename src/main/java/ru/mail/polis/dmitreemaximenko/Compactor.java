@@ -24,12 +24,15 @@ public class Compactor implements Runnable {
             List<Table> ssTablesToCompact = new ArrayList<>(memorySegmentDao.ssTables.size());
 
             memorySegmentDao.dbTablesLock.readLock().lock();
-            if (memorySegmentDao.ssTables.size() <= 1) {
+            try {
+                if (memorySegmentDao.ssTables.size() <= 1) {
+                    memorySegmentDao.dbTablesLock.readLock().unlock();
+                    return;
+                }
+                ssTablesToCompact.addAll(memorySegmentDao.ssTables);
+            } finally {
                 memorySegmentDao.dbTablesLock.readLock().unlock();
-                return;
             }
-            ssTablesToCompact.addAll(memorySegmentDao.ssTables);
-            memorySegmentDao.dbTablesLock.readLock().unlock();
 
             Files.deleteIfExists(memorySegmentDao.fileManager.getCompactingInProcessFile());
             memorySegmentDao.writeValuesToFile(() -> {

@@ -16,7 +16,7 @@ public class MemTable implements Table {
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
             new ConcurrentSkipListMap<>(COMPARATOR);
-    private long spaceLeft;
+    private volatile long spaceLeft;
     private static final int SUCCESS = 1;
     private static final int FLUSH_REQUEST = -1;
     private static final int TABLE_READ_ONLY = -2;
