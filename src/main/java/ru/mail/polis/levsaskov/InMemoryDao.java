@@ -101,6 +101,8 @@ public class InMemoryDao implements Dao<ByteBuffer, Entry<ByteBuffer>> {
                     memTableByteSize.set(entrySize);
                 }
             }
+        } else {
+            memTableByteSize.addAndGet(entrySize);
         }
 
         memTable.put(entry.key(), entry);
