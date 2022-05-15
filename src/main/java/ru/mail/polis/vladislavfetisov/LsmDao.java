@@ -215,8 +215,8 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public void close() throws IOException {
-        shutdownExecutor(flushExecutor);
-        shutdownExecutor(compactExecutor);
+        Utils.shutdownExecutor(flushExecutor);
+        Utils.shutdownExecutor(compactExecutor);
         try {
             flushSemaphore.acquire();
             List<SSTable> ssTables = this.storage.ssTables();
@@ -237,17 +237,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         }
     }
 
-    private void shutdownExecutor(ExecutorService service) {
-        service.shutdown();
-        try {
-            if (!service.awaitTermination(1, TimeUnit.HOURS)) {
-                throw new IllegalStateException("Cant await termination");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.error("Cant await termination", e);
-        }
-    }
+
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) {

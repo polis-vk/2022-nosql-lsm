@@ -14,6 +14,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public final class Utils {
 
@@ -155,5 +157,17 @@ public final class Utils {
         Iterator<Entry<MemorySegment>> discIterator = Utils.tablesRange(null, null, fixed);
         PeekingIterator<Entry<MemorySegment>> iterator = new PeekingIterator<>(discIterator);
         return CustomIterators.skipTombstones(iterator);
+    }
+
+    public static void shutdownExecutor(ExecutorService service) {
+        service.shutdown();
+        try {
+            if (!service.awaitTermination(1, TimeUnit.HOURS)) {
+                throw new IllegalStateException("Cant await termination");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LsmDao.logger.error("Cant await termination", e);
+        }
     }
 }
