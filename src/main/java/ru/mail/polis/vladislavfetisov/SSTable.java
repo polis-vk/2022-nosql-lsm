@@ -19,7 +19,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import java.util.concurrent.ThreadFactory;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -42,17 +41,10 @@ public final class SSTable implements Closeable {
         return indexName;
     }
 
-    private static final Cleaner cleaner = Cleaner.create(new ThreadFactory() {
-        @Override
-        public Thread newThread(Runnable r) {
-            return new Thread(r, "Cleaner thread") {
-                @Override
-                public synchronized void start() {
-                    setDaemon(true);
-                    super.start();
-                }
-            };
-        }
+    private static final Cleaner cleaner = Cleaner.create(r -> {
+        Thread cleanerThread = new Thread(r, "Cleaner thread");
+        cleanerThread.setDaemon(true);
+        return cleanerThread;
     });
 
     private SSTable(Path tableName, Path indexName, long tableSize, long indexSize) throws IOException {

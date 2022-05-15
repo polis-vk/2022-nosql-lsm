@@ -21,6 +21,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     public static final int EXCLUSIVE_PERMISSION = 1;
+    public static final String INTERRUPTED = "Semaphore was interrupted";
     private final Config config;
     private long nextTableNum;
     private volatile boolean isCompact;
@@ -101,7 +102,8 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             compactedPath = nextCompactedTable();
             isCompact = true;
         } catch (InterruptedException e) {
-            handleSemaphoreInterrupted(e);
+            logger.error(INTERRUPTED, e);
+            Thread.currentThread().interrupt();
         } finally {
             flushSemaphore.release();
         }
@@ -168,7 +170,8 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             processFlush();
             logger.info("User's flush is finished");
         } catch (InterruptedException e) {
-            handleSemaphoreInterrupted(e);
+            logger.error(INTERRUPTED, e);
+            Thread.currentThread().interrupt();
         } finally {
             flushSemaphore.release();
         }
@@ -229,7 +232,8 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
                 table.close();
             }
         } catch (InterruptedException e) {
-            handleSemaphoreInterrupted(e);
+            logger.error(INTERRUPTED, e);
+            Thread.currentThread().interrupt();
         } finally {
             flushSemaphore.release();
         }
@@ -270,8 +274,4 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return storage;
     }
 
-    private void handleSemaphoreInterrupted(InterruptedException e) {
-        logger.error("Semaphore was interrupted", e);
-        Thread.currentThread().interrupt();
-    }
 }
