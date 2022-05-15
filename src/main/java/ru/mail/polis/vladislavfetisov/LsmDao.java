@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
@@ -88,7 +87,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
      */
     private void performCompact() throws IOException {
         Path compactedPath = null;
-        List<SSTable> fixed = null;
+        List<SSTable> fixed = Collections.emptyList();
         try {
             flushSemaphore.acquire();
             fixed = this.storage.ssTables();
@@ -219,7 +218,6 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         Utils.shutdownExecutor(compactExecutor);
         try {
             flushSemaphore.acquire();
-            List<SSTable> ssTables = this.storage.ssTables();
             if (isClosed) {
                 logger.info("Trying to close already closed storage");
                 return;
@@ -227,7 +225,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             isClosed = true;
             logger.info("Closing storage");
             processFlush();
-            for (SSTable table : ssTables) {
+            for (SSTable table : this.storage.ssTables()) {
                 table.close();
             }
         } catch (InterruptedException e) {
@@ -236,8 +234,6 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             flushSemaphore.release();
         }
     }
-
-
 
     @Override
     public Entry<MemorySegment> get(MemorySegment key) {
