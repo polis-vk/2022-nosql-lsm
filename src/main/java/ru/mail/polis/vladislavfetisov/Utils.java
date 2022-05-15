@@ -14,7 +14,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 
 public final class Utils {
 
@@ -144,17 +143,17 @@ public final class Utils {
         return CustomIterators.merge(iterators);
     }
 
-    public static AtomicLong getLastTableNum(List<SSTable> ssTables) {
+    public static long getLastTableNum(List<SSTable> ssTables) {
         String lastTable = ssTables.get(ssTables.size() - 1).getTableName().getFileName().toString();
         if (lastTable.endsWith(SSTable.COMPACTED)) {
             lastTable = Utils.removeSuffix(lastTable, SSTable.COMPACTED);
         }
-        return new AtomicLong(Long.parseLong(lastTable) + 1);
+        return Long.parseLong(lastTable) + 1;
     }
 
-    public static Iterator<Entry<MemorySegment>> tablesFilteredFullRange(List<SSTable> fixed, LsmDao lsmDao) {
+    public static Iterator<Entry<MemorySegment>> tablesFilteredFullRange(List<SSTable> fixed) {
         Iterator<Entry<MemorySegment>> discIterator = Utils.tablesRange(null, null, fixed);
         PeekingIterator<Entry<MemorySegment>> iterator = new PeekingIterator<>(discIterator);
-        return CustomIterators.skipTombstones(lsmDao, null, null, iterator);
+        return CustomIterators.skipTombstones(iterator);
     }
 }

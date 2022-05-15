@@ -87,30 +87,20 @@ public final class CustomIterators {
         });
     }
 
-    public static Iterator<Entry<MemorySegment>> skipTombstones(
-            LsmDao lsmDao, MemorySegment from, MemorySegment to, PeekingIterator<Entry<MemorySegment>> merged) {
+    public static Iterator<Entry<MemorySegment>> skipTombstones(PeekingIterator<Entry<MemorySegment>> it) {
 
         return new Iterator<>() {
-            private MemorySegment prevKey = from;
-            private PeekingIterator<Entry<MemorySegment>> it = merged;
-
             @Override
             public boolean hasNext() {
                 while (true) {
-                    try {
-                        if (!it.hasNext()) {
-                            return false;
-                        }
-                        Entry<MemorySegment> entry = it.peek();
-                        prevKey = entry.key();
-                        if (!entry.isTombstone()) {
-                            return true;
-                        }
-                        it.next();
-                    } catch (IllegalStateException e) {
-                        LsmDao.logger.info("iterator is invoked again");
-                        it = getMergedIterator(prevKey, to, lsmDao.getStorage()); //newest storage
+                    if (!it.hasNext()) {
+                        return false;
                     }
+                    Entry<MemorySegment> entry = it.peek();
+                    if (!entry.isTombstone()) {
+                        return true;
+                    }
+                    it.next();
                 }
             }
 

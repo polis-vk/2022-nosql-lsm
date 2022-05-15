@@ -8,16 +8,13 @@ import ru.mail.polis.Entry;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.ref.Cleaner;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.ThreadFactory;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -40,8 +37,21 @@ public final class SSTable implements Closeable {
         return indexName;
     }
 
+    private static final Cleaner cleaner = Cleaner.create(new ThreadFactory() {
+        @Override
+        public Thread newThread(Runnable r) {
+            return new Thread(r, "Cleaner thread") {
+                @Override
+                public synchronized void start() {
+                    setDaemon(true);
+                    super.start();
+                }
+            };
+        }
+    });
+
     private SSTable(Path tableName, Path indexName, long tableSize, long indexSize) throws IOException {
-        sharedScope = ResourceScope.newSharedScope();
+        sharedScope = ResourceScope.newSharedScope(cleaner);
         mapFile = Utils.map(tableName, tableSize, FileChannel.MapMode.READ_ONLY, sharedScope);
         this.tableName = tableName;
         mapIndex = Utils.map(indexName, indexSize, FileChannel.MapMode.READ_ONLY, sharedScope);
@@ -223,4 +233,5 @@ public final class SSTable implements Closeable {
     public static Integer getTableNum(Path path) {
         return Integer.parseInt(path.getFileName().toString());
     }
+
 }
