@@ -10,8 +10,8 @@ import java.nio.channels.FileChannel;
 
 //Solving allocations issue in process
 public class EntryReadWriter {
-    private final ByteBuffer buffer;
-    private final CharBuffer searchedKeyBuffer;
+    private volatile ByteBuffer buffer;
+    private volatile CharBuffer searchedKeyBuffer;
 
     EntryReadWriter(int bufferSize) {
         this.buffer = ByteBuffer.allocate(bufferSize);
@@ -37,7 +37,41 @@ public class EntryReadWriter {
         return readEntryFromChannel(daoFile.getChannel(), daoFile.entrySize(index), daoFile.getOffset(index));
     }
 
-    BaseEntry<String> readEntryFromChannel(FileChannel channel, int entrySize, long offset) throws IOException {
+    int getEntryIndex(String key, DaoFile daoFile) throws IOException {
+        int left = 0;
+        int right = daoFile.getLastIndex();
+        while (left <= right) {
+            int middle = (right - left) / 2 + left;
+            CharBuffer middleKey = bufferAsKeyOnly(daoFile, middle);
+            CharBuffer keyToFind = fillAndGetKeyBuffer(key);
+            int comparison = keyToFind.compareTo(middleKey);
+            if (comparison < 0) {
+                right = middle - 1;
+            } else if (comparison > 0) {
+                left = middle + 1;
+            } else {
+                return middle;
+            }
+        }
+        return left;
+    }
+
+    void increaseBufferSize(int maxEntrySize) {
+        int newCapacity = Math.max(buffer.capacity() * 2, maxEntrySize);
+        buffer = ByteBuffer.allocate(newCapacity);
+        searchedKeyBuffer = CharBuffer.allocate(newCapacity);
+    }
+
+    int maxKeyLength() {
+        return (buffer.capacity() / 2 - Short.BYTES / 2);
+    }
+
+    static long sizeOfEntry(BaseEntry<String> entry) {
+        int valueSize = entry.value() == null ? 0 : entry.value().length();
+        return (entry.key().length() + valueSize) * 2L;
+    }
+
+    private BaseEntry<String> readEntryFromChannel(FileChannel channel, int entrySize, long offset) throws IOException {
         String key = bufferAsKeyOnly(channel, entrySize, offset).toString();
         buffer.limit(entrySize);
         String value = null;
@@ -48,11 +82,11 @@ public class EntryReadWriter {
         return new BaseEntry<>(key, value);
     }
 
-    CharBuffer bufferAsKeyOnly(DaoFile daoFile, int index) throws IOException {
+    private CharBuffer bufferAsKeyOnly(DaoFile daoFile, int index) throws IOException {
         return bufferAsKeyOnly(daoFile.getChannel(), daoFile.entrySize(index), daoFile.getOffset(index));
     }
 
-    CharBuffer bufferAsKeyOnly(FileChannel channel, int entrySize, long offset) throws IOException {
+    private CharBuffer bufferAsKeyOnly(FileChannel channel, int entrySize, long offset) throws IOException {
         fillBufferWithEntry(channel, entrySize, offset);
         short keySize = buffer.getShort();
         buffer.limit(keySize + Short.BYTES);
@@ -61,15 +95,11 @@ public class EntryReadWriter {
         return key;
     }
 
-    CharBuffer fillAndGetKeyBuffer(String key) {
+    private CharBuffer fillAndGetKeyBuffer(String key) {
         searchedKeyBuffer.clear();
         searchedKeyBuffer.put(key);
         searchedKeyBuffer.flip();
         return searchedKeyBuffer;
-    }
-
-    int maxKeyLength() {
-        return (buffer.capacity() / 2 - Short.BYTES / 2);
     }
 
     private void fillBufferWithEntry(FileChannel channel, int entrySize, long offset) throws IOException {
