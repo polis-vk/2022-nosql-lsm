@@ -33,19 +33,19 @@ public final class SSTable implements Closeable {
     private final Path indexName;
     private final ResourceScope sharedScope;
 
-    public Path getTableName() {
-        return tableName;
-    }
-
-    public Path getIndexName() {
-        return indexName;
-    }
-
     private static final Cleaner cleaner = Cleaner.create(r -> {
         Thread cleanerThread = new Thread(r, "Cleaner thread");
         cleanerThread.setDaemon(true);
         return cleanerThread;
     });
+
+    public Path getIndexName() {
+        return indexName;
+    }
+
+    public Path getTableName() {
+        return tableName;
+    }
 
     private SSTable(Path tableName, Path indexName, long tableSize, long indexSize) throws IOException {
         sharedScope = ResourceScope.newSharedScope(cleaner);
