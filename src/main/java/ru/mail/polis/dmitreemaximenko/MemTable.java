@@ -10,35 +10,38 @@ import java.util.Iterator;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class MemTable implements Table {
     private static final Comparator<MemorySegment> COMPARATOR = NaturalOrderComparator.getInstance();
     private static final MemorySegment VERY_FIRST_KEY = MemorySegment.ofArray(new byte[]{});
     private final ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> data =
             new ConcurrentSkipListMap<>(COMPARATOR);
-    private volatile long spaceLeft;
+    private final AtomicLong spaceLeft = new AtomicLong();
     private static final int SUCCESS = 1;
     private static final int FLUSH_REQUEST = -1;
     private static final int TABLE_READ_ONLY = -2;
     private final AtomicBoolean flushRequested = new AtomicBoolean(false);
 
     public MemTable(long tableSpace) {
-        this.spaceLeft = tableSpace;
+        spaceLeft.set(tableSpace);
     }
 
     public int put(MemorySegment key, Entry<MemorySegment> entry) {
-        // #fix Me data race with space
-        long possibleSpaceLeft = spaceLeft;
-        if (data.containsKey(key) && data.get(key).value() != null) {
-            possibleSpaceLeft += data.get(key).value().byteSize();
-        }
+        long spaceLeftAfterInsert =
+                spaceLeft.addAndGet(-(entry.value() == null ? 0 : entry.value().byteSize() + entry.key().byteSize()));
 
-        if (entry.value() == null) {
+        if (spaceLeftAfterInsert >= 0) {
+            Entry<MemorySegment> previousEntry;
+
+            previousEntry = data.getOrDefault(key, null);
             data.put(key, entry);
-            return SUCCESS;
-        } else if (spaceLeft >= entry.value().byteSize()) {
-            data.put(key, entry);
-            spaceLeft = possibleSpaceLeft - entry.value().byteSize();
+
+            if (previousEntry != null) {
+                spaceLeft.compareAndSet(spaceLeftAfterInsert, spaceLeftAfterInsert
+                        + (previousEntry.value() == null ? 0 : previousEntry.value().byteSize())
+                        + previousEntry.key().byteSize());
+            }
             return SUCCESS;
         }
 

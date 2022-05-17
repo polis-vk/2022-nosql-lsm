@@ -19,6 +19,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -35,14 +36,13 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     private MemTable activeMemTable;
     BlockingQueue<MemTable> flushingTables = new ArrayBlockingQueue<>(FLUSHING_QUEUE_SIZE);
     List<SSTable> ssTables;
-    private Thread flusher;
+    private ExecutorService flusher;
     private ExecutorService compactor;
     final ReadWriteLock dbTablesLock = new ReentrantReadWriteLock();
     private final Config config;
     final ResourceScope scope = ResourceScope.globalScope();
     final FileManager fileManager;
     volatile MemTable flushingTable;
-    final ReadWriteLock flushLock = new ReentrantReadWriteLock();
 
     public MemorySegmentDao() throws IOException {
         this(null);
@@ -59,9 +59,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         }
 
         flushFinish = false;
-        flusher = new Thread(new Flusher(this));
-
-        flusher.start();
+        flusher = Executors.newSingleThreadExecutor();
         activeMemTable = createMemoryTable();
         if (config == null) {
             ssTables = null;
@@ -151,12 +149,12 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
     public void flushWithoutLocking() {
         flushingTables.add(activeMemTable);
         activeMemTable = createMemoryTable();
+        flusher.submit(new Flusher(this));
     }
 
     @Override
     public void flush() {
         dbTablesLock.writeLock().lock();
-
         try {
             if (flushingTables.size() < FLUSHING_QUEUE_SIZE) {
                 flushWithoutLocking();
@@ -178,19 +176,27 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (!scope.isAlive()) {
             return;
         }
-        flushLock.writeLock().lock();
-        flushFinish = true;
         flush();
-        flushLock.writeLock().unlock();
-
-        try {
-            flusher.join();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-            flusher.interrupt();
-        }
-
+        flusher.shutdown();
         compactor.shutdown();
+        while (true) {
+            try {
+                if (flusher.awaitTermination(24L, TimeUnit.HOURS)) {
+                    break;
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        while (true) {
+            try {
+                if (compactor.awaitTermination(24L, TimeUnit.HOURS)) {
+                    break;
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     private MemTable createMemoryTable() {
