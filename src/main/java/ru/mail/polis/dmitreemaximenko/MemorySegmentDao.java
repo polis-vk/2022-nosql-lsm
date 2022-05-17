@@ -185,7 +185,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                     break;
                 }
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                Thread.currentThread().interrupt();
             }
         }
         while (true) {
@@ -194,7 +194,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                     break;
                 }
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                Thread.currentThread().interrupt();
             }
         }
     }

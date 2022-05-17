@@ -1,7 +1,6 @@
 package ru.mail.polis.dmitreemaximenko;
 
 import java.io.IOException;
-import java.nio.file.Path;
 
 // this class only exists because of the file size limit (250 lines)
 public class Flusher implements Runnable {
