@@ -8,12 +8,12 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.Set;
 import java.util.TreeMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -23,6 +23,7 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
     private final NavigableMap<String, BaseEntry<String>> tempData = new TreeMap<>();
     private final Map<String, Integer> tempDataPriorities = new HashMap<>();
     private final Map<String, List<FileInfo>> lastElementWithFilesMap = new HashMap<>();
+    private final List<Map.Entry<Path, FileInputStream>> filesMapEntries = new ArrayList<>();
     private final Iterator<BaseEntry<String>> inMemoryIterator;
     private final String to;
     private final boolean isFromNull;
@@ -32,15 +33,18 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
     private boolean hasNextCalled;
     private boolean hasNextResult;
 
-    public MergeIterator(PersistenceRangeDao dao, String from, String to) throws IOException {
+    public MergeIterator(PersistenceRangeDao dao, String from, String to, boolean includingMemory) throws IOException {
         this.to = to;
         this.isFromNull = from == null;
         this.isToNull = to == null;
+        this.filesMapEntries.addAll(dao.getFilesMap().entrySet());
         int priority = 1;
-        Set<Map.Entry<Path, FileInputStream>> filesMapEntries = dao.getFilesMap().entrySet();
         for (Map.Entry<Path, FileInputStream> filesMapEntry : filesMapEntries) {
             filesMapEntry.getValue().getChannel().position(0);
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(filesMapEntry.getValue(), UTF_8));
+            BufferedReader bufferedReader = new BufferedReader(
+                    new InputStreamReader(filesMapEntry.getValue(), UTF_8),
+                    131072
+            );
             BaseEntry<String> firstEntry = isFromNull
                     ? DaoUtils.readEntry(bufferedReader)
                     : DaoUtils.ceilKey(filesMapEntry.getKey(), bufferedReader, from);
@@ -53,12 +57,16 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
                 priority++;
             }
         }
-        inMemoryIterator = dao.getInMemoryDataIterator(from, to);
-        if (inMemoryIterator.hasNext()) {
-            BaseEntry<String> entry = inMemoryIterator.next();
-            tempData.put(entry.key(), entry);
-            tempDataPriorities.put(entry.key(), Integer.MAX_VALUE);
-            inMemoryLastKey = entry.key();
+        if (includingMemory) {
+            inMemoryIterator = dao.inMemoryDataIterator(from, to);
+            if (inMemoryIterator.hasNext()) {
+                BaseEntry<String> entry = inMemoryIterator.next();
+                tempData.put(entry.key(), entry);
+                tempDataPriorities.put(entry.key(), Integer.MAX_VALUE);
+                inMemoryLastKey = entry.key();
+            }
+        } else {
+            inMemoryIterator = Collections.emptyIterator();
         }
     }
 
@@ -125,6 +133,10 @@ public class MergeIterator implements Iterator<BaseEntry<String>> {
                     .add(fileInfo);
         }
         lastElementWithFilesMap.remove(polledEntry.key());
+    }
+
+    public List<Map.Entry<Path, FileInputStream>> getFilesMapEntries() {
+        return filesMapEntries;
     }
 
     private static final class FileInfo {

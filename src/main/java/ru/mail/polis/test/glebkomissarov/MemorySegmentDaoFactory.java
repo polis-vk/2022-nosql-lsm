@@ -5,14 +5,16 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
-import ru.mail.polis.glebkomissarov.MyMemoryDao;
+import ru.mail.polis.glebkomissarov.SegmentDao;
 import ru.mail.polis.test.DaoFactory;
 
-@DaoFactory(stage = 3)
+import java.io.IOException;
+
+@DaoFactory(stage = 4, week = 100500)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, BaseEntry<MemorySegment>> {
     @Override
-    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) {
-        return new MyMemoryDao(config);
+    public Dao<MemorySegment, BaseEntry<MemorySegment>> createDao(Config config) throws IOException {
+        return new SegmentDao(config);
     }
 
     @Override

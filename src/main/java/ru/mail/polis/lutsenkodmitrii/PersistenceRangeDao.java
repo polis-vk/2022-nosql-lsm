@@ -4,27 +4,24 @@ import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
-import java.io.BufferedWriter;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
-import java.nio.file.OpenOption;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableMap;
-import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Stream;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static ru.mail.polis.lutsenkodmitrii.DaoUtils.preprocess;
 
 /**
  * ----------------------------------------------------------------------------------------------*
@@ -50,45 +47,45 @@ import static ru.mail.polis.lutsenkodmitrii.DaoUtils.preprocess;
  **/
 public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
-    private static final OpenOption[] writeOptions = new OpenOption[]{
-            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE
-    };
-    public static final int DELETED_MARK = 0;
-    public static final int EXISTING_MARK = 1;
     public static final String DATA_FILE_NAME = "daoData";
     public static final String MEMORY_FILE_NAME = "memory";
     public static final String COMPACTION_FILE_NAME = "compaction";
     public static final String DATA_FILE_EXTENSION = ".txt";
     public static final String TEMP_FILE_EXTENSION = ".tmp";
+    private final AtomicInteger tmpCounter = new AtomicInteger(0);
+    private final AtomicInteger currentFileNumber = new AtomicInteger(0);
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private volatile boolean isClosed;
+    private final AtomicBoolean isClosed = new AtomicBoolean(false);
     private final Config config;
-    private final ConcurrentSkipListMap<String, BaseEntry<String>> data = new ConcurrentSkipListMap<>();
-    private final NavigableMap<Path, FileInputStream> filesMap = new TreeMap<>(
+    private final MemStorage memStorage;
+    private final ConcurrentSkipListMap<Path, FileInputStream> filesMap = new ConcurrentSkipListMap<>(
             Comparator.comparingInt(this::getFileNumber)
     );
-    private int currentFileNumber;
+    private final ExecutorService flushExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService compactionExecutor = Executors.newSingleThreadExecutor();
 
     public PersistenceRangeDao(Config config) throws IOException {
         this.config = config;
+        this.memStorage = new MemStorage(config.flushThresholdBytes());
         try (Stream<Path> stream = Files.find(config.basePath(), 1,
                 (p, a) -> a.isRegularFile() && p.getFileName().toString().endsWith(DATA_FILE_EXTENSION))) {
             List<Path> paths = stream.toList();
             for (Path path : paths) {
                 filesMap.put(path, new FileInputStream(path.toString()));
             }
-            currentFileNumber = filesMap.isEmpty() ? 0 : getFileNumber(filesMap.lastKey()) + 1;
+            currentFileNumber.set(filesMap.isEmpty() ? 0 : getFileNumber(filesMap.lastKey()) + 1);
         } catch (NoSuchFileException e) {
             filesMap.clear();
-            currentFileNumber = 0;
+            currentFileNumber.set(0);
         }
     }
 
     @Override
     public Iterator<BaseEntry<String>> get(String from, String to) throws IOException {
+        checkNotClosed();
         lock.readLock().lock();
         try {
-            return new MergeIterator(this, from, to);
+            return new MergeIterator(this, from, to, true);
         } finally {
             lock.readLock().unlock();
         }
@@ -96,143 +93,147 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
 
     @Override
     public void upsert(BaseEntry<String> entry) {
+        checkNotClosed();
+        int entryBytes = DaoUtils.bytesOf(entry);
         lock.readLock().lock();
         try {
-            data.put(entry.key(), entry);
+            if (memStorage.firstTableOnFlush().get()) {
+                memStorage.upsertToSecondTable(entry, entryBytes);
+            } else if (memStorage.firstTableBytes().addAndGet(entryBytes) < config.flushThresholdBytes()) {
+                memStorage.putFirstTable(entry);
+            } else {
+                if (memStorage.firstTableNotOnFlushAndSetTrue()) {
+                    flushFirstMemTable();
+                }
+                memStorage.upsertToSecondTable(entry, entryBytes);
+            }
         } finally {
             lock.readLock().unlock();
         }
     }
 
     @Override
-    public void flush() throws IOException {
-        if (data.isEmpty()) {
-            return;
+    public void flush() {
+        checkNotClosed();
+        lock.writeLock().lock(); // Только для ручного flush, автоматический соответствует вызову flushFirstMemTable()
+        try {
+            if (memStorage.firstTableNotOnFlushAndSetTrue()) {
+                flushFirstMemTable();
+            }
+        } finally {
+            lock.writeLock().unlock();
         }
-        writeMemoryToFile(generateNextFilePath());
+    }
+
+    private void flushFirstMemTable() {
+        flushExecutor.execute(() -> {
+            try {
+                Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
+                DaoUtils.writeToFile(tempMemoryFilePath, firstTableIterator());
+                Path dataFilePath = generateNextFilePath();
+                Files.move(tempMemoryFilePath, dataFilePath);
+                FileInputStream inputStream = new FileInputStream(dataFilePath.toString());
+                lock.writeLock().lock();
+                try {
+                    filesMap.put(dataFilePath, inputStream);
+                    memStorage.clearFirstTable();
+                } finally {
+                    lock.writeLock().unlock();
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("Flush first table failed", e);
+            }
+        });
     }
 
     @Override
     public void close() throws IOException {
-        if (isClosed) {
+        if (isClosed.getAndSet(true)) {
             return;
         }
-        lock.writeLock().lock();
-        try {
-            flush();
-            for (FileInputStream inputStream : filesMap.values()) {
-                inputStream.close();
-            }
-            isClosed = true;
-        } finally {
-            lock.writeLock().unlock();
+        shutdownAndAwaitTermination(flushExecutor);
+        shutdownAndAwaitTermination(compactionExecutor);
+        if (!memStorage.isEmpty()) {
+            DaoUtils.writeToFile(generateNextFilePath(), inMemoryDataIterator(null, null));
+        }
+        for (FileInputStream inputStream : filesMap.values()) {
+            inputStream.close();
         }
     }
 
     @Override
     public void compact() throws IOException {
-        if (filesMap.isEmpty() || (filesMap.size() == 1 && data.isEmpty())) {
-            return;
-        }
-        // Резервируем Path для данных из памяти, куда они будут записаны в случае неудачного удаления файлов,
-        // чтобы при неудаче compact не терять данные в памяти.
-        // Начинаем писать compact во временный файл,
-        // после переименовываем его в обычный самый приоритетный файл
-        // Если что-то пошло не так при создании/записи/переименовании - снимаем lock и прокидываем IOException
-        // Состояние валидно - остальные файлы не тронуты, временный не учитывается при чтении/записи
-        // Начинаем удалять старые файлы: все кроме только что созданного. После переименовываем compact-файл в первый
-        // При ошибке выше чтение будет из корректного compact-файла, который останется самым приоритетным файлом
-        // Независимо от успеха/ошибок в действиях выше, файлы записанные после переоткрытия dao будут приоритетнее
-        Path reserveMemoryFilePath = generateNextFilePath();
-        Iterator<BaseEntry<String>> allEntriesIterator = get(null, null);
-        Path tempCompactionFilePath = generateTempPath(COMPACTION_FILE_NAME);
-        Path lastFilePath = generateNextFilePath();
-        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(tempCompactionFilePath, UTF_8, writeOptions)) {
-            DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
-            while (allEntriesIterator.hasNext()) {
-                BaseEntry<String> baseEntry = allEntriesIterator.next();
-                String key = preprocess(baseEntry.key());
-                writeKey(key, bufferedFileWriter);
-                String value = preprocess(baseEntry.value());
-                writeValue(value, bufferedFileWriter);
-                DaoUtils.writeUnsignedInt(DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT
-                        + key.length() + value.length() + 1, bufferedFileWriter); // +1 из-за EXISTING_MARK
-            }
-        }
-        Files.move(tempCompactionFilePath, lastFilePath);
-        lock.writeLock().lock();
-        try {
-            for (Map.Entry<Path, FileInputStream> filesMapEntry : filesMap.entrySet()) {
-                filesMapEntry.getValue().close();
-                Files.delete(filesMapEntry.getKey());
-            }
-            data.clear();
-            filesMap.clear();
-            currentFileNumber = 0;
-            Files.move(lastFilePath, generateNextFilePath());
-        } catch (IOException e) {
-            Path tempMemoryFilePath = generateTempPath(MEMORY_FILE_NAME);
-            writeMemoryToFile(tempMemoryFilePath);
-            Files.move(tempMemoryFilePath, reserveMemoryFilePath);
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
-    public Iterator<BaseEntry<String>> getInMemoryDataIterator(String from, String to) {
+        checkNotClosed();
         lock.readLock().lock();
         try {
-            if (from == null && to == null) {
-                return data.values().iterator();
+            if (filesMap.size() < 2) {
+                return;
             }
-            if (from == null) {
-                return data.headMap(to).values().iterator();
+        } finally {
+            lock.readLock().unlock();
+        }
+        // Comact-им только файлы существующие на момент вызова компакта.
+        // Начинаем писать compact во временный файл,
+        // после переименовываем его в обычный самый приоритетный файл
+        // Состояние валидно - остальные файлы не тронуты, временный не учитывается при чтении/записи
+        // Начинаем удалять старые файлы: все кроме только что созданного. После переименовываем compact-файл в первый
+        // При ошибке выше чтение будет из корректного compact-файла,
+        // который останется самым приоритетным файлом существующие на момент вызова компакта
+        // Независимо от успеха/ошибок в действиях выше, файлы записанные после compact-a будут приоритетнее
+        compactionExecutor.execute(() -> {
+            Path tempCompactionFilePath = generateTempPath(COMPACTION_FILE_NAME);
+            Path lastFilePath = generateNextFilePath();
+            FileInputStream lastFileInputStream;
+            List<Map.Entry<Path, FileInputStream>> compactionFilesMapEntries;
+            try {
+                MergeIterator allEntriesIterator = new MergeIterator(this, null, null, false);
+                compactionFilesMapEntries = allEntriesIterator.getFilesMapEntries(); // copy of filesMap in iterator
+                DaoUtils.writeToFile(tempCompactionFilePath, allEntriesIterator);
+                Files.move(tempCompactionFilePath, lastFilePath);
+                lastFileInputStream = new FileInputStream(lastFilePath.toString());
+            } catch (IOException e) {
+                throw new RuntimeException("Writing to temp file failed", e);
             }
-            if (to == null) {
-                return data.tailMap(from).values().iterator();
+            lock.writeLock().lock();
+            try {
+                filesMap.put(lastFilePath, lastFileInputStream);
+                for (Map.Entry<Path, FileInputStream> filesMapEntry : compactionFilesMapEntries) {
+                    filesMap.remove(filesMapEntry.getKey());
+                    filesMapEntry.getValue().close();
+                    Files.delete(filesMapEntry.getKey());
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("Deleting old files failed", e);
+            } finally {
+                lock.writeLock().unlock();
             }
-            return data.subMap(from, to).values().iterator();
+        });
+    }
+
+    public Iterator<BaseEntry<String>> inMemoryDataIterator(String from, String to) {
+        lock.readLock().lock();
+        try {
+            return memStorage.iterator(from, to);
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private void writeMemoryToFile(Path dataFilePath) throws IOException {
-        try (BufferedWriter bufferedFileWriter = Files.newBufferedWriter(dataFilePath, UTF_8, writeOptions)) {
-            DaoUtils.writeUnsignedInt(0, bufferedFileWriter);
-            for (BaseEntry<String> baseEntry : data.values()) {
-                String key = preprocess(baseEntry.key());
-                writeKey(key, bufferedFileWriter);
-                int keyWrittenSize = DaoUtils.CHARS_IN_INT + DaoUtils.CHARS_IN_INT + key.length() + 1;
-                // +1 из-за DELETED_MARK или EXISTING_MARK
-                if (baseEntry.value() == null) {
-                    bufferedFileWriter.write(DELETED_MARK + '\n');
-                    DaoUtils.writeUnsignedInt(keyWrittenSize, bufferedFileWriter);
-                    continue;
-                }
-                String value = preprocess(baseEntry.value());
-                writeValue(value, bufferedFileWriter);
-                DaoUtils.writeUnsignedInt(keyWrittenSize + value.length(), bufferedFileWriter);
-            }
+    private Iterator<BaseEntry<String>> firstTableIterator() {
+        lock.readLock().lock();
+        try {
+            return memStorage.firstTableIterator(null, null);
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
-    private void writeKey(String key, BufferedWriter bufferedFileWriter) throws IOException {
-        DaoUtils.writeUnsignedInt(key.length(), bufferedFileWriter);
-        bufferedFileWriter.write(key);
-    }
-
-    private void writeValue(String value, BufferedWriter bufferedFileWriter) throws IOException {
-        bufferedFileWriter.write(EXISTING_MARK);
-        bufferedFileWriter.write(value + '\n');
-    }
-
     private Path generateNextFilePath() {
-        return config.basePath().resolve(DATA_FILE_NAME + currentFileNumber++ + DATA_FILE_EXTENSION);
+        return config.basePath().resolve(DATA_FILE_NAME + currentFileNumber.getAndIncrement() + DATA_FILE_EXTENSION);
     }
 
     private Path generateTempPath(String fileName) {
-        return config.basePath().resolve(fileName + TEMP_FILE_EXTENSION);
+        return config.basePath().resolve(fileName + tmpCounter.getAndIncrement() + TEMP_FILE_EXTENSION);
     }
 
     public Config getConfig() {
@@ -253,5 +254,24 @@ public class PersistenceRangeDao implements Dao<String, BaseEntry<String>> {
         return Integer.parseInt(filename.substring(
                 DATA_FILE_NAME.length(),
                 filename.length() - DATA_FILE_EXTENSION.length()));
+    }
+
+    private void shutdownAndAwaitTermination(ExecutorService executorService) {
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(Integer.MAX_VALUE, TimeUnit.HOURS)) {
+                executorService.shutdownNow();
+                throw new RuntimeException("Await termination too long");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("AwaitTermination interrupted", e);
+        }
+    }
+
+    private void checkNotClosed() {
+        if (isClosed.get()) {
+            throw new RuntimeException("Cannot operate on closed dao");
+        }
     }
 }
