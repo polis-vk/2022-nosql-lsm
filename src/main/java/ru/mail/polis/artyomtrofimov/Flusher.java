@@ -44,7 +44,7 @@ public class Flusher implements Runnable {
                 queueToFlush.addFirst(dataToFlush);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                continue;
+                break;
             }
 
             try (RandomAccessFile output = new RandomAccessFile(file.toString(), "rw");

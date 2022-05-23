@@ -22,6 +22,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -32,16 +33,17 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     protected static final String DATA_EXT = ".dat";
     protected static final String INDEX_EXT = ".ind";
     protected static final String ALL_FILES = "files.fl";
+    public static final int CAPACITY = 2;
 
     private ConcurrentNavigableMap<String, Entry<String>> data = new ConcurrentSkipListMap<>();
     private volatile boolean commit = true;
     private final Config config;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final BlockingDeque<ConcurrentNavigableMap<String, Entry<String>>> queueToFlush =
-            new LinkedBlockingDeque<>(2);
+            new LinkedBlockingDeque<>(CAPACITY);
 
     private final AtomicReference<Deque<String>> filesList = new AtomicReference<>(new ArrayDeque<>());
-    private long dataSizeBytes;
+    private final AtomicLong dataSizeBytes = new AtomicLong(0);
     private final Lock filesLock = new ReentrantLock();
     private final ExecutorService flushExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService compactExecutor = Executors.newSingleThreadExecutor();
@@ -79,13 +81,17 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         return new MergeIterator(iterators);
     }
 
-    public Pair<List<String>, List<PeekingIterator>> getFilePeekingIteratorList(String from, String to,
-                                                                                int startPriority) throws IOException {
+    public Pair<Deque<String>, List<PeekingIterator>> getFilePeekingIteratorList(String from, String to,
+                                                                                 int startPriority) throws IOException {
+        String start = from;
+        if (start == null) {
+            start = "";
+        }
         List<PeekingIterator> fileIterators = new ArrayList<>();
         int priority = startPriority;
         Deque<String> fileListCopy = cloneFileList();
         for (String file : fileListCopy) {
-            fileIterators.add(new PeekingIterator(new FileIterator(config.basePath(), file, from, to), priority));
+            fileIterators.add(new PeekingIterator(new FileIterator(config.basePath(), file, start, to), priority));
             ++priority;
         }
         return new Pair(fileListCopy, fileIterators);
@@ -153,16 +159,24 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     public void upsert(Entry<String> entry) {
         lock.readLock().lock();
         try {
-            data.put(entry.key(), entry);
-            dataSizeBytes += 2L * entry.key().getBytes(StandardCharsets.UTF_8).length
-                    + (entry.value() == null ? 0 : entry.value().getBytes(StandardCharsets.UTF_8).length);
+            Entry<String> prevVal = data.put(entry.key(), entry);
+            if (prevVal == null) {
+                dataSizeBytes.addAndGet(2L * entry.key().getBytes(StandardCharsets.UTF_8).length
+                        + (entry.isTombstone() ? 0 : entry.value().getBytes(StandardCharsets.UTF_8).length));
+            } else {
+                dataSizeBytes.addAndGet((entry.isTombstone() ? 0 : entry.value().getBytes(StandardCharsets.UTF_8).length)
+                        - (prevVal.isTombstone() ? 0 : prevVal.value().getBytes(StandardCharsets.UTF_8).length));
+            }
             commit = false;
         } finally {
             lock.readLock().unlock();
         }
         try {
-            if (dataSizeBytes > config.flushThresholdBytes()) {
-                flush();
+            long size = dataSizeBytes.get();
+            if (size > config.flushThresholdBytes()) {
+                if (dataSizeBytes.compareAndSet(size, 0)) {
+                    flush();
+                }
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -199,14 +213,13 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         if (commit) {
             return;
         }
-        if (queueToFlush.size() == 2) {
-            throw new IOException("Exceeded limit");
+        if (queueToFlush.size() == CAPACITY) {
+            throw new IllegalStateException("Exceeded limit");
         }
         queueToFlush.add(data);
         lock.writeLock().lock();
         try {
             data = new ConcurrentSkipListMap<>();
-            dataSizeBytes = 0;
             commit = true;
         } finally {
             lock.writeLock().unlock();

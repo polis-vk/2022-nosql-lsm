@@ -11,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Deque;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
@@ -113,7 +112,7 @@ public final class Utils {
         }
     }
 
-    public static void removeOldFiles(Config config, List<String> filesListCopy) throws IOException {
+    public static void removeOldFiles(Config config, Deque<String> filesListCopy) throws IOException {
         for (String fileToDelete : filesListCopy) {
             Files.deleteIfExists(config.basePath().resolve(fileToDelete + DATA_EXT));
             Files.deleteIfExists(config.basePath().resolve(fileToDelete + INDEX_EXT));

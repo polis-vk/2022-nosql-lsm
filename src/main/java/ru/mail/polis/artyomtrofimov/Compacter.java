@@ -40,7 +40,7 @@ public class Compacter implements Runnable {
              RandomAccessFile indexOut = new RandomAccessFile(index.toString(), "rw");
              RandomAccessFile allFilesOut = new RandomAccessFile(basePath.resolve(ALL_FILES).toString(), "rw")
         ) {
-            Pair<List<String>, List<PeekingIterator>> files =
+            Pair<Deque<String>, List<PeekingIterator>> files =
                     inMemoryDao.getFilePeekingIteratorList(null, null, 0);
             Iterator<Entry<String>> iterator = new MergeIterator(files.second);
             output.seek(Integer.BYTES);
