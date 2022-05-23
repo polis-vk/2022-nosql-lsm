@@ -164,7 +164,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
                 dataSizeBytes.addAndGet(2L * entry.key().getBytes(StandardCharsets.UTF_8).length
                         + (entry.isTombstone() ? 0 : entry.value().getBytes(StandardCharsets.UTF_8).length));
             } else {
-                dataSizeBytes.addAndGet((entry.isTombstone() ? 0 : entry.value().getBytes(StandardCharsets.UTF_8).length)
+                dataSizeBytes.addAndGet((entry.isTombstone() ? 0 :
+                        entry.value().getBytes(StandardCharsets.UTF_8).length)
                         - (prevVal.isTombstone() ? 0 : prevVal.value().getBytes(StandardCharsets.UTF_8).length));
             }
             commit = false;
@@ -199,7 +200,7 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
     public void close() throws IOException {
         flush();
         flushExecutor.shutdownNow();
-        compactExecutor.shutdownNow();
+        compactExecutor.shutdown();
         try {
             flushExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
             compactExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
