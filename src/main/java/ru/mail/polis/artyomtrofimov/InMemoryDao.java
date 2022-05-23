@@ -174,10 +174,8 @@ public class InMemoryDao implements Dao<String, Entry<String>> {
         }
         try {
             long size = dataSizeBytes.get();
-            if (size > config.flushThresholdBytes()) {
-                if (dataSizeBytes.compareAndSet(size, 0)) {
-                    flush();
-                }
+            if (size > config.flushThresholdBytes() && dataSizeBytes.compareAndSet(size, 0)) {
+                flush();
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);

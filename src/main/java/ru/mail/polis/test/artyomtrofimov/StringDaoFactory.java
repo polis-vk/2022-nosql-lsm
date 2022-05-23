@@ -6,9 +6,10 @@ import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.artyomtrofimov.InMemoryDao;
 import ru.mail.polis.test.DaoFactory;
+
 import java.io.IOException;
 
-@DaoFactory(stage = 5, week = 1)
+@DaoFactory(stage = 42, week = 3)
 public class StringDaoFactory implements DaoFactory.Factory<String, Entry<String>> {
 
     @Override
