@@ -1,7 +1,11 @@
-package ru.mail.polis.vladislavfetisov;
+package ru.mail.polis.vladislavfetisov.iterators;
 
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Entry;
+import ru.mail.polis.vladislavfetisov.MemorySegments;
+import ru.mail.polis.vladislavfetisov.lsm.SSTable;
+import ru.mail.polis.vladislavfetisov.lsm.Storage;
+import ru.mail.polis.vladislavfetisov.Utils;
 
 import java.util.Collections;
 import java.util.Iterator;
@@ -71,7 +75,7 @@ public final class CustomIterators {
                 Entry<MemorySegment> e1 = it1.peek();
                 Entry<MemorySegment> e2 = it2.peek();
 
-                int compare = Utils.compareMemorySegments(e1.key(), e2.key());
+                int compare = MemorySegments.compareMemorySegments(e1.key(), e2.key());
                 if (compare < 0) {
                     it1.next();
                     return e1;

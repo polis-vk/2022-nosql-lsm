@@ -1,8 +1,10 @@
-package ru.mail.polis.vladislavfetisov;
+package ru.mail.polis.vladislavfetisov.lsm;
 
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
+import ru.mail.polis.vladislavfetisov.Entries;
+import ru.mail.polis.vladislavfetisov.MemorySegments;
 
 import java.util.Collection;
 import java.util.Iterator;
@@ -13,6 +15,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public record Storage(Memory memory, Memory readOnlyMemory, List<SSTable> ssTables, Config config) {
+    public static Storage getNewStorageWithSSTables(Config config, List<SSTable> ssTables) {
+        return new Storage(Storage.Memory.getNewMemory(config.flushThresholdBytes()),
+                Storage.Memory.EMPTY_MEMORY, ssTables, config);
+    }
 
     public Storage beforeFlush() {
         if (readOnlyMemory != Memory.EMPTY_MEMORY) {
@@ -53,7 +59,7 @@ public record Storage(Memory memory, Memory readOnlyMemory, List<SSTable> ssTabl
         }
 
         public static Memory getNewMemory(long sizeThreshold) {
-            return new Memory(new ConcurrentSkipListMap<>(Utils::compareMemorySegments), sizeThreshold);
+            return new Memory(new ConcurrentSkipListMap<>(MemorySegments::compareMemorySegments), sizeThreshold);
         }
 
         public boolean put(MemorySegment key, Entry<MemorySegment> value) {
@@ -61,9 +67,9 @@ public record Storage(Memory memory, Memory readOnlyMemory, List<SSTable> ssTabl
                 throw new UnsupportedOperationException("ReadOnly memory");
             }
             Entry<MemorySegment> previous = delegate.put(key, value);
-            long delta = Utils.sizeOfEntry(value);
+            long delta = Entries.sizeOfEntry(value);
             if (previous != null) {
-                delta -= Utils.sizeOfEntry(previous);
+                delta -= Entries.sizeOfEntry(previous);
             }
             long newSize = size.addAndGet(delta);
             if (newSize > sizeLimit) {
@@ -89,6 +95,13 @@ public record Storage(Memory memory, Memory readOnlyMemory, List<SSTable> ssTabl
                 return delegate.values().iterator();
             }
             return subMap(from, to).values().iterator();
+        }
+
+        public long getRemainingMemory() {
+            if (isOversize().get()) {
+                throw new IllegalStateException("Memory is oversized!");
+            }
+            return sizeLimit - size.get();
         }
 
         public ConcurrentNavigableMap<MemorySegment, Entry<MemorySegment>> subMap(

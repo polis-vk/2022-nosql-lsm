@@ -1,9 +1,11 @@
-package ru.mail.polis.vladislavfetisov;
+package ru.mail.polis.vladislavfetisov.lsm;
 
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.Entry;
+import ru.mail.polis.vladislavfetisov.MemorySegments;
+import ru.mail.polis.vladislavfetisov.Utils;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -12,7 +14,6 @@ import java.lang.ref.Cleaner;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -23,7 +24,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public final class SSTable implements Closeable {
-    public static final int NULL_VALUE = -1;
     public static final String TEMP = "_tmp";
     public static final String INDEX = "_i";
     public static final String COMPACTED = "_compacted";
@@ -49,9 +49,9 @@ public final class SSTable implements Closeable {
 
     private SSTable(Path tableName, Path indexName, long tableSize, long indexSize) throws IOException {
         sharedScope = ResourceScope.newSharedScope(cleaner);
-        mapFile = Utils.map(tableName, tableSize, FileChannel.MapMode.READ_ONLY, sharedScope);
+        mapFile = MemorySegments.map(tableName, tableSize, FileChannel.MapMode.READ_ONLY, sharedScope);
         this.tableName = tableName;
-        mapIndex = Utils.map(indexName, indexSize, FileChannel.MapMode.READ_ONLY, sharedScope);
+        mapIndex = MemorySegments.map(indexName, indexSize, FileChannel.MapMode.READ_ONLY, sharedScope);
         this.indexName = indexName;
     }
 
@@ -86,9 +86,9 @@ public final class SSTable implements Closeable {
         if (path.toString().endsWith(COMPACTED)) {
             Path removedSuffix = Path.of(Utils.removeSuffix(path.toString(), COMPACTED));
             compactedTables.add(removedSuffix);
-            return getTableNum(removedSuffix);
+            return Utils.getTableNum(removedSuffix);
         }
-        return getTableNum(path);
+        return Utils.getTableNum(path);
     }
 
     private static int lastCompactedIndex(Set<Path> compactedTables, List<Path> paths) {
@@ -127,12 +127,12 @@ public final class SSTable implements Closeable {
         Path index = table.resolveSibling(table + INDEX);
         Path indexTemp = Utils.withSuffix(index, TEMP);
 
-        newFile(tableTemp);
-        newFile(indexTemp);
+        Utils.newFile(tableTemp);
+        Utils.newFile(indexTemp);
 
         try (ResourceScope writingScope = ResourceScope.newSharedScope()) {
-            MemorySegment fileMap = Utils.map(tableTemp, tableSize, FileChannel.MapMode.READ_WRITE, writingScope);
-            MemorySegment indexMap = Utils.map(indexTemp, indexSize, FileChannel.MapMode.READ_WRITE, writingScope);
+            MemorySegment fileMap = MemorySegments.map(tableTemp, tableSize, FileChannel.MapMode.READ_WRITE, writingScope);
+            MemorySegment indexMap = MemorySegments.map(indexTemp, indexSize, FileChannel.MapMode.READ_WRITE, writingScope);
 
             long indexOffset = 0;
             long fileOffset = 0;
@@ -142,26 +142,14 @@ public final class SSTable implements Closeable {
                 MemoryAccess.setLongAtOffset(indexMap, indexOffset, fileOffset);
                 indexOffset += Long.BYTES;
 
-                fileOffset += Utils.writeSegment(entry.key(), fileMap, fileOffset);
-
-                if (entry.value() == null) {
-                    MemoryAccess.setLongAtOffset(fileMap, fileOffset, NULL_VALUE);
-                    fileOffset += Long.BYTES;
-                    continue;
-                }
-                fileOffset += Utils.writeSegment(entry.value(), fileMap, fileOffset);
+                fileOffset = MemorySegments.writeEntry(fileMap, fileOffset, entry);
             }
+            fileMap.force();
+            indexMap.force();
             Utils.rename(indexTemp, index);
             Utils.rename(tableTemp, table);
         }
         return new SSTable(table, index, tableSize, indexSize);
-    }
-
-    private static void newFile(Path tableTemp) throws IOException {
-        Files.newByteChannel(tableTemp,
-                StandardOpenOption.CREATE_NEW,
-                StandardOpenOption.WRITE,
-                StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     public Iterator<Entry<MemorySegment>> range(MemorySegment from, MemorySegment to) {
@@ -199,7 +187,7 @@ public final class SSTable implements Closeable {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
                 }
-                Entry<MemorySegment> res = Utils.getByIndex(mapFile, mapIndex, pos);
+                Entry<MemorySegment> res = MemorySegments.getByIndex(mapFile, mapIndex, pos);
                 pos++;
                 return res;
             }
@@ -225,10 +213,6 @@ public final class SSTable implements Closeable {
 
     public record Directory(List<SSTable> ssTables, int indexOfLastCompacted) {
         //empty
-    }
-
-    public static Integer getTableNum(Path path) {
-        return Integer.parseInt(path.getFileName().toString());
     }
 
 }

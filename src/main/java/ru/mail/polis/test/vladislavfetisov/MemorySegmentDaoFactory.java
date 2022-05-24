@@ -5,7 +5,7 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.test.DaoFactory;
-import ru.mail.polis.vladislavfetisov.LsmDao;
+import ru.mail.polis.vladislavfetisov.lsm.LsmDao;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

@@ -1,4 +1,4 @@
-package ru.mail.polis.vladislavfetisov;
+package ru.mail.polis.vladislavfetisov.lsm;
 
 import jdk.incubator.foreign.MemorySegment;
 import org.slf4j.Logger;
@@ -6,6 +6,12 @@ import org.slf4j.LoggerFactory;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
+import ru.mail.polis.vladislavfetisov.Entries;
+import ru.mail.polis.vladislavfetisov.MemorySegments;
+import ru.mail.polis.vladislavfetisov.Utils;
+import ru.mail.polis.vladislavfetisov.iterators.CustomIterators;
+import ru.mail.polis.vladislavfetisov.iterators.PeekingIterator;
+import ru.mail.polis.vladislavfetisov.wal.WAL;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -16,12 +22,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
-    public static final int EXCLUSIVE_PERMISSION = 1;
-    public static final String INTERRUPTED = "Semaphore was interrupted";
     private final Config config;
     private long nextTableNum;
     private volatile boolean isCompact;
@@ -32,10 +35,9 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             = Executors.newSingleThreadExecutor(r -> new Thread(r, "compactThread"));
     private volatile Storage storage;
     private volatile List<SSTable> duringCompactionTables = new ArrayList<>();
-
-    private final Semaphore flushSemaphore = new Semaphore(EXCLUSIVE_PERMISSION);
+    private volatile WAL log;
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-    public static final Logger logger = LoggerFactory.getLogger(LsmDao.class);
+    public static final Logger LOGGER = LoggerFactory.getLogger(LsmDao.class);
 
     /**
      * Get all files from dir(config.basePath), remove all files to file with suffix "compacted".
@@ -44,21 +46,23 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     public LsmDao(Config config) throws IOException {
         this.config = config;
         SSTable.Directory directory = SSTable.retrieveDir(config.basePath());
+        this.storage = Storage.getNewStorageWithSSTables(config, Collections.emptyList());
         List<SSTable> fromDisc = directory.ssTables();
-        if (fromDisc.isEmpty()) {
-            this.nextTableNum = 0;
-            this.storage = new Storage(Storage.Memory.getNewMemory(config.flushThresholdBytes()),
-                    Storage.Memory.EMPTY_MEMORY, Collections.emptyList(), config);
-            return;
+        if (!fromDisc.isEmpty()) {
+            List<SSTable> ssTables = fromDisc;
+            if (directory.indexOfLastCompacted() != 0) {
+                ssTables = fromDisc.subList(directory.indexOfLastCompacted(), fromDisc.size());
+                Utils.deleteTablesToIndex(fromDisc, directory.indexOfLastCompacted());
+            }
+            this.nextTableNum = Utils.getLastTableNum(ssTables);
+            this.storage = Storage.getNewStorageWithSSTables(config, ssTables);
         }
-        List<SSTable> ssTables = fromDisc;
-        if (directory.indexOfLastCompacted() != 0) {
-            ssTables = fromDisc.subList(directory.indexOfLastCompacted(), fromDisc.size());
-            Utils.deleteTablesToIndex(fromDisc, directory.indexOfLastCompacted());
-        }
-        this.nextTableNum = Utils.getLastTableNum(ssTables);
-        this.storage = new Storage(Storage.Memory.getNewMemory(config.flushThresholdBytes()),
-                Storage.Memory.EMPTY_MEMORY, ssTables, config);
+
+        this.log = new WAL(config);
+        State state = this.log.restoreFromDir(new State(storage, nextTableNum));
+
+        this.nextTableNum = state.nextTableNum();
+        this.storage = state.storage();
     }
 
     @Override
@@ -87,27 +91,22 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
      * Compact will be blocked until latest flush is done.
      */
     private void performCompact() throws IOException {
-        Path compactedPath = null;
-        List<SSTable> fixed = Collections.emptyList();
-        try {
-            flushSemaphore.acquire();
-            fixed = this.storage.ssTables();
+        Path compactedPath;
+        List<SSTable> fixed;
+        synchronized (flushExecutor) {
             closeCheck();
+            fixed = this.storage.ssTables();
             if (fixed.isEmpty() || (fixed.size() == 1 && fixed.get(0).isCompacted())) {
-                logger.info("Reject compact because it's redundant");
+                LOGGER.info("Reject compact because it's redundant");
                 return;
             }
             duringCompactionTables = new ArrayList<>();
             duringCompactionTables.add(null);//for compacted table in future
             compactedPath = nextCompactedTable();
             isCompact = true;
-        } catch (InterruptedException e) {
-            logger.error(INTERRUPTED, e);
-            Thread.currentThread().interrupt();
-        } finally {
-            flushSemaphore.release();
         }
-        SSTable.Sizes sizes = Utils.getSizes(Utils.tablesFilteredFullRange(fixed));
+
+        SSTable.Sizes sizes = Entries.getSizes(Utils.tablesFilteredFullRange(fixed));
         Iterator<Entry<MemorySegment>> forWrite = Utils.tablesFilteredFullRange(fixed);
         SSTable compacted = SSTable.writeTable(compactedPath, forWrite, sizes.tableSize(), sizes.indexSize());
 
@@ -121,14 +120,17 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public void upsert(Entry<MemorySegment> entry) {
+        closeCheck();
         boolean oversize;
         rwLock.readLock().lock();
         try {
-            Storage localStorage = this.storage;
-            if (localStorage.memory().isOversize().get() && localStorage.isFlushing()) { //if user's flush now running
-                throw new IllegalStateException("So many upserts");
+            oversize = put(entry, this.storage);
+            try {
+                log.put(entry);
+            } catch (IOException e) {
+                LOGGER.error("WAL is broken");
+                throw new UncheckedIOException(e);
             }
-            oversize = localStorage.memory().put(entry.key(), entry);
         } finally {
             rwLock.readLock().unlock();
         }
@@ -137,22 +139,24 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         }
     }
 
+    public boolean put(Entry<MemorySegment> entry, Storage localStorage) {
+        if (localStorage.memory().isOversize().get() && localStorage.isFlushing()) {
+            throw new IllegalStateException("So many upserts");
+        }
+        return localStorage.memory().put(entry.key(), entry);
+    }
+
     private void asyncFlush() {
         flushExecutor.execute(() -> {
-            try {
-                if (flushSemaphore.tryAcquire()) {
-                    try {
-                        logger.info("Start program flush");
-                        processFlush();
-                        logger.info("Program flush is finished");
-                    } finally {
-                        flushSemaphore.release();
-                    }
-                } else {
-                    logger.info("Race with user's flush");
+            synchronized (flushExecutor) {
+                try {
+                    closeCheck();
+                    LOGGER.info("Start program flush");
+                    processFlush();
+                    LOGGER.info("Program flush is finished");
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
                 }
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
             }
         });
     }
@@ -162,18 +166,15 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
      */
     @Override
     public void flush() throws IOException {
-        logger.info("User want to flush");
-        try {
-            flushSemaphore.acquire();
+        LOGGER.info("User want to flush");
+        if (storage.isFlushing()) {
+            return;
+        }
+        synchronized (flushExecutor) {
             closeCheck();
-            logger.info("User's flush is started");
+            LOGGER.info("User's flush is started");
             processFlush();
-            logger.info("User's flush is finished");
-        } catch (InterruptedException e) {
-            logger.error(INTERRUPTED, e);
-            Thread.currentThread().interrupt();
-        } finally {
-            flushSemaphore.release();
+            LOGGER.info("User's flush is finished");
         }
     }
 
@@ -181,11 +182,13 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         rwLock.writeLock().lock();
         try {
             storage = storage.beforeFlush();
+            log.beforeFlush();
         } finally {
             rwLock.writeLock().unlock();
         }
         performFlush();
         storage = storage.afterFlush();
+        log.afterFlush();
     }
 
     /**
@@ -196,7 +199,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         if (readOnlyMemTable.isEmpty()) {
             return;
         }
-        SSTable.Sizes sizes = Utils.getSizes(readOnlyMemTable.values().iterator());
+        SSTable.Sizes sizes = Entries.getSizes(readOnlyMemTable.values().iterator());
         SSTable table = SSTable.writeTable(
                 nextOrdinaryTable(),
                 readOnlyMemTable.values().iterator(),
@@ -217,25 +220,19 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public void close() throws IOException {
-        Utils.shutdownExecutor(flushExecutor);
-        Utils.shutdownExecutor(compactExecutor);
-        try {
-            flushSemaphore.acquire();
+        synchronized (flushExecutor) {
             if (isClosed) {
-                logger.info("Trying to close already closed storage");
+                LOGGER.info("Trying to close already closed storage");
                 return;
             }
+            Utils.shutdownExecutor(flushExecutor);
+            Utils.shutdownExecutor(compactExecutor);
             isClosed = true;
-            logger.info("Closing storage");
+            LOGGER.info("Closing storage");
             processFlush();
             for (SSTable table : this.storage.ssTables()) {
                 table.close();
             }
-        } catch (InterruptedException e) {
-            logger.error(INTERRUPTED, e);
-            Thread.currentThread().interrupt();
-        } finally {
-            flushSemaphore.release();
         }
     }
 
@@ -246,22 +243,18 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             return null;
         }
         Entry<MemorySegment> desired = singleIterator.next();
-        if (Utils.compareMemorySegments(desired.key(), key) != 0) {
+        if (MemorySegments.compareMemorySegments(desired.key(), key) != 0) {
             return null;
         }
         return desired;
     }
 
     private Path nextOrdinaryTable() {
-        return nextTable(String.valueOf(nextTableNum++));
+        return Utils.nextTable(String.valueOf(nextTableNum++), config);
     }
 
     private Path nextCompactedTable() {
-        return nextTable(nextTableNum++ + SSTable.COMPACTED);
-    }
-
-    private Path nextTable(String name) {
-        return config.basePath().resolve(name);
+        return Utils.nextTable(nextTableNum++ + SSTable.COMPACTED, config);
     }
 
     private void closeCheck() {
@@ -274,4 +267,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         return storage;
     }
 
+    public record State(Storage storage, long nextTableNum) {
+
+    }
 }

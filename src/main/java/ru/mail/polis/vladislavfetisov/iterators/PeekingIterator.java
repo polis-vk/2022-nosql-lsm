@@ -1,4 +1,4 @@
-package ru.mail.polis.vladislavfetisov;
+package ru.mail.polis.vladislavfetisov.iterators;
 
 import java.util.Iterator;
 import java.util.NoSuchElementException;
