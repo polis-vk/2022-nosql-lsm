@@ -35,7 +35,7 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             = Executors.newSingleThreadExecutor(r -> new Thread(r, "compactThread"));
     private volatile Storage storage;
     private volatile List<SSTable> duringCompactionTables = new ArrayList<>();
-    private volatile WAL log;
+//    private final WAL log;
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     public static final Logger LOGGER = LoggerFactory.getLogger(LsmDao.class);
 
@@ -58,11 +58,11 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             this.storage = Storage.getNewStorageWithSSTables(config, ssTables);
         }
 
-        this.log = new WAL(config);
-        State state = this.log.restoreFromDir(new State(storage, nextTableNum));
-
-        this.nextTableNum = state.nextTableNum();
-        this.storage = state.storage();
+//        WAL.LogWithState logWithState = WAL.getLogWithNewState(config, new State(storage, nextTableNum));
+//
+//        this.nextTableNum = logWithState.state().nextTableNum();
+//        this.storage = logWithState.state().storage();
+//        this.log = logWithState.log();
     }
 
     @Override
@@ -124,26 +124,23 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         boolean oversize;
         rwLock.readLock().lock();
         try {
-            oversize = put(entry, this.storage);
-            try {
-                log.put(entry);
-            } catch (IOException e) {
-                LOGGER.error("WAL is broken");
-                throw new UncheckedIOException(e);
+            Storage localStorage = this.storage;
+            if (localStorage.memory().isOversize().get() && localStorage.isFlushing()) {
+                throw new IllegalStateException("So many upserts");
             }
+            oversize = localStorage.memory().put(entry.key(), entry);
+//            try {
+//                log.put(entry);
+//            } catch (IOException e) {
+//                LOGGER.error("WAL is broken");
+//                throw new UncheckedIOException(e);
+//            }
         } finally {
             rwLock.readLock().unlock();
         }
         if (oversize) {
             asyncFlush();
         }
-    }
-
-    public boolean put(Entry<MemorySegment> entry, Storage localStorage) {
-        if (localStorage.memory().isOversize().get() && localStorage.isFlushing()) {
-            throw new IllegalStateException("So many upserts");
-        }
-        return localStorage.memory().put(entry.key(), entry);
     }
 
     private void asyncFlush() {
@@ -182,13 +179,13 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
         rwLock.writeLock().lock();
         try {
             storage = storage.beforeFlush();
-            log.beforeFlush();
+//            log.beforeFlush();
         } finally {
             rwLock.writeLock().unlock();
         }
         performFlush();
         storage = storage.afterFlush();
-        log.afterFlush();
+//        log.afterFlush();
     }
 
     /**
@@ -220,19 +217,20 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
 
     @Override
     public void close() throws IOException {
+        Utils.shutdownExecutor(flushExecutor);
+        Utils.shutdownExecutor(compactExecutor);
         synchronized (flushExecutor) {
             if (isClosed) {
                 LOGGER.info("Trying to close already closed storage");
                 return;
             }
-            Utils.shutdownExecutor(flushExecutor);
-            Utils.shutdownExecutor(compactExecutor);
             isClosed = true;
             LOGGER.info("Closing storage");
             processFlush();
             for (SSTable table : this.storage.ssTables()) {
                 table.close();
             }
+//            log.close();
         }
     }
 

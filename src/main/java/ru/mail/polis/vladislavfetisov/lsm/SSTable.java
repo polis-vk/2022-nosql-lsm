@@ -6,6 +6,7 @@ import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.Entry;
 import ru.mail.polis.vladislavfetisov.MemorySegments;
 import ru.mail.polis.vladislavfetisov.Utils;
+import ru.mail.polis.vladislavfetisov.wal.WAL;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -20,6 +21,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -72,14 +74,18 @@ public final class SSTable implements Closeable {
 
     private static List<Path> sortPathsAndFindCompacted(Path dir, Stream<Path> files, Set<Path> compactedTables) {
         return files
-                .filter(path -> {
-                    String s = path.toString();
-                    return !(s.endsWith(INDEX) || s.endsWith(TEMP));
-                })
+                .filter(getPathPredicate())
                 .mapToInt(path -> processFileName(compactedTables, path))
                 .sorted()
                 .mapToObj(i -> dir.resolve(String.valueOf(i)))
                 .collect(Collectors.toList());
+    }
+
+    private static Predicate<Path> getPathPredicate() {
+        return path -> {
+            String s = path.toString();
+            return !(s.startsWith(WAL.LOG) || s.endsWith(INDEX) || s.endsWith(TEMP));
+        };
     }
 
     private static int processFileName(Set<Path> compactedTables, Path path) {

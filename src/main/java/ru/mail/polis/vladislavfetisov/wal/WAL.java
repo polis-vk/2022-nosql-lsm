@@ -3,6 +3,8 @@ package ru.mail.polis.vladislavfetisov.wal;
 import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 import ru.mail.polis.vladislavfetisov.Entries;
@@ -12,38 +14,52 @@ import ru.mail.polis.vladislavfetisov.lsm.LsmDao;
 import ru.mail.polis.vladislavfetisov.lsm.SSTable;
 import ru.mail.polis.vladislavfetisov.lsm.Storage;
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class WAL {
-    private static final String LOG_DIR = "log" + File.pathSeparator;
-    private static final byte START_BYTE = -1;
+public class WAL implements Closeable {
+    public static final String LOG = "log";
+    public static final String LOG_DIR = LOG + File.separatorChar;
+    private static final long POSITION_LENGTH = 2L * Long.BYTES;
     private final Path dir;
     private final Config config;
     private final ResourceScope writeScope = ResourceScope.newSharedScope();
-    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-    private volatile long offset = 0;
+    private volatile long recordsOffset = 0;
+    private volatile long positionsOffset = 0;
     private volatile List<WriteOnlyLog> tables;
     private volatile List<WriteOnlyLog> tablesForDelete;
     private volatile WriteOnlyLog currentWriteLog;
     private long tableNum = 0;
 
-    public WAL(Config config) throws IOException {
+    public static final Logger LOGGER = LoggerFactory.getLogger(WAL.class);
+
+    private WAL(Config config) {
         this.config = config;
         this.dir = config.basePath().resolve(LOG_DIR);
-        this.currentWriteLog = getNewWriteLog();
         this.tables = getNewTables();
         this.tablesForDelete = Collections.emptyList();
+    }
+
+    public static LogWithState getLogWithNewState(Config config, LsmDao.State state) throws IOException {
+        WAL wal = new WAL(config);
+        try {
+            Files.createDirectory(wal.dir);
+        } catch (FileAlreadyExistsException e) {
+            state = wal.restoreFromDir(state);
+        }
+        wal.currentWriteLog = wal.getNewWriteLog();
+        return new LogWithState(wal, state);
     }
 
     private ArrayList<WriteOnlyLog> getNewTables() {
@@ -58,15 +74,15 @@ public class WAL {
         return dir.resolve(String.valueOf(tableNum++));
     }
 
-    public LsmDao.State restoreFromDir(LsmDao.State state) throws IOException {
+    private LsmDao.State restoreFromDir(LsmDao.State state) throws IOException {
         try (ResourceScope scopeForRead = ResourceScope.newSharedScope()) {
             List<ReadOnlyLog> logTables = ReadOnlyLog.getReadOnlyLogs(dir, scopeForRead);
             for (ReadOnlyLog logTable : logTables) {
                 while (true) {
                     Storage storage = state.storage();
                     boolean oversize = false;
-                    while (!logTable.isEmpty()) {
-                        Entry<MemorySegment> entry = logTable.peek();
+                    Entry<MemorySegment> entry;
+                    while ((entry = logTable.peek()) != null) {
                         oversize = storage.memory().put(entry.key(), entry);
                         if (oversize) {
                             break;
@@ -80,6 +96,7 @@ public class WAL {
                     state = new LsmDao.State(newStorage, state.nextTableNum() + 1);
                 }
                 Files.delete(logTable.tableName);
+                Files.delete(logTable.positionsName);
             }
             return state;
         }
@@ -118,69 +135,95 @@ public class WAL {
     public void afterFlush() throws IOException {
         for (WriteOnlyLog localTable : this.tablesForDelete) {
             Files.delete(localTable.tableName);
+            Files.delete(localTable.positionsName);
         }
         this.tablesForDelete = Collections.emptyList();
     }
 
     public void put(Entry<MemorySegment> entry) throws IOException {
-        long currentOffset;
+        if (!writeScope.isAlive()) {
+            throw new IllegalStateException("WAL already closed");
+        }
+        long curRecordsOffset;
+        long curPositionsOffset;
+
         synchronized (this) {
-            currentOffset = offset;
-            offset += Byte.SIZE + Entries.sizeOfEntry(entry);
-            if (offset >= currentWriteLog.size()) {
+            curRecordsOffset = recordsOffset;
+            curPositionsOffset = positionsOffset;
+            recordsOffset += Entries.sizeOfEntry(entry);
+            curPositionsOffset += POSITION_LENGTH;
+            if (recordsOffset >= currentWriteLog.size()) {
+                LOGGER.info("Need to flush");
                 tables.add(currentWriteLog);
                 currentWriteLog = getNewWriteLog();
-                currentOffset = 0;
-                offset = Byte.SIZE + Entries.sizeOfEntry(entry);
+                curRecordsOffset = 0;
+                curPositionsOffset = 0;
+                recordsOffset = Entries.sizeOfEntry(entry);
+                positionsOffset = POSITION_LENGTH;
             }
         }
-        rwLock.readLock().lock();
-        try {
-            currentWriteLog.putByte(currentOffset, START_BYTE);
-            currentWriteLog.putEntry(currentOffset + Byte.SIZE, entry);
-        } finally {
-            rwLock.writeLock().unlock();
-        }
+        currentWriteLog.putEntry(curRecordsOffset, entry);
+        currentWriteLog.putPositionChecksum(curPositionsOffset, curRecordsOffset);
+        currentWriteLog.putPosition(curPositionsOffset + Long.BYTES, curRecordsOffset);
+        currentWriteLog.flush();
+    }
 
-        rwLock.writeLock().lock();
-        try {
-            currentWriteLog.flush();
-        } finally {
-            rwLock.writeLock().unlock();
-        }
+    @Override
+    public void close() throws IOException {
+        writeScope.close();
     }
 
     /**
      * Not thread safe
      */
     private static class ReadOnlyLog {
-        private final MemorySegment mapFile;
+        private final MemorySegment recordsFile;
+        private final MemorySegment positionsFile;
+
         private final Path tableName;
-        private long offset = 0;
+        private final Path positionsName;
+
+        private long positionsOffset = 0;
 
         private ReadOnlyLog(Path tableName, ResourceScope scope) throws IOException {
             this.tableName = tableName;
-            this.mapFile = MemorySegments.map(tableName, Files.size(tableName), FileChannel.MapMode.READ_ONLY, scope);
+            this.positionsName = Path.of(tableName + SSTable.INDEX);
+            this.positionsFile =
+                    MemorySegments.map(positionsName, Files.size(positionsName), FileChannel.MapMode.READ_ONLY, scope);
+            this.recordsFile =
+                    MemorySegments.map(tableName, Files.size(tableName), FileChannel.MapMode.READ_ONLY, scope);
         }
 
         public boolean isEmpty() {
-            return offset == mapFile.byteSize();
+            return positionsFile.byteSize() - positionsOffset < WAL.POSITION_LENGTH;
         }
 
         public Entry<MemorySegment> peek() {
-            if (mapFile.byteSize() - offset - 1 < Entries.MIN_LENGTH) {//FIXME BAD
-                offset = mapFile.byteSize();
+            if (isEmpty()) {
                 return null;
             }
-            Entry<MemorySegment> entry = MemorySegments.readEntryByOffset(mapFile, offset);
-            offset += Entries.sizeOfEntry(entry);
-
-            return entry;
+            while (true) {
+                long positionChecksum = MemoryAccess.getLongAtOffset(positionsFile, positionsOffset);
+                long position = MemoryAccess.getLongAtOffset(positionsFile, positionsOffset + Long.BYTES);
+                positionsOffset += POSITION_LENGTH;
+                if (positionChecksum != position) {
+                    if (isEmpty()) {
+                        return null;
+                    }
+                    continue;
+                }
+                return MemorySegments.readEntryByOffset(recordsFile, position);
+            }
         }
 
         public static List<ReadOnlyLog> getReadOnlyLogs(Path dir, ResourceScope scope) throws IOException {
             try (Stream<Path> files = Files.list(dir)) {
-                return files.mapToInt(Utils::getTableNum)
+                return files
+                        .filter(path -> {
+                            String s = path.toString();
+                            return !s.endsWith(SSTable.INDEX);
+                        })
+                        .mapToInt(Utils::getTableNum)
                         .sorted()
                         .mapToObj(i -> {
                             try {
@@ -195,30 +238,45 @@ public class WAL {
     }
 
     private static class WriteOnlyLog {
-        private final MemorySegment mapFile;
+        private final MemorySegment recordsFile;
+        private final MemorySegment positionsFile;
         private final Path tableName;
+        private final Path positionsName;
 
         public long size() {
-            return mapFile.byteSize();
+            return recordsFile.byteSize();
         }
 
         public WriteOnlyLog(Path tableName, ResourceScope scope, long length) throws IOException {
             this.tableName = tableName;
+            this.positionsName = Path.of(tableName + SSTable.INDEX);
             Utils.newFile(tableName);
-            this.mapFile = MemorySegments.map(tableName, length, FileChannel.MapMode.READ_WRITE, scope);
-        }
-
-        public void putByte(long offset, byte value) {
-            MemoryAccess.setByteAtOffset(mapFile, offset, value);
+            Utils.newFile(positionsName);
+            this.recordsFile = MemorySegments.map(tableName, length, FileChannel.MapMode.READ_WRITE, scope);
+            long maxOffsetsLength = (length / (Entries.MIN_LENGTH + Long.BYTES)) * Long.BYTES;
+            this.positionsFile =
+                    MemorySegments.map(positionsName, maxOffsetsLength, FileChannel.MapMode.READ_WRITE, scope);
         }
 
         public void putEntry(long offset, Entry<MemorySegment> entry) {
-            MemorySegments.writeEntry(mapFile, offset, entry);
+            MemorySegments.writeEntry(recordsFile, offset, entry);
+        }
+
+        public void putPosition(long offset, long value) {
+            MemoryAccess.setLongAtOffset(positionsFile, offset, value);
+        }
+
+        public void putPositionChecksum(long offset, long checksum) {
+            MemoryAccess.setLongAtOffset(positionsFile, offset, checksum);
         }
 
         public void flush() {
-            mapFile.force();
+            recordsFile.force();
+            positionsFile.force();
         }
     }
 
+    public record LogWithState(WAL log, LsmDao.State state) {
+
+    }
 }
