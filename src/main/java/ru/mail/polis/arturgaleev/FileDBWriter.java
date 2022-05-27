@@ -17,8 +17,9 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Iterator;
 
 public class FileDBWriter implements Closeable {
-    public static final String FILE_TMP = "file.tmp";
-    public static final byte VALUE_FOR_HASH_NULL = (byte) -1;
+    // After compact there won't be any null values,
+    // when it's going to compare current cache and new one this may affect
+    public static final byte VALUE_FOR_HASH_NULL = (byte) 0;
     private final Path path;
     private final ResourceScope writeScope;
 
@@ -56,7 +57,7 @@ public class FileDBWriter implements Closeable {
         }
     }
 
-    private static long getEntryLength(Entry<MemorySegment> entry) {
+    static long getEntryLength(Entry<MemorySegment> entry) {
         return entry.key().byteSize()
                 + ((entry.value() == null) ? 0 : entry.value().byteSize()) + 2 * Long.BYTES;
     }
@@ -119,24 +120,28 @@ public class FileDBWriter implements Closeable {
         page.asSlice(Long.BYTES + Long.BYTES * i, sha256.length).copyFrom(MemorySegment.ofArray(sha256));
     }
 
-    public void writeIterable(
+    // true if something was written
+    public boolean writeIterable(
             Iterable<Entry<MemorySegment>> iterableCollection
     ) throws IOException {
         Iterator<Entry<MemorySegment>> iterator = iterableCollection.iterator();
 
         if (!iterator.hasNext()) {
-            return;
+            return false;
         }
         IteratorData iteratorData = getIteratorData(iterator);
 
         iterator = iterableCollection.iterator();
         writeIteratorWithTempFile(iterator, iteratorData);
+        return true;
     }
 
     private void writeIteratorWithTempFile(Iterator<Entry<MemorySegment>> iterator,
                                            IteratorData iteratorData) throws IOException {
         byte[] sha256 = iteratorData.sha256();
-        Path tmpPath = path.getParent().resolve(FILE_TMP);
+        String fileName = path.getFileName().toString();
+        long fileId = Long.parseLong(fileName.substring(0, fileName.length() - 4));
+        Path tmpPath = path.getParent().resolve("tmp" + fileId + ".txt");
 
         MemorySegment page = createTmpMemorySegmentPage(
                 iteratorData.dataArraySize() + sha256.length + Long.BYTES,
@@ -144,9 +149,9 @@ public class FileDBWriter implements Closeable {
 
         writeIterable(page, iteratorData.numberOfEntries(), iterator, sha256);
 
-        FileDBReader reader = new FileDBReader(page);
+        FileDBReader reader = new FileDBReader(page.asReadOnly());
         if (reader.checkIfFileCorrupted()) {
-            throw new FileSystemException("File with path: " + path + " has written incorrectly");
+            throw new FileSystemException("File with path: " + path + " was written incorrectly");
         }
 
         Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
