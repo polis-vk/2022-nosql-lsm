@@ -188,6 +188,7 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
                         break;
                     }
                 }
+
                 flush();
 
                 flushFuture.get();
