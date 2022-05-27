@@ -126,7 +126,9 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
             ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> queuePeek = flushQueue.peek();
             if (queuePeek == null) {
                 ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> currentPeek = currentlyFlushing.peek();
-                if (!(currentPeek == null)) {
+                if (currentPeek == null) {
+                    return entry.value() == null ? null : entry;
+                } else {
                     entry = currentPeek.get(key);
                 }
             } else {
