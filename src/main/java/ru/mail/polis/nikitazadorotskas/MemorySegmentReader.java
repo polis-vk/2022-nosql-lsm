@@ -70,7 +70,7 @@ class MemorySegmentReader {
             long mid = (low + high) >>> 1;
 
             MemorySegment currentKey = getMemorySegment(mid, false);
-            int compare = utils.compareMemorySegment(key, currentKey);
+            int compare = Utils.compareMemorySegment(key, currentKey);
 
             if (compare > 0) {
                 low = mid + 1;
@@ -141,9 +141,5 @@ class MemorySegmentReader {
 
         long index = binarySearch(key);
         return index < 0 ? -(index + 1) : index;
-    }
-
-    public int getNumber() {
-        return number;
     }
 }

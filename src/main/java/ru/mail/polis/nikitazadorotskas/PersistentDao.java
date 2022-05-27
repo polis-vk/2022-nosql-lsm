@@ -1,230 +1,159 @@
 package ru.mail.polis.nikitazadorotskas;
 
 import jdk.incubator.foreign.MemorySegment;
-import jdk.incubator.foreign.ResourceScope;
 import ru.mail.polis.BaseEntry;
 import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
+import java.io.UncheckedIOException;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ConcurrentNavigableMap;
-import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class PersistentDao implements Dao<MemorySegment, BaseEntry<MemorySegment>> {
-    private final ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> memory
-            = new ConcurrentSkipListMap<>(this::compareMemorySegment);
-    private final AtomicLong storageSizeInBytes = new AtomicLong(0);
-    private final MemorySegmentReader[] readers;
     private final Utils utils;
-    private final ResourceScope scope = ResourceScope.newSharedScope();
-    private boolean memoryFlushed;
+    private final ExecutorService executor
+            = Executors.newSingleThreadExecutor(r -> new Thread(r, "Background DAO thread"));
+    private final Config config;
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private State state;
+    private Future<?> flushTask;
+    private Future<?> compactTask;
 
     public PersistentDao(Config config) throws IOException {
+        this.config = config;
         utils = new Utils(config);
-
-        readers = initReaders(config);
-    }
-
-    private MemorySegmentReader[] initReaders(Config config) throws IOException {
-        if (config == null) {
-            return new MemorySegmentReader[0];
-        }
-
-        try {
-            return getReaderOfCompactedTable();
-        } catch (NoSuchFileException e) {
-            return getReadersOfAllTables();
-        }
-    }
-
-    @SuppressWarnings("DuplicateThrows")
-    private MemorySegmentReader[] getReaderOfCompactedTable() throws NoSuchFileException, IOException {
-        return new MemorySegmentReader[]{new MemorySegmentReader(utils, scope, Utils.COMPACTED_FILE_NUMBER)};
-    }
-
-    private MemorySegmentReader[] getReadersOfAllTables() throws IOException {
-        MemorySegmentReader[] result = new MemorySegmentReader[utils.countStorageFiles()];
-
-        for (int i = 0; i < result.length; i++) {
-            result[i] = new MemorySegmentReader(utils, scope, i);
-        }
-
-        return result;
-    }
-
-    private int compareMemorySegment(MemorySegment first, MemorySegment second) {
-        return utils.compareMemorySegment(first, second);
+        state = new State(new Memory(), null, new Storage(config));
     }
 
     @Override
     public Iterator<BaseEntry<MemorySegment>> get(MemorySegment from, MemorySegment to) throws IOException {
-        return new MergedIterator(getIterators(from, to), utils);
+        return new MergedIterator(this::getIterators, from, to, utils);
     }
 
     private List<PeekIterator> getIterators(MemorySegment from, MemorySegment to) {
-        List<PeekIterator> iterators = new ArrayList<>();
-        for (MemorySegmentReader reader : readers) {
-            iterators.add(reader.getFromDisk(from, to));
-        }
-        iterators.add(new PeekIterator(readers.length, getMap(from, to).values().iterator()));
+        State currentState = state;
+        List<PeekIterator> iterators = currentState.storage.getFilesIterators(from, to);
+        int numberOfMemoryIterators = currentState.storage.size();
 
+        if (currentState.flushingMemory != null) {
+            iterators.add(currentState.flushingMemory.getPeekIterator(numberOfMemoryIterators++, from, to));
+        }
+
+        iterators.add(currentState.memory.getPeekIterator(numberOfMemoryIterators, from, to));
         return iterators;
-    }
-
-    private ConcurrentNavigableMap<MemorySegment, BaseEntry<MemorySegment>> getMap(
-            MemorySegment from, MemorySegment to
-    ) {
-        if (from == null && to == null) {
-            return memory;
-        }
-
-        if (from == null) {
-            return memory.headMap(to);
-        }
-
-        if (to == null) {
-            return memory.tailMap(from);
-        }
-
-        return memory.subMap(from, to);
     }
 
     @Override
     public BaseEntry<MemorySegment> get(MemorySegment key) throws IOException {
-        BaseEntry<MemorySegment> result = memory.get(key);
+        State currentState = state;
+        BaseEntry<MemorySegment> result;
+
+        result = currentState.memory.get(key);
+
+        if (result == null && currentState.flushingMemory != null) {
+            result = currentState.flushingMemory.get(key);
+        }
 
         if (result != null) {
             return utils.checkIfWasDeleted(result);
         }
 
-        if (readers.length == 0) {
+        if (currentState.storage.size() == 0) {
             return null;
         }
 
-        return getFromStorage(key);
-    }
-
-    private BaseEntry<MemorySegment> getFromStorage(MemorySegment key) {
-        for (int i = readers.length - 1; i >= 0; i--) {
-            BaseEntry<MemorySegment> res = readers[i].getFromDisk(key);
-            if (res != null) {
-                return utils.checkIfWasDeleted(res);
-            }
-        }
-
-        return null;
+        return currentState.storage.getFromStorage(key);
     }
 
     @Override
     public void compact() throws IOException {
-        if (!scope.isAlive()) {
-            throw new IllegalStateException("called compact after close");
+        if (state.storage.isNotAlive()) {
+            throw new IllegalStateException("Called compact after close");
         }
 
-        if (readers.length == 1 && memory.isEmpty()) {
-            return;
-        }
-
-        int entriesCount = 0;
-        long byteSize = 0;
-        Iterator<BaseEntry<MemorySegment>> allEntries = all();
-        while (allEntries.hasNext()) {
-            entriesCount++;
-            byteSize += byteSizeOfEntry(allEntries.next());
-        }
-
-        writeToTmpFile(entriesCount, byteSize);
-        //tmp файл читать не будем, поскольку он, возможно, не успел до конца записаться
-
-        scope.close();
-        memory.clear();
-
-        moveTmpFileToCompactedFile();
-        //если прервались здесь или далее во время удаления,
-        //то будем читать только новый файл, помеченный как компактный, старые файлы не читаем,
-        //однако они не будут удаляться до следующего вызова compact/flush
-
-        deleteOldFilesAndMoveCompactFile();
-        //теперь остался 1 файл
-    }
-
-    private void writeToTmpFile(int entriesCount, long byteSize) throws IOException {
-        Files.deleteIfExists(utils.getStoragePath(Utils.TMP_FILE_NUMBER));
-        flush(all(), Utils.TMP_FILE_NUMBER, entriesCount, byteSize);
-    }
-
-    private void moveTmpFileToCompactedFile() throws IOException {
-        Files.move(
-                utils.getStoragePath(Utils.TMP_FILE_NUMBER),
-                utils.getStoragePath(Utils.COMPACTED_FILE_NUMBER),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING);
-    }
-
-    private void deleteOldFilesAndMoveCompactFile() throws IOException {
-        utils.deleteStorageFiles();
-        Files.move(
-                utils.getStoragePath(Utils.COMPACTED_FILE_NUMBER),
-                utils.getStoragePath(0),
-                StandardCopyOption.ATOMIC_MOVE);
-    }
-
-    private long byteSizeOfEntry(BaseEntry<MemorySegment> entry) {
-        long valueSize = entry.value() == null ? 0L : entry.value().byteSize();
-        return entry.key().byteSize() + valueSize;
-    }
-
-    private void flush(Iterator<BaseEntry<MemorySegment>> values, int fileIndex, int entriesCount, long byteSize)
-            throws IOException {
-        try (ResourceScope confinedScope = ResourceScope.newConfinedScope()) {
-            MemorySegmentWriter segmentWriter = new MemorySegmentWriter(
-                    entriesCount,
-                    byteSize,
-                    utils,
-                    confinedScope,
-                    fileIndex
-            );
-            while (values.hasNext()) {
-                segmentWriter.writeEntry(values.next());
-            }
-        }
+        compactTask = executor.submit(() -> state.storage.doCompact());
     }
 
     @Override
-    public void flush() throws IOException {
-        if (readers.length == 1 && readers[0].getNumber() == Utils.COMPACTED_FILE_NUMBER) {
-            deleteOldFilesAndMoveCompactFile();
+    public synchronized void flush() throws IOException {
+        if (state.storage.isNotAlive()) {
+            throw new IllegalStateException("Called flush after close");
         }
 
-        if (memory.isEmpty() || memoryFlushed) {
+        if (state.memory.isEmpty()) {
             return;
         }
-        memoryFlushed = true;
 
-        flush(memory.values().iterator(), readers.length, memory.size(), storageSizeInBytes.get());
+        if (flushTask != null && !flushTask.isDone()) {
+            throw new IOException("Too many flushes: one table is being written and one is full");
+        }
+
+        lock.writeLock().lock();
+        try {
+            state = state.prepareForFlush();
+        } finally {
+            lock.writeLock().unlock();
+        }
+
+        flushTask = executor.submit(this::doFlush);
+    }
+
+    private void doFlush() {
+        state.storage.doFlush(state.flushingMemory);
+        state = state.finishFlush();
     }
 
     @Override
     public void upsert(BaseEntry<MemorySegment> entry) {
-        storageSizeInBytes.addAndGet(byteSizeOfEntry(entry));
-        memory.put(entry.key(), entry);
+        State currentState = state;
+
+        lock.readLock().lock();
+        try {
+            currentState.memory.put(entry);
+        } finally {
+            lock.readLock().unlock();
+        }
+
+        try {
+            if (currentState.memory.getBytesSize() >= config.flushThresholdBytes()) {
+                flush();
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Override
     public void close() throws IOException {
-        if (!scope.isAlive()) {
+        State currentState = state;
+        if (currentState.storage.isNotAlive()) {
             return;
         }
-        scope.close();
 
-        flush();
-        memory.clear();
+        try {
+            waitTask(compactTask);
+            waitTask(flushTask);
+            flush();
+            waitTask(flushTask);
+        } catch (ExecutionException | InterruptedException e) {
+            throw new IllegalStateException(e);
+        }
+        currentState.storage.close();
+        executor.shutdown();
+
+        state = null;
+    }
+
+    private void waitTask(Future<?> task) throws ExecutionException, InterruptedException {
+        if (task != null) {
+            task.get();
+        }
     }
 }
