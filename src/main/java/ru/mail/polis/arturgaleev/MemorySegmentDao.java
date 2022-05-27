@@ -124,13 +124,13 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         Entry<MemorySegment> entry = memory.get().get(key);
         if (entry == null) {
             ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> queuePeek = flushQueue.peek();
-            if (queuePeek != null) {
-                entry = queuePeek.get(key);
-            } else {
+            if (queuePeek == null) {
                 ConcurrentSkipListMap<MemorySegment, Entry<MemorySegment>> currentPeek = currentlyFlushing.peek();
-                if (currentPeek != null) {
+                if (!(currentPeek == null)) {
                     entry = currentPeek.get(key);
                 }
+            } else {
+                entry = queuePeek.get(key);
             }
         }
         if (entry != null) {
@@ -183,7 +183,11 @@ public class MemorySegmentDao implements Dao<MemorySegment, Entry<MemorySegment>
         if (!isClosed.getAndSet(true)) {
             try {
                 // waiting while flush ends
-                while (!currentlyFlushing.isEmpty()) ;
+                while (!currentlyFlushing.isEmpty()) {
+                    if (currentlyFlushing.isEmpty()) {
+                        break;
+                    }
+                }
                 flush();
 
                 flushFuture.get();
