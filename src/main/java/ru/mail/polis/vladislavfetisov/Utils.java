@@ -9,6 +9,7 @@ import ru.mail.polis.vladislavfetisov.lsm.LsmDao;
 import ru.mail.polis.vladislavfetisov.lsm.SSTable;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -18,6 +19,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.CRC32;
+import java.util.zip.Checksum;
 
 public final class Utils {
 
@@ -117,5 +120,17 @@ public final class Utils {
 
     public static Path nextTable(String name, Config config) {
         return config.basePath().resolve(name);
+    }
+
+    public static long getLongChecksum(long value) {
+        Checksum checksum = new CRC32();
+        checksum.update(longToBytes(value));
+        return checksum.getValue();
+    }
+
+    private static byte[] longToBytes(long x) {
+        ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
+        longBuffer.putLong(x);
+        return longBuffer.array();
     }
 }

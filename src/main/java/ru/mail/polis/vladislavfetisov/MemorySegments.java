@@ -86,8 +86,7 @@ public final class MemorySegments {
         return Long.BYTES + length;
     }
 
-    public static long writeLength(MemorySegment fileMap, long fileOffset, long value) {
+    public static void writeLength(MemorySegment fileMap, long fileOffset, long value) {
         MemoryAccess.setLongAtOffset(fileMap, fileOffset, value);
-        return fileOffset + Long.BYTES;
     }
 }

@@ -84,7 +84,7 @@ public final class SSTable implements Closeable {
     private static Predicate<Path> getPathPredicate() {
         return path -> {
             String s = path.toString();
-            return !(s.startsWith(WAL.LOG) || s.endsWith(INDEX) || s.endsWith(TEMP));
+            return !(s.endsWith(WAL.LOG) || s.endsWith(INDEX) || s.endsWith(TEMP));
         };
     }
 
@@ -150,8 +150,8 @@ public final class SSTable implements Closeable {
 
                 fileOffset = MemorySegments.writeEntry(fileMap, fileOffset, entry);
             }
-            fileMap.force();
-            indexMap.force();
+//            fileMap.force(); FIXME its mandatory!
+//            indexMap.force();
             Utils.rename(indexTemp, index);
             Utils.rename(tableTemp, table);
         }

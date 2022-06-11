@@ -35,18 +35,4 @@ public final class Entries {
         return new SSTable.Sizes(tableSize, count * Long.BYTES);
     }
 
-    public static long getChecksum(Entry<MemorySegment> entry) {
-        Checksum checksum = new CRC32();
-        checksum.update(longToBytes(entry.key().byteSize()));
-        checksum.update(entry.key().asByteBuffer());
-        checksum.update(longToBytes(getValueSize(entry)));
-        checksum.update(entry.value().asByteBuffer());
-        return checksum.getValue();
-    }
-
-    private static byte[] longToBytes(long x) {
-        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-        buffer.putLong(x);
-        return buffer.array();
-    }
 }

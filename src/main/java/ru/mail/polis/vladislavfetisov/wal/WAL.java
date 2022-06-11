@@ -1,6 +1,7 @@
 package ru.mail.polis.vladislavfetisov.wal;
 
 import jdk.incubator.foreign.MemoryAccess;
+import jdk.incubator.foreign.MemoryHandles;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import org.slf4j.Logger;
@@ -18,6 +19,8 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.invoke.VarHandle;
+import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -25,23 +28,23 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 public class WAL implements Closeable {
+    private static final int BATCH_SIZE = 500;
     public static final String LOG = "log";
     public static final String LOG_DIR = LOG + File.separatorChar;
     private static final long POSITION_LENGTH = 2L * Long.BYTES;
     private final Path dir;
     private final Config config;
     private final ResourceScope writeScope = ResourceScope.newSharedScope();
-    private volatile long recordsOffset = 0;
+    private volatile long recordsOffset = Long.BYTES;
     private volatile long positionsOffset = 0;
     private volatile List<WriteOnlyLog> tables;
     private volatile List<WriteOnlyLog> tablesForDelete;
     private volatile WriteOnlyLog currentWriteLog;
     private long tableNum = 0;
-
     public static final Logger LOGGER = LoggerFactory.getLogger(WAL.class);
 
     private WAL(Config config) {
@@ -91,15 +94,24 @@ public class WAL implements Closeable {
                     if (!oversize) {
                         break;
                     }
-                    String tableName = String.valueOf(state.nextTableNum());
-                    Storage newStorage = plainFlush(storage, Utils.nextTable(tableName, config));
-                    state = new LsmDao.State(newStorage, state.nextTableNum() + 1);
+                    state = refreshStateWithFlush(state);
                 }
+            }
+            if (!state.storage().memory().isEmpty()) {
+                state = refreshStateWithFlush(state);
+            }
+            for (ReadOnlyLog logTable : logTables) {
                 Files.delete(logTable.tableName);
                 Files.delete(logTable.positionsName);
             }
             return state;
         }
+    }
+
+    private LsmDao.State refreshStateWithFlush(LsmDao.State state) throws IOException {
+        String tableName = String.valueOf(state.nextTableNum());
+        Storage newStorage = plainFlush(state.storage(), Utils.nextTable(tableName, config));
+        return new LsmDao.State(newStorage, state.nextTableNum() + 1);
     }
 
     /**
@@ -115,8 +127,11 @@ public class WAL implements Closeable {
                 sizes.tableSize(),
                 sizes.indexSize()
         );
-
-        storage.ssTables().add(table);
+        List<SSTable> ssTables = storage.ssTables();
+        ArrayList<SSTable> newTables = new ArrayList<>(ssTables.size() + 1);
+        newTables.addAll(ssTables);
+        newTables.add(table);
+        storage = storage.updateSSTables(newTables);
 
         return storage.afterFlush();
     }
@@ -124,7 +139,8 @@ public class WAL implements Closeable {
     /**
      * Зафиксировать таблицы
      */
-    public void beforeFlush() {
+    public void beforeFlush() throws IOException {
+        addWriteLogToTables();
         this.tablesForDelete = this.tables;
         this.tables = getNewTables();
     }
@@ -146,26 +162,42 @@ public class WAL implements Closeable {
         }
         long curRecordsOffset;
         long curPositionsOffset;
-
+        WriteOnlyLog localWriteLog;
         synchronized (this) {
+            localWriteLog = this.currentWriteLog;
             curRecordsOffset = recordsOffset;
             curPositionsOffset = positionsOffset;
             recordsOffset += Entries.sizeOfEntry(entry);
-            curPositionsOffset += POSITION_LENGTH;
-            if (recordsOffset >= currentWriteLog.size()) {
+            positionsOffset += POSITION_LENGTH;
+            if (recordsOffset >= localWriteLog.size()) {
                 LOGGER.info("Need to flush");
-                tables.add(currentWriteLog);
-                currentWriteLog = getNewWriteLog();
-                curRecordsOffset = 0;
+                addWriteLogToTables();
+                localWriteLog = this.currentWriteLog;
+                curRecordsOffset = Long.BYTES;
                 curPositionsOffset = 0;
-                recordsOffset = Entries.sizeOfEntry(entry);
+                recordsOffset = Entries.sizeOfEntry(entry) + Long.BYTES;
                 positionsOffset = POSITION_LENGTH;
             }
         }
-        currentWriteLog.putEntry(curRecordsOffset, entry);
-        currentWriteLog.putPositionChecksum(curPositionsOffset, curRecordsOffset);
-        currentWriteLog.putPosition(curPositionsOffset + Long.BYTES, curRecordsOffset);
-        currentWriteLog.flush();
+        localWriteLog.putEntry(curRecordsOffset, entry);
+        localWriteLog.putPositionChecksum(curPositionsOffset, Utils.getLongChecksum(curRecordsOffset));
+        localWriteLog.putPosition(curPositionsOffset + Long.BYTES, curRecordsOffset);
+
+        boolean canFlush = localWriteLog.putCount.compareAndSet(BATCH_SIZE, 0);
+        if (!canFlush) {
+            localWriteLog.putCount.incrementAndGet();
+            return;
+        }
+        boolean success = localWriteLog.trySetPositionsSize(curPositionsOffset + POSITION_LENGTH);
+        if (success) {
+            localWriteLog.flush();
+        }
+    }
+
+
+    private void addWriteLogToTables() throws IOException {
+        tables.add(currentWriteLog);
+        currentWriteLog = getNewWriteLog();
     }
 
     @Override
@@ -188,14 +220,15 @@ public class WAL implements Closeable {
         private ReadOnlyLog(Path tableName, ResourceScope scope) throws IOException {
             this.tableName = tableName;
             this.positionsName = Path.of(tableName + SSTable.INDEX);
+            this.recordsFile
+                    = MemorySegments.map(tableName, Files.size(tableName), FileChannel.MapMode.READ_ONLY, scope);
+            long positionsSize = MemoryAccess.getLongAtOffset(recordsFile, 0);
             this.positionsFile =
-                    MemorySegments.map(positionsName, Files.size(positionsName), FileChannel.MapMode.READ_ONLY, scope);
-            this.recordsFile =
-                    MemorySegments.map(tableName, Files.size(tableName), FileChannel.MapMode.READ_ONLY, scope);
+                    MemorySegments.map(positionsName, positionsSize, FileChannel.MapMode.READ_ONLY, scope);
         }
 
         public boolean isEmpty() {
-            return positionsFile.byteSize() - positionsOffset < WAL.POSITION_LENGTH;
+            return positionsOffset == positionsFile.byteSize();
         }
 
         public Entry<MemorySegment> peek() {
@@ -206,7 +239,8 @@ public class WAL implements Closeable {
                 long positionChecksum = MemoryAccess.getLongAtOffset(positionsFile, positionsOffset);
                 long position = MemoryAccess.getLongAtOffset(positionsFile, positionsOffset + Long.BYTES);
                 positionsOffset += POSITION_LENGTH;
-                if (positionChecksum != position) {
+                if (positionChecksum != Utils.getLongChecksum(position)) {
+                    LOGGER.info("Checksum is not valid");
                     if (isEmpty()) {
                         return null;
                     }
@@ -232,12 +266,14 @@ public class WAL implements Closeable {
                                 throw new UncheckedIOException(e);
                             }
                         })
-                        .collect(Collectors.toList());
+                        .toList();
             }
         }
     }
 
     private static class WriteOnlyLog {
+        private final VarHandle handle = MemoryHandles.varHandle(long.class, 1, ByteOrder.nativeOrder());
+        private final AtomicInteger putCount = new AtomicInteger();
         private final MemorySegment recordsFile;
         private final MemorySegment positionsFile;
         private final Path tableName;
@@ -253,13 +289,22 @@ public class WAL implements Closeable {
             Utils.newFile(tableName);
             Utils.newFile(positionsName);
             this.recordsFile = MemorySegments.map(tableName, length, FileChannel.MapMode.READ_WRITE, scope);
-            long maxOffsetsLength = (length / (Entries.MIN_LENGTH + Long.BYTES)) * Long.BYTES;
+            long maxOffsetsLength = ((length - Long.BYTES) / Entries.MIN_LENGTH) * POSITION_LENGTH;
             this.positionsFile =
                     MemorySegments.map(positionsName, maxOffsetsLength, FileChannel.MapMode.READ_WRITE, scope);
         }
 
         public void putEntry(long offset, Entry<MemorySegment> entry) {
             MemorySegments.writeEntry(recordsFile, offset, entry);
+        }
+
+        public boolean trySetPositionsSize(long value) {
+            long prev = (long) handle.getVolatile(recordsFile, 0);
+            if (prev > value) {
+                return false;
+            }
+            handle.setVolatile(recordsFile, 0, value);
+            return true;
         }
 
         public void putPosition(long offset, long value) {
