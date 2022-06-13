@@ -1,7 +1,6 @@
 package ru.mail.polis.vladislavfetisov.wal;
 
 import jdk.incubator.foreign.MemoryAccess;
-import jdk.incubator.foreign.MemoryHandles;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import org.slf4j.Logger;
@@ -19,20 +18,23 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.lang.invoke.VarHandle;
-import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
 public class WAL implements Closeable {
     private static final int BATCH_SIZE = 500;
+    private static final long TIMEOUT_NANOS = TimeUnit.MILLISECONDS.toNanos(100);
     public static final String LOG = "log";
     public static final String LOG_DIR = LOG + File.separatorChar;
     private static final long POSITION_LENGTH = 2L * Long.BYTES;
@@ -178,22 +180,42 @@ public class WAL implements Closeable {
                 recordsOffset = Entries.sizeOfEntry(entry) + Long.BYTES;
                 positionsOffset = POSITION_LENGTH;
             }
+            localWriteLog.setPositionsSize(curPositionsOffset + POSITION_LENGTH);
         }
         localWriteLog.putEntry(curRecordsOffset, entry);
         localWriteLog.putPositionChecksum(curPositionsOffset, Utils.getLongChecksum(curRecordsOffset));
         localWriteLog.putPosition(curPositionsOffset + Long.BYTES, curRecordsOffset);
 
+        flush(localWriteLog);
+    }
+
+    private void flush(WriteOnlyLog localWriteLog) {
+        WriteOnlyLog.LogState localState = localWriteLog.state.get();
         boolean canFlush = localWriteLog.putCount.compareAndSet(BATCH_SIZE, 0);
         if (!canFlush) {
             localWriteLog.putCount.incrementAndGet();
+            localState.lock.lock();
+            try {
+                while (!localState.isFlushed) {
+                    long remaining = localState.flushCondition.awaitNanos(TIMEOUT_NANOS);
+                    if (remaining <= 0L) {
+                        LOGGER.info("timeout");
+                        boolean weFlush = localWriteLog.flush(localState);
+                        if (!weFlush && !localState.isFlushed) {
+                            localState.flushCondition.await();
+                        }
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            } finally {
+                localState.lock.unlock();
+            }
             return;
         }
-        boolean success = localWriteLog.trySetPositionsSize(curPositionsOffset + POSITION_LENGTH);
-        if (success) {
-            localWriteLog.flush();
-        }
+        localWriteLog.flush(localState);
     }
-
 
     private void addWriteLogToTables() throws IOException {
         tables.add(currentWriteLog);
@@ -272,7 +294,7 @@ public class WAL implements Closeable {
     }
 
     private static class WriteOnlyLog {
-        private final VarHandle handle = MemoryHandles.varHandle(long.class, 1, ByteOrder.nativeOrder());
+        private final AtomicReference<LogState> state = new AtomicReference<>(new LogState());
         private final AtomicInteger putCount = new AtomicInteger();
         private final MemorySegment recordsFile;
         private final MemorySegment positionsFile;
@@ -298,13 +320,8 @@ public class WAL implements Closeable {
             MemorySegments.writeEntry(recordsFile, offset, entry);
         }
 
-        public boolean trySetPositionsSize(long value) {
-            long prev = (long) handle.getVolatile(recordsFile, 0);
-            if (prev > value) {
-                return false;
-            }
-            handle.setVolatile(recordsFile, 0, value);
-            return true;
+        public void setPositionsSize(long value) {
+            MemoryAccess.setLongAtOffset(recordsFile, 0, value);
         }
 
         public void putPosition(long offset, long value) {
@@ -315,9 +332,29 @@ public class WAL implements Closeable {
             MemoryAccess.setLongAtOffset(positionsFile, offset, checksum);
         }
 
-        public void flush() {
+        public boolean flush(LogState localState) {
+            boolean success = localState.startFlush.compareAndSet(false, true);
+            if (!success) {
+                return false;
+            }
+            this.state.getAndSet(new LogState());
             recordsFile.force();
             positionsFile.force();
+            localState.isFlushed = true;
+            localState.lock.lock();
+            try {
+                localState.flushCondition.signalAll();
+            } finally {
+                localState.lock.unlock();
+            }
+            return true;
+        }
+
+        private static class LogState {
+            private final Lock lock = new ReentrantLock();
+            private final Condition flushCondition = lock.newCondition();
+            private final AtomicBoolean startFlush = new AtomicBoolean();
+            private volatile boolean isFlushed = false;
         }
     }
 

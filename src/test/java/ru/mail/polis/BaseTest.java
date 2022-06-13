@@ -166,6 +166,7 @@ public class BaseTest {
                     }
                     runnable.run(i);
                 }
+                service.shutdownNow();
                 throw new InterruptedException("Execution is interrupted");
             }));
             return () -> {

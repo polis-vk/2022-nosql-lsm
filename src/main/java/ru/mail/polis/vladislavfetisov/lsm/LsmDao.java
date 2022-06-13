@@ -128,13 +128,13 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             if (localStorage.memory().isOversize().get() && localStorage.isFlushing()) {
                 throw new IllegalStateException("So many upserts");
             }
-            oversize = localStorage.memory().put(entry.key(), entry);
             try {
                 log.put(entry);
             } catch (IOException e) {
                 LOGGER.error("WAL is broken");
                 throw new UncheckedIOException(e);
             }
+            oversize = localStorage.memory().put(entry.key(), entry);
         } finally {
             rwLock.readLock().unlock();
         }
