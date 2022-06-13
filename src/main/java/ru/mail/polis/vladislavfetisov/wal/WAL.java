@@ -142,7 +142,7 @@ public class WAL implements Closeable {
      * Зафиксировать таблицы
      */
     public void beforeFlush() throws IOException {
-        addWriteLogToTables();
+        refreshWriteLog();
         this.tablesForDelete = this.tables;
         this.tables = getNewTables();
     }
@@ -173,7 +173,7 @@ public class WAL implements Closeable {
             positionsOffset += POSITION_LENGTH;
             if (recordsOffset >= localWriteLog.size()) {
                 LOGGER.info("Need to flush");
-                addWriteLogToTables();
+                refreshWriteLog();
                 localWriteLog = this.currentWriteLog;
                 curRecordsOffset = Long.BYTES;
                 curPositionsOffset = 0;
@@ -199,7 +199,6 @@ public class WAL implements Closeable {
                 while (!localState.isFlushed) {
                     long remaining = localState.flushCondition.awaitNanos(TIMEOUT_NANOS);
                     if (remaining <= 0L) {
-                        LOGGER.info("timeout");
                         boolean weFlush = localWriteLog.flush(localState);
                         if (!weFlush && !localState.isFlushed) {
                             localState.flushCondition.await();
@@ -217,7 +216,7 @@ public class WAL implements Closeable {
         localWriteLog.flush(localState);
     }
 
-    private void addWriteLogToTables() throws IOException {
+    private void refreshWriteLog() throws IOException {
         tables.add(currentWriteLog);
         currentWriteLog = getNewWriteLog();
     }

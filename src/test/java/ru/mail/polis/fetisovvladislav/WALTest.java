@@ -49,7 +49,7 @@ public class WALTest extends BaseTest {
     }
 
     /**
-     * Пишем в базу-> флашим -> проверяем, что файлов лога нет
+     * Пишем в базу-> флашим -> проверяем, что из файлов лога только 2 новых(пустых) файла.
      */
     @DaoTest(stage = 1000)
     void redundantFilesTest(Dao<String, Entry<String>> dao) throws Exception {
