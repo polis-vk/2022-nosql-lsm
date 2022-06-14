@@ -3,9 +3,9 @@ package ru.mail.polis.vladislavfetisov.iterators;
 import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Entry;
 import ru.mail.polis.vladislavfetisov.MemorySegments;
+import ru.mail.polis.vladislavfetisov.Utils;
 import ru.mail.polis.vladislavfetisov.lsm.SSTable;
 import ru.mail.polis.vladislavfetisov.lsm.Storage;
-import ru.mail.polis.vladislavfetisov.Utils;
 
 import java.util.Collections;
 import java.util.Iterator;

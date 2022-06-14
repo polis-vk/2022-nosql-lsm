@@ -1,6 +1,5 @@
 package ru.mail.polis.vladislavfetisov.wal;
 
-import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
 import jdk.incubator.foreign.ResourceScope;
 import org.slf4j.Logger;
@@ -8,7 +7,6 @@ import org.slf4j.LoggerFactory;
 import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
 import ru.mail.polis.vladislavfetisov.Entries;
-import ru.mail.polis.vladislavfetisov.MemorySegments;
 import ru.mail.polis.vladislavfetisov.Utils;
 import ru.mail.polis.vladislavfetisov.lsm.LsmDao;
 import ru.mail.polis.vladislavfetisov.lsm.SSTable;
@@ -17,36 +15,29 @@ import ru.mail.polis.vladislavfetisov.lsm.Storage;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Stream;
 
 public class WAL implements Closeable {
-    private static final int BATCH_SIZE = 500;
-    private static final long TIMEOUT_NANOS = TimeUnit.MILLISECONDS.toNanos(100);
+    private static final int BATCH_SIZE = 50;
+    private static final long TIMEOUT_NANOS = TimeUnit.MICROSECONDS.toNanos(1);
     public static final String LOG = "log";
     public static final String LOG_DIR = LOG + File.separatorChar;
-    private static final long POSITION_LENGTH = 2L * Long.BYTES;
+    public static final long POSITION_LENGTH = 2L * Long.BYTES;
     private final Path dir;
     private final Config config;
     private final ResourceScope writeScope = ResourceScope.newSharedScope();
     private volatile long recordsOffset = Long.BYTES;
-    private volatile long positionsOffset = 0;
+    private volatile long positionsOffset;
     private volatile List<WriteOnlyLog> tables;
     private volatile List<WriteOnlyLog> tablesForDelete;
     private volatile WriteOnlyLog currentWriteLog;
-    private long tableNum = 0;
+    private long tableNum;
     public static final Logger LOGGER = LoggerFactory.getLogger(WAL.class);
 
     private WAL(Config config) {
@@ -56,7 +47,8 @@ public class WAL implements Closeable {
         this.tablesForDelete = Collections.emptyList();
     }
 
-    public static LogWithState getLogWithNewState(Config config, LsmDao.State state) throws IOException {
+    public static LogWithState getLogWithNewState(Config config, LsmDao.State initialState) throws IOException {
+        LsmDao.State state = initialState;
         WAL wal = new WAL(config);
         try {
             Files.createDirectory(wal.dir);
@@ -67,7 +59,7 @@ public class WAL implements Closeable {
         return new LogWithState(wal, state);
     }
 
-    private ArrayList<WriteOnlyLog> getNewTables() {
+    private List<WriteOnlyLog> getNewTables() {
         return new ArrayList<>();
     }
 
@@ -79,7 +71,8 @@ public class WAL implements Closeable {
         return dir.resolve(String.valueOf(tableNum++));
     }
 
-    private LsmDao.State restoreFromDir(LsmDao.State state) throws IOException {
+    private LsmDao.State restoreFromDir(LsmDao.State initialState) throws IOException {
+        LsmDao.State state = initialState;
         try (ResourceScope scopeForRead = ResourceScope.newSharedScope()) {
             List<ReadOnlyLog> logTables = ReadOnlyLog.getReadOnlyLogs(dir, scopeForRead);
             for (ReadOnlyLog logTable : logTables) {
@@ -103,8 +96,8 @@ public class WAL implements Closeable {
                 state = refreshStateWithFlush(state);
             }
             for (ReadOnlyLog logTable : logTables) {
-                Files.delete(logTable.tableName);
-                Files.delete(logTable.positionsName);
+                Files.delete(logTable.getTableName());
+                Files.delete(logTable.getPositionsName());
             }
             return state;
         }
@@ -116,10 +109,8 @@ public class WAL implements Closeable {
         return new LsmDao.State(newStorage, state.nextTableNum() + 1);
     }
 
-    /**
-     * Not thread safe
-     */
-    private static Storage plainFlush(Storage storage, Path tableName) throws IOException {
+    private static Storage plainFlush(Storage prevStorage, Path tableName) throws IOException {
+        Storage storage = prevStorage;
         storage = storage.beforeFlush();
         Storage.Memory readOnlyMemTable = storage.readOnlyMemory();
         SSTable.Sizes sizes = Entries.getSizes(readOnlyMemTable.values().iterator());
@@ -138,22 +129,16 @@ public class WAL implements Closeable {
         return storage.afterFlush();
     }
 
-    /**
-     * Зафиксировать таблицы
-     */
     public void beforeFlush() throws IOException {
         refreshWriteLog();
         this.tablesForDelete = this.tables;
         this.tables = getNewTables();
     }
 
-    /**
-     * Удалить ненужные таблицы
-     */
     public void afterFlush() throws IOException {
         for (WriteOnlyLog localTable : this.tablesForDelete) {
-            Files.delete(localTable.tableName);
-            Files.delete(localTable.positionsName);
+            Files.delete(localTable.getTableName());
+            Files.delete(localTable.getPositionsName());
         }
         this.tablesForDelete = Collections.emptyList();
     }
@@ -190,26 +175,27 @@ public class WAL implements Closeable {
     }
 
     private void flush(WriteOnlyLog localWriteLog) {
-        WriteOnlyLog.LogState localState = localWriteLog.state.get();
-        boolean canFlush = localWriteLog.putCount.compareAndSet(BATCH_SIZE, 0);
+        WriteOnlyLog.LogState localState = localWriteLog.getState().get();
+        boolean canFlush = localWriteLog.getPutCount().compareAndSet(BATCH_SIZE, 0);
         if (!canFlush) {
-            localWriteLog.putCount.incrementAndGet();
-            localState.lock.lock();
+            localWriteLog.getPutCount().incrementAndGet();
+            localState.getLock().lock();
             try {
-                while (!localState.isFlushed) {
-                    long remaining = localState.flushCondition.awaitNanos(TIMEOUT_NANOS);
-                    if (remaining <= 0L) {
-                        boolean weFlush = localWriteLog.flush(localState);
-                        if (!weFlush && !localState.isFlushed) {
-                            localState.flushCondition.await();
-                        }
+                while (!localState.isFlushed()) {
+                    long remaining = localState.getFlushCondition().awaitNanos(TIMEOUT_NANOS);
+                    if (remaining > 0L) {
+                        continue;
+                    }
+                    boolean weFlush = localWriteLog.flush(localState);
+                    if (!weFlush && !localState.isFlushed()) {
+                        localState.getFlushCondition().await();
                     }
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             } finally {
-                localState.lock.unlock();
+                localState.getLock().unlock();
             }
             return;
         }
@@ -226,138 +212,7 @@ public class WAL implements Closeable {
         writeScope.close();
     }
 
-    /**
-     * Not thread safe
-     */
-    private static class ReadOnlyLog {
-        private final MemorySegment recordsFile;
-        private final MemorySegment positionsFile;
-
-        private final Path tableName;
-        private final Path positionsName;
-
-        private long positionsOffset = 0;
-
-        private ReadOnlyLog(Path tableName, ResourceScope scope) throws IOException {
-            this.tableName = tableName;
-            this.positionsName = Path.of(tableName + SSTable.INDEX);
-            this.recordsFile
-                    = MemorySegments.map(tableName, Files.size(tableName), FileChannel.MapMode.READ_ONLY, scope);
-            long positionsSize = MemoryAccess.getLongAtOffset(recordsFile, 0);
-            this.positionsFile =
-                    MemorySegments.map(positionsName, positionsSize, FileChannel.MapMode.READ_ONLY, scope);
-        }
-
-        public boolean isEmpty() {
-            return positionsOffset == positionsFile.byteSize();
-        }
-
-        public Entry<MemorySegment> peek() {
-            if (isEmpty()) {
-                return null;
-            }
-            while (true) {
-                long positionChecksum = MemoryAccess.getLongAtOffset(positionsFile, positionsOffset);
-                long position = MemoryAccess.getLongAtOffset(positionsFile, positionsOffset + Long.BYTES);
-                positionsOffset += POSITION_LENGTH;
-                if (positionChecksum != Utils.getLongChecksum(position)) {
-                    LOGGER.info("Checksum is not valid");
-                    if (isEmpty()) {
-                        return null;
-                    }
-                    continue;
-                }
-                return MemorySegments.readEntryByOffset(recordsFile, position);
-            }
-        }
-
-        public static List<ReadOnlyLog> getReadOnlyLogs(Path dir, ResourceScope scope) throws IOException {
-            try (Stream<Path> files = Files.list(dir)) {
-                return files
-                        .filter(path -> {
-                            String s = path.toString();
-                            return !s.endsWith(SSTable.INDEX);
-                        })
-                        .mapToInt(Utils::getTableNum)
-                        .sorted()
-                        .mapToObj(i -> {
-                            try {
-                                return new ReadOnlyLog(dir.resolve(String.valueOf(i)), scope);
-                            } catch (IOException e) {
-                                throw new UncheckedIOException(e);
-                            }
-                        })
-                        .toList();
-            }
-        }
-    }
-
-    private static class WriteOnlyLog {
-        private final AtomicReference<LogState> state = new AtomicReference<>(new LogState());
-        private final AtomicInteger putCount = new AtomicInteger();
-        private final MemorySegment recordsFile;
-        private final MemorySegment positionsFile;
-        private final Path tableName;
-        private final Path positionsName;
-
-        public long size() {
-            return recordsFile.byteSize();
-        }
-
-        public WriteOnlyLog(Path tableName, ResourceScope scope, long length) throws IOException {
-            this.tableName = tableName;
-            this.positionsName = Path.of(tableName + SSTable.INDEX);
-            Utils.newFile(tableName);
-            Utils.newFile(positionsName);
-            this.recordsFile = MemorySegments.map(tableName, length, FileChannel.MapMode.READ_WRITE, scope);
-            long maxOffsetsLength = ((length - Long.BYTES) / Entries.MIN_LENGTH) * POSITION_LENGTH;
-            this.positionsFile =
-                    MemorySegments.map(positionsName, maxOffsetsLength, FileChannel.MapMode.READ_WRITE, scope);
-        }
-
-        public void putEntry(long offset, Entry<MemorySegment> entry) {
-            MemorySegments.writeEntry(recordsFile, offset, entry);
-        }
-
-        public void setPositionsSize(long value) {
-            MemoryAccess.setLongAtOffset(recordsFile, 0, value);
-        }
-
-        public void putPosition(long offset, long value) {
-            MemoryAccess.setLongAtOffset(positionsFile, offset, value);
-        }
-
-        public void putPositionChecksum(long offset, long checksum) {
-            MemoryAccess.setLongAtOffset(positionsFile, offset, checksum);
-        }
-
-        public boolean flush(LogState localState) {
-            boolean success = localState.startFlush.compareAndSet(false, true);
-            if (!success) {
-                return false;
-            }
-            this.state.getAndSet(new LogState());
-            recordsFile.force();
-            positionsFile.force();
-            localState.isFlushed = true;
-            localState.lock.lock();
-            try {
-                localState.flushCondition.signalAll();
-            } finally {
-                localState.lock.unlock();
-            }
-            return true;
-        }
-
-        private static class LogState {
-            private final Lock lock = new ReentrantLock();
-            private final Condition flushCondition = lock.newCondition();
-            private final AtomicBoolean startFlush = new AtomicBoolean();
-            private volatile boolean isFlushed = false;
-        }
-    }
-
     public record LogWithState(WAL log, LsmDao.State state) {
-
+        //empty
     }
 }

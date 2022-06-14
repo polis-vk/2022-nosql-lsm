@@ -137,8 +137,10 @@ public final class SSTable implements Closeable {
         Utils.newFile(indexTemp);
 
         try (ResourceScope writingScope = ResourceScope.newSharedScope()) {
-            MemorySegment fileMap = MemorySegments.map(tableTemp, tableSize, FileChannel.MapMode.READ_WRITE, writingScope);
-            MemorySegment indexMap = MemorySegments.map(indexTemp, indexSize, FileChannel.MapMode.READ_WRITE, writingScope);
+            MemorySegment fileMap
+                    = MemorySegments.map(tableTemp, tableSize, FileChannel.MapMode.READ_WRITE, writingScope);
+            MemorySegment indexMap
+                    = MemorySegments.map(indexTemp, indexSize, FileChannel.MapMode.READ_WRITE, writingScope);
 
             long indexOffset = 0;
             long fileOffset = 0;
@@ -150,7 +152,7 @@ public final class SSTable implements Closeable {
 
                 fileOffset = MemorySegments.writeEntry(fileMap, fileOffset, entry);
             }
-//            fileMap.force(); FIXME its mandatory!
+//            fileMap.force();
 //            indexMap.force();
             Utils.rename(indexTemp, index);
             Utils.rename(tableTemp, table);

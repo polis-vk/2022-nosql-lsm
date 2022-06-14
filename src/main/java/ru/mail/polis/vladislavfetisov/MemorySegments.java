@@ -39,7 +39,8 @@ public final class MemorySegments {
         return readEntryByOffset(mapFile, offset);
     }
 
-    public static Entry<MemorySegment> readEntryByOffset(MemorySegment mapFile, long offset) {
+    public static Entry<MemorySegment> readEntryByOffset(MemorySegment mapFile, long offsetValue) {
+        long offset = offsetValue;
         long keyLength = getLength(mapFile, offset);
         offset += Long.BYTES;
         MemorySegment key = mapFile.asSlice(offset, keyLength);
@@ -66,7 +67,8 @@ public final class MemorySegments {
         return MemorySegment.mapFile(table, 0, length, mapMode, scope);
     }
 
-    public static long writeEntry(MemorySegment fileMap, long fileOffset, Entry<MemorySegment> entry) {
+    public static long writeEntry(MemorySegment fileMap, long offset, Entry<MemorySegment> entry) {
+        long fileOffset = offset;
         fileOffset += writeSegment(entry.key(), fileMap, fileOffset);
 
         if (entry.value() == null) {

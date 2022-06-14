@@ -1,6 +1,5 @@
 package ru.mail.polis.fetisovvladislav;
 
-import org.junit.jupiter.api.Assertions;
 import ru.mail.polis.BaseTest;
 import ru.mail.polis.Dao;
 import ru.mail.polis.DaoTest;
@@ -12,7 +11,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static ru.mail.polis.vladislavfetisov.wal.WAL.LOG_DIR;
 
 public class WALTest extends BaseTest {
@@ -37,8 +37,7 @@ public class WALTest extends BaseTest {
                 commits[value] = true;
 
             }).close();
-        } catch (Exception e) {
-            System.out.println(e.getMessage());
+        } catch (Exception ignored) {
         }
         dao = DaoFactory.Factory.turnOffLightAndReopen(dao);
         for (int i = 0; i < commits.length; i++) {

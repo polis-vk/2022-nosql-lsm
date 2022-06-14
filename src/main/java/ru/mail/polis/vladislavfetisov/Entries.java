@@ -4,10 +4,7 @@ import jdk.incubator.foreign.MemorySegment;
 import ru.mail.polis.Entry;
 import ru.mail.polis.vladislavfetisov.lsm.SSTable;
 
-import java.nio.ByteBuffer;
 import java.util.Iterator;
-import java.util.zip.CRC32;
-import java.util.zip.Checksum;
 
 public final class Entries {
     public static final long MIN_LENGTH = 2L * Long.BYTES;

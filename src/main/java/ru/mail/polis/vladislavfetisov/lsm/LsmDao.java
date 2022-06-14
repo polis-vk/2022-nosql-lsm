@@ -266,6 +266,6 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
     }
 
     public record State(Storage storage, long nextTableNum) {
-
+        //empty
     }
 }
