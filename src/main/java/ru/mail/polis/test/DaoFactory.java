@@ -34,11 +34,15 @@ public @interface DaoFactory {
         E fromBaseEntry(Entry<D> baseEntry);
 
         static Config extractConfig(Dao<String, Entry<String>> dao) {
-            return ((TestDao<?,?>)dao).config;
+            return ((TestDao<?, ?>) dao).config;
         }
 
         static Dao<String, Entry<String>> reopen(Dao<String, Entry<String>> dao) throws IOException {
-            return ((TestDao<?,?>)dao).reopen();
+            return ((TestDao<?, ?>) dao).reopen();
+        }
+
+        static Dao<String, Entry<String>> turnOffLightAndReopen(Dao<String, Entry<String>> dao) throws IOException {
+            return ((TestDao<?, ?>) dao).replaceDao();
         }
 
         default Dao<String, Entry<String>> createStringDao(Config config) throws IOException {

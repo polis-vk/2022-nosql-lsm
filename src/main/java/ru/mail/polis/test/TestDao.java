@@ -42,6 +42,10 @@ class TestDao<D, E extends Entry<D>> implements Dao<String, Entry<String>> {
         return child;
     }
 
+    public Dao<String, Entry<String>> replaceDao() throws IOException {
+        return new TestDao<>(factory, config);
+    }
+
     @Override
     public Entry<String> get(String key) throws IOException {
         E result = delegate.get(factory.fromString(key));

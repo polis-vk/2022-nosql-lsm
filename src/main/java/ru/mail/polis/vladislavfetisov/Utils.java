@@ -1,46 +1,31 @@
 package ru.mail.polis.vladislavfetisov;
 
-import jdk.incubator.foreign.MemoryAccess;
 import jdk.incubator.foreign.MemorySegment;
-import jdk.incubator.foreign.ResourceScope;
-import ru.mail.polis.BaseEntry;
+import ru.mail.polis.Config;
 import ru.mail.polis.Entry;
+import ru.mail.polis.vladislavfetisov.iterators.CustomIterators;
+import ru.mail.polis.vladislavfetisov.iterators.PeekingIterator;
+import ru.mail.polis.vladislavfetisov.lsm.LsmDao;
+import ru.mail.polis.vladislavfetisov.lsm.SSTable;
 
 import java.io.IOException;
-import java.nio.channels.FileChannel;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-
-import static ru.mail.polis.vladislavfetisov.LsmDao.logger;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.zip.CRC32;
+import java.util.zip.Checksum;
 
 public final class Utils {
 
     private Utils() {
 
-    }
-
-    private static long sizeOfEntry(Entry<MemorySegment> entry) {
-        long valueSize = (entry.value() == null) ? 0 : entry.value().byteSize();
-        return 2L * Long.BYTES + entry.key().byteSize() + valueSize;
-    }
-
-    public static int compareMemorySegments(MemorySegment o1, MemorySegment o2) {
-        long mismatch = o1.mismatch(o2);
-        if (mismatch == -1) {
-            return 0;
-        }
-        if (mismatch == o1.byteSize()) {
-            return -1;
-        }
-        if (mismatch == o2.byteSize()) {
-            return 1;
-        }
-        byte b1 = MemoryAccess.getByteAtOffset(o1, mismatch);
-        byte b2 = MemoryAccess.getByteAtOffset(o2, mismatch);
-        return Byte.compare(b1, b2);
     }
 
     public static long binarySearch(MemorySegment key,
@@ -51,8 +36,8 @@ public final class Utils {
         long r = rightBound - 1;
         while (l <= r) {
             long middle = (l + r) >>> 1;
-            Entry<MemorySegment> middleEntry = getByIndex(mapFile, mapIndex, middle);
-            int res = compareMemorySegments(middleEntry.key(), key);
+            Entry<MemorySegment> middleEntry = MemorySegments.getByIndex(mapFile, mapIndex, middle);
+            int res = MemorySegments.compareMemorySegments(middleEntry.key(), key);
             if (res == 0) {
                 return middle;
             } else if (res < 0) {
@@ -67,44 +52,6 @@ public final class Utils {
         return l;
     }
 
-    public static Entry<MemorySegment> getByIndex(MemorySegment mapFile, MemorySegment mapIndex, long index) {
-        long offset = getLength(mapIndex, index * Long.BYTES);
-
-        long keyLength = getLength(mapFile, offset);
-        offset += Long.BYTES;
-        MemorySegment key = mapFile.asSlice(offset, keyLength);
-
-        offset += keyLength;
-        long valueLength = getLength(mapFile, offset);
-        MemorySegment value;
-        if (valueLength == SSTable.NULL_VALUE) {
-            value = null;
-        } else {
-            value = mapFile.asSlice(offset + Long.BYTES, valueLength);
-        }
-        return new BaseEntry<>(key, value);
-    }
-
-    private static long getLength(MemorySegment mapFile, long offset) {
-        return MemoryAccess.getLongAtOffset(mapFile, offset);
-    }
-
-    public static long writeSegment(MemorySegment segment, MemorySegment fileMap, long fileOffset) {
-        long length = segment.byteSize();
-        MemoryAccess.setLongAtOffset(fileMap, fileOffset, length);
-
-        fileMap.asSlice(fileOffset + Long.BYTES).copyFrom(segment);
-
-        return Long.BYTES + length;
-    }
-
-    public static MemorySegment map(Path table,
-                                    long length,
-                                    FileChannel.MapMode mapMode,
-                                    ResourceScope scope) throws IOException {
-        return MemorySegment.mapFile(table, 0, length, mapMode, scope);
-    }
-
     public static void rename(Path source, Path target) throws IOException {
         Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
@@ -113,32 +60,77 @@ public final class Utils {
         return path.resolveSibling(path.getFileName() + suffix);
     }
 
-    public static boolean isTombstone(Entry<MemorySegment> entry) {
-        return entry.value() == null;
-    }
-
-    public static void deleteTables(List<SSTable> tableList) throws IOException {
-        for (SSTable table : tableList) {
+    public static void deleteTablesToIndex(List<SSTable> tableList, int toIndex) throws IOException {
+        for (int i = 0; i < toIndex; i++) {
+            SSTable table = tableList.get(i);
             Files.deleteIfExists(table.getTableName());
             Files.deleteIfExists(table.getIndexName());
         }
     }
 
-    public static SSTable.Sizes getSizes(Iterator<Entry<MemorySegment>> values) {
-        long tableSize = 0;
-        long count = 0;
-        while (values.hasNext()) {
-            tableSize += sizeOfEntry(values.next());
-            count++;
-        }
-        return new SSTable.Sizes(tableSize, count * Long.BYTES);
+    public static String removeSuffix(String source, String suffix) {
+        return source.substring(0, source.length() - suffix.length());
     }
 
-    public static void checkMemory() {
-        long usedMemory = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
-        logger.info("memory use: {}", usedMemory / 1024L);
-        long free = Runtime.getRuntime().maxMemory() - usedMemory;
-        logger.info("free: {}", free / 1024L);
-        logger.info("all {}", (usedMemory + free) / 1024L);
+    public static Iterator<Entry<MemorySegment>> tablesRange(
+            MemorySegment from, MemorySegment to, List<SSTable> tables) {
+        List<Iterator<Entry<MemorySegment>>> iterators = new ArrayList<>(tables.size());
+        for (SSTable table : tables) {
+            iterators.add(table.range(from, to));
+        }
+        return CustomIterators.merge(iterators);
+    }
+
+    public static long getLastTableNum(List<SSTable> ssTables) {
+        String lastTable = ssTables.get(ssTables.size() - 1).getTableName().getFileName().toString();
+        if (lastTable.endsWith(SSTable.COMPACTED)) {
+            lastTable = Utils.removeSuffix(lastTable, SSTable.COMPACTED);
+        }
+        return Long.parseLong(lastTable) + 1;
+    }
+
+    public static Iterator<Entry<MemorySegment>> tablesFilteredFullRange(List<SSTable> fixed) {
+        Iterator<Entry<MemorySegment>> discIterator = Utils.tablesRange(null, null, fixed);
+        PeekingIterator<Entry<MemorySegment>> iterator = new PeekingIterator<>(discIterator);
+        return CustomIterators.skipTombstones(iterator);
+    }
+
+    public static void shutdownExecutor(ExecutorService service) {
+        service.shutdown();
+        try {
+            if (!service.awaitTermination(1, TimeUnit.HOURS)) {
+                throw new IllegalStateException("Cant await termination");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LsmDao.LOGGER.error("Cant await termination", e);
+        }
+    }
+
+    public static void newFile(Path name) throws IOException {
+        Files.newByteChannel(name,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.TRUNCATE_EXISTING);
+    }
+
+    public static Integer getTableNum(Path path) {
+        return Integer.parseInt(path.getFileName().toString());
+    }
+
+    public static Path nextTable(String name, Config config) {
+        return config.basePath().resolve(name);
+    }
+
+    public static long getLongChecksum(long value) {
+        Checksum checksum = new CRC32();
+        checksum.update(longToBytes(value));
+        return checksum.getValue();
+    }
+
+    private static byte[] longToBytes(long x) {
+        ByteBuffer longBuffer = ByteBuffer.allocate(Long.BYTES);
+        longBuffer.putLong(x);
+        return longBuffer.array();
     }
 }

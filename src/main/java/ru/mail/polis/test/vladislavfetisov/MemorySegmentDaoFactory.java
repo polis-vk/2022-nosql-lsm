@@ -5,12 +5,12 @@ import ru.mail.polis.Config;
 import ru.mail.polis.Dao;
 import ru.mail.polis.Entry;
 import ru.mail.polis.test.DaoFactory;
-import ru.mail.polis.vladislavfetisov.LsmDao;
+import ru.mail.polis.vladislavfetisov.lsm.LsmDao;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-@DaoFactory(stage = 4, week = 1)
+@DaoFactory(stage = 1000, week = 1)
 public class MemorySegmentDaoFactory implements DaoFactory.Factory<MemorySegment, Entry<MemorySegment>> {
     @Override
     public Dao<MemorySegment, Entry<MemorySegment>> createDao(Config config) throws IOException {
