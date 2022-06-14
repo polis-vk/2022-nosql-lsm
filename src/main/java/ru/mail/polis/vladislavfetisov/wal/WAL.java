@@ -23,7 +23,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-public class WAL implements Closeable {
+public final class WAL implements Closeable {
     private static final int BATCH_SIZE = 50;
     private static final long TIMEOUT_NANOS = TimeUnit.MICROSECONDS.toNanos(1);
     public static final String LOG = "log";

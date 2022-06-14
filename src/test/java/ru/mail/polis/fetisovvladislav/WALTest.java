@@ -1,14 +1,12 @@
 package ru.mail.polis.fetisovvladislav;
 
-import ru.mail.polis.BaseTest;
-import ru.mail.polis.Dao;
-import ru.mail.polis.DaoTest;
-import ru.mail.polis.Entry;
+import ru.mail.polis.*;
 import ru.mail.polis.test.DaoFactory;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Random;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -16,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static ru.mail.polis.vladislavfetisov.wal.WAL.LOG_DIR;
 
 public class WALTest extends BaseTest {
+    private static final Random random = new Random();
 
     /**
      * Записываем данные в базу(не должно быть flush)->эмулируем выключение света->
@@ -48,15 +47,18 @@ public class WALTest extends BaseTest {
     }
 
     /**
-     * Пишем в базу-> флашим -> проверяем, что из файлов лога только 2 новых(пустых) файла.
+     * Пишем в базу много больших одинаковых значений
+     * -> флашим -> проверяем, что из файлов лога только 2 новых(пустых) файла.
      */
     @DaoTest(stage = 1000)
     void redundantFilesTest(Dao<String, Entry<String>> dao) throws Exception {
-        int count = 10_000;
-        List<Entry<String>> entries = entries("k", "v", count);
-        runInParallel(1000, count, value -> {
-            dao.upsert(entries.get(value));
-            assertContains(dao.all(), entries.get(value));
+        int count = 4_000;
+        String key = withSuffix("k_", 1000);
+        String value = withSuffix("v_", 1000);
+        Entry<String> bigEntry = new BaseEntry<>(key, value);
+        runInParallel(300, count, index -> {
+            dao.upsert(bigEntry);
+            assertContains(dao.all(), bigEntry);
         }).close();
 
         dao.flush();
@@ -66,7 +68,17 @@ public class WALTest extends BaseTest {
         try (Stream<Path> files = Files.list(logPath)) {
             assertEquals(2, files.count());
         }
-        assertSame(dao.all(), entries);
+        assertSame(dao.all(), bigEntry);
+
     }
 
+    private static String withSuffix(String value, int length) {
+        byte[] initialChars = value.getBytes();
+        byte[] result = new byte[initialChars.length + length];
+        System.arraycopy(initialChars, 0, result, 0, initialChars.length);
+        for (int i = initialChars.length; i < result.length; i++) {
+            result[i] = (byte) ('A' + random.nextInt(26));
+        }
+        return new String(result);
+    }
 }

@@ -58,7 +58,8 @@ public class LsmDao implements Dao<MemorySegment, Entry<MemorySegment>> {
             this.storage = Storage.getNewStorageWithSSTables(config, ssTables);
         }
 
-        WAL.LogWithState logWithState = WAL.getLogWithNewState(config, new State(storage, nextTableNum));
+        State initialState = new State(storage, nextTableNum);
+        WAL.LogWithState logWithState = WAL.getLogWithNewState(config, initialState);
 
         this.nextTableNum = logWithState.state().nextTableNum();
         this.storage = logWithState.state().storage();

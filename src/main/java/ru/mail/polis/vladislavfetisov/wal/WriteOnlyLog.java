@@ -25,7 +25,6 @@ public class WriteOnlyLog {
     private final MemorySegment recordsFile;
     private final MemorySegment positionsFile;
 
-
     private final Path tableName;
     private final Path positionsName;
 

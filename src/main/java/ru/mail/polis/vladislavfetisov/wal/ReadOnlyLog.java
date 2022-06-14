@@ -17,9 +17,9 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * Not thread safe
+ * Not thread safe.
  */
-class ReadOnlyLog {
+public final class ReadOnlyLog {
     private final MemorySegment recordsFile;
     private final MemorySegment positionsFile;
 
@@ -58,14 +58,13 @@ class ReadOnlyLog {
             long positionChecksum = MemoryAccess.getLongAtOffset(positionsFile, positionsOffset);
             long position = MemoryAccess.getLongAtOffset(positionsFile, positionsOffset + Long.BYTES);
             positionsOffset += WAL.POSITION_LENGTH;
-            if (positionChecksum != Utils.getLongChecksum(position)) {
-                WAL.LOGGER.info("Checksum is not valid");
-                if (isEmpty()) {
-                    return null;
-                }
-                continue;
+            if (positionChecksum == Utils.getLongChecksum(position)) {
+                return MemorySegments.readEntryByOffset(recordsFile, position);
             }
-            return MemorySegments.readEntryByOffset(recordsFile, position);
+            WAL.LOGGER.info("Checksum is not valid");
+            if (isEmpty()) {
+                return null;
+            }
         }
     }
 

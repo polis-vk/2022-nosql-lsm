@@ -152,8 +152,8 @@ public final class SSTable implements Closeable {
 
                 fileOffset = MemorySegments.writeEntry(fileMap, fileOffset, entry);
             }
-//            fileMap.force();
-//            indexMap.force();
+            //fileMap.force();
+            //indexMap.force();
             Utils.rename(indexTemp, index);
             Utils.rename(tableTemp, table);
         }
